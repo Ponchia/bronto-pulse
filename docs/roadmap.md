@@ -16,8 +16,12 @@ The following are **not** represented as shipped features:
   bounded limits and operators can collect narrower windows.
 - Automatic publishing of an owner's private report.
 
-Before a public beta, validate real Cloudflare field availability and units,
+Before recommending a production installation or stable package release, validate
+real Cloudflare field availability and units,
 Google authorization longevity, deployed D1 usage, backup recovery and several
 successive scheduled collection cycles. Those checks are environment-specific,
 not satisfied by unit tests alone. Add sources only when a concrete project
 question needs them, preserving metric semantics and privacy boundaries.
+
+The public source preview does not depend on completing a maintainer-specific
+production deployment. That validation remains an explicit follow-up.

@@ -2,6 +2,9 @@
 
 Lifecycle: archive
 
+Historical pre-publication validation record. For current source availability,
+CI and deployment boundaries, see [maintainer releases](releasing.md).
+
 This records a specific local verification, not a production availability claim.
 
 ## Completed checks

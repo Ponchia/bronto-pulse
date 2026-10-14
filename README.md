@@ -1,6 +1,6 @@
 # Bronto Pulse
 
-**Private, portable project analytics. No additional visitor tracker.**
+**Open-source project analytics. Private history. No additional visitor tracker.**
 
 Bronto Pulse keeps a source-aware history of how software and websites are
 discovered, distributed and used. A project can reference GitHub repositories,
@@ -8,10 +8,11 @@ npm packages, Cloudflare Web Analytics, Search Console and existing Sense6
 anonymous counters. Related projects can share a website property without
 silently double-counting each other's paths.
 
-The code is MIT-licensed. Collected data and provider credentials are **private**
-by default. This initial implementation is not a hosted multi-tenant product.
-The repository is private during validation; changing visibility and publishing
-the npm package are separate operator decisions.
+**Status: public source preview.** The code is MIT-licensed; collected analytics,
+provider credentials and deployments remain **private** by default. This is not
+a hosted service or a production-readiness claim. The npm package is **not yet
+published**; use the source checkout. See the [validation matrix](docs/validation.md)
+for the difference between fixture tests and live account verification.
 
 ## Run the complete demo
 
@@ -19,8 +20,9 @@ Requires Node.js 24.15 or newer (24.x recommended). Local storage uses
 `node:sqlite`; no native npm database addon or external database is required.
 
 ```sh
+git clone https://github.com/Ponchia/bronto-pulse.git
+cd bronto-pulse
 npm ci
-npm run check
 npm run demo -- --serve
 ```
 
@@ -50,6 +52,26 @@ configuration with placeholder account identifiers. Substitute verified IDs
 before collection. Missing permissions become explicit health states, not
 zeroes. `probe` is read-only; `sync` saves history.
 
+## Operator workflow
+
+Preview a bounded sync before making provider requests, then read an evidence-based
+briefing or export a source-aware CSV:
+
+```sh
+node dist/cli.js plan --provider github --json
+node dist/cli.js sync --provider github --dry-run --json
+node dist/cli.js brief --days 30
+node dist/cli.js report pulse --format csv --out /private/pulse-report.csv
+```
+
+`plan` and `validate` never open the database or the network. Backfill supports
+explicit date chunks and budgets. Briefings keep coverage problems, limited
+measurements and missing baselines visible; snapshot changes are net changes,
+not gross new users. No tracker or LLM service is added.
+
+Read the [quickstart](docs/quickstart.md), [configuration guide](docs/configuration.md)
+and [reporting contracts](docs/reporting.md) before connecting live sources.
+
 ## Implemented capabilities
 
 | Area           | Behavior                                                                                                                                                            |
@@ -60,7 +82,7 @@ zeroes. `probe` is read-only; `sync` saves history.
 | Search Console | Separate totals/page/query scopes, bounded pagination, Pacific dates, partial-data metadata, weighted CTR/position, OAuth refresh                                   |
 | Sense6         | Optional fixed aggregate-only D1 query; no arbitrary SQL, participant or result reads                                                                               |
 | Storage        | SQLite and D1 drivers, fenced leases, staged atomic publication, coverage, run history, portable private export/import                                              |
-| Interfaces     | CLI, authenticated read-only HTTP API, responsive dashboard, deterministic Markdown/JSON reports                                                                    |
+| Interfaces     | CLI, authenticated read-only API, dashboard, offline collection plans, evidence briefings and private JSON/Markdown/CSV reports                                     |
 | Deployment     | Local process, container, or bounded scheduled Cloudflare Worker with D1 and private assets                                                                         |
 
 Provider adapters are integration-tested with strict fixtures. Live account
@@ -100,7 +122,7 @@ and may include explicitly enabled query text. Never commit them to Git.
 ## Quality gates
 
 ```sh
-npm run check          # TypeScript, contract tests, documentation, build
+npm run check          # Source/test types, contracts, docs, schema and installed package
 npm run test:browser   # Dashboard flows and 320/390/1440px layout checks
 npm run test:d1        # Real local D1-compatible runtime contract (Miniflare)
 npm run worker:check   # Cloudflare deployment bundle dry run; no publication
@@ -109,3 +131,16 @@ npm run worker:check   # Cloudflare deployment bundle dry run; no publication
 The [documentation router](docs/README.md) covers architecture, metric contracts,
 provider permissions, private deployment, API usage, operations and limitations.
 See [SECURITY.md](SECURITY.md) before exposing an installation.
+
+## Contributing and security
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [documentation router](docs/README.md).
+CI runs on standard GitHub-hosted Ubuntu runners using synthetic fixtures; it
+requires no maintainer infrastructure or live provider secrets. Source publication
+does not enable recurring collection or publish your local data.
+
+Report vulnerabilities through [private security advisories](https://github.com/Ponchia/bronto-pulse/security/advisories/new),
+not a public issue. Ordinary bugs and feature requests use the issue templates.
+The project is developed with substantial AI assistance; the maintainer remains
+responsible for review, tests and release decisions. See the contributor policy
+for how to report limitations and supply reproducible evidence.

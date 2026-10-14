@@ -12,16 +12,22 @@ import { sync, doctor, probe } from './sync.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
 import { seedDemo } from './demo.js';
 import { startServer } from './server.js';
-import { addDays, dateInZone, defaultRange, range } from './time.js';
+import { dateInZone, reportRange } from './time.js';
+import { planCollection, markdownPlan } from './plan.js';
+import { projectBrief, markdownBrief } from './brief.js';
+import { csvReport } from './report-export.js';
 
 const HELP = `Bronto Pulse 0.1.0 — private project analytics, not a visitor tracker
 
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
-pulse sync [--provider github]       Collect bounded source windows; independent jobs
+pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
+pulse sync [--provider github]       Collect bounded source windows; --dry-run previews
+pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
 pulse probe                          Read-only provider capability and permission checks
 pulse doctor                         Check coverage, freshness and credential availability
-pulse report PROJECT [--days 30]      Source-aware report; --json for agents
+pulse report PROJECT [--days 30]      Source-aware report; --format json|markdown|csv
+pulse brief [PROJECT]                Evidence-based summary; omitting ID covers portfolio
 pulse compare PROJECT...             Side-by-side reports, never a universal adoption score
 pulse export --out private.json      Portable private snapshot; refuses active collectors
 pulse import --input private.json    Restore into an EMPTY database, transactionally
@@ -32,7 +38,8 @@ pulse demo [--serve]                  Seed deterministic SYNTHETIC data in a sep
 
 Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --from YYYY-MM-DD --to YYYY-MM-DD, --resource ID, --group GROUP,
- --max-jobs N --rotate, --json, --out FILE, --input FILE, --port N.
+ --max-jobs N --chunk-days N --rotate --dry-run, --json, --format FORMAT,
+ --out FILE (exclusive private output), --input FILE, --port N.
 Credentials are read from environment variables named by connections.
 No command creates a visitor tracker or publishes your collected data.
 `;
@@ -66,6 +73,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       days: { type: 'string' },
       'max-jobs': { type: 'string' },
       rotate: { type: 'boolean' },
+      'dry-run': { type: 'boolean' },
+      'chunk-days': { type: 'string' },
+      format: { type: 'string' },
       out: { type: 'string' },
       input: { type: 'string' },
       port: { type: 'string' },
@@ -85,7 +95,108 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     console.log(HELP);
     return 0;
   }
+  const known = new Set([
+    'init',
+    'validate',
+    'plan',
+    'sync',
+    'backfill',
+    'probe',
+    'doctor',
+    'report',
+    'brief',
+    'compare',
+    'portfolio',
+    'export',
+    'import',
+    'annotate',
+    'compact',
+    'serve',
+    'demo',
+  ]);
+  if (!known.has(command)) throw new PulseError('CONFIG', 'Unknown command. Run pulse --help.');
+  if (v.format && !['json', 'markdown', 'csv'].includes(v.format))
+    throw new PulseError('CONFIG', 'Output format must be json, markdown or csv.');
+  if (v.json && v.format && v.format !== 'json')
+    throw new PulseError('CONFIG', '--json conflicts with the selected output format.');
+  if (v.format && !['report', 'brief'].includes(command))
+    throw new PulseError('CONFIG', '--format applies only to report and brief.');
+  if (command === 'brief' && v.format === 'csv')
+    throw new PulseError(
+      'CONFIG',
+      'Brief supports json or markdown. Use report --format csv for metric rows.',
+    );
+  if (v['dry-run'] && !['sync', 'backfill'].includes(command))
+    throw new PulseError(
+      'CONFIG',
+      '--dry-run applies to sync or backfill; plan is always read-only.',
+    );
+  if (v['chunk-days'] && !['plan', 'backfill'].includes(command))
+    throw new PulseError('CONFIG', '--chunk-days applies only to plan or backfill.');
+  const now = new Date();
+  const selection = {
+    provider: v.provider as Provider | undefined,
+    resourceId: v.resource,
+    group: v.group,
+  };
+  const planOptions = {
+    ...selection,
+    now,
+    window:
+      v.from || v.to
+        ? reportRange({ from: v.from, to: v.to, days: numeric(v.days, 14) }, now)
+        : undefined,
+    chunkDays: v['chunk-days'] ? numeric(v['chunk-days'], 7) : undefined,
+    maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 64) : undefined,
+  };
+  const plannedOptions = (config: Config) => ({
+    ...planOptions,
+    window:
+      v.from || v.to || v.days
+        ? reportRange(
+            { from: v.from, to: v.to, days: numeric(v.days, config.settings.lookbackDays) },
+            now,
+          )
+        : undefined,
+  });
+  if (v.out && !['report', 'brief', 'export'].includes(command))
+    throw new PulseError('CONFIG', '--out applies to report, brief or export.');
   const configPath = resolve(v.config ?? 'pulse.config.json');
+  if (command === 'probe') {
+    const config = await configFrom(configPath);
+    const result = await probe(config, process.env, {
+      ...selection,
+      now,
+      maxJobs: planOptions.maxJobs,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.omittedJobs || result.results.some((x) => x.status === 'unavailable') ? 2 : 0;
+  }
+
+  if (command === 'plan' || command === 'validate' || v['dry-run']) {
+    const config = await configFrom(configPath);
+    if (v.rotate && v['dry-run'])
+      throw new PulseError(
+        'CONFIG',
+        'Offline planning does not read the rotation cursor. Omit --rotate to preview date jobs.',
+      );
+    const result =
+      command === 'validate'
+        ? { valid: true, projects: config.projects.length, resources: config.resources.length }
+        : planCollection(config, {
+            ...plannedOptions(config),
+            chunkDays: command === 'sync' ? 366 : planOptions.chunkDays,
+          });
+    console.log(
+      v.json
+        ? JSON.stringify(result, null, 2)
+        : 'jobs' in result
+          ? markdownPlan(result)
+          : 'Configuration is valid; no database or provider connection was opened.',
+    );
+    return 0;
+  }
+
   if (command === 'init') {
     const example = await readFile(
       fileURLToPath(new URL('../examples/quickstart.json', import.meta.url)),
@@ -126,18 +237,20 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
     } else config = await configFrom(configPath);
     await store.register(config);
-    const now = new Date(),
-      today = dateInZone(now),
-      period = range(v.from ?? addDays(today, -numeric(v.days, 30) + 1), v.to ?? today);
+    const today = dateInZone(now),
+      period = reportRange({ from: v.from, to: v.to, days: numeric(v.days, 30) }, now);
+    const emit = async (value: unknown, text: string, format = 'markdown') => {
+      const output =
+        v.json || v.format === 'json' || format === 'json'
+          ? JSON.stringify(value, null, 2) + '\n'
+          : text;
+      if (v.out) {
+        await writeFile(v.out, output, { flag: 'wx', mode: 0o600 });
+        console.log('Private report written without overwriting any existing file.');
+      } else console.log(output);
+    };
     const print = (value: unknown, text?: string) =>
       console.log(v.json || !text ? JSON.stringify(value, null, 2) : text);
-    if (command === 'validate') {
-      print(
-        { valid: true, projects: config.projects.length, resources: config.resources.length },
-        'Configuration is valid; resources, page scopes and effective dates are consistent.',
-      );
-      return 0;
-    }
     if (command === 'sync') {
       if (v.provider && !['github', 'npm', 'cloudflare', 'gsc', 'sense6'].includes(v.provider))
         throw new PulseError('CONFIG', 'Unknown provider.');
@@ -145,13 +258,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         provider: v.provider as Provider | undefined,
         resourceId: v.resource,
         group: v.group,
-        window:
-          v.from || v.to
-            ? range(
-                v.from ?? defaultRange(now, config.settings.lookbackDays).from,
-                v.to ?? defaultRange(now, config.settings.lookbackDays).to,
-              )
-            : undefined,
+        window: plannedOptions(config).window,
         maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : undefined,
         rotate: v.rotate,
       });
@@ -166,13 +273,32 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       );
       return results.some((x) => x.status === 'failed') ? 2 : 0;
     }
-    if (command === 'probe') {
-      const result = await probe(config, process.env, {
-        resourceId: v.resource,
-        provider: v.provider as Provider | undefined,
-      });
-      print(result);
-      return result.results.some((x) => x.status === 'unavailable') ? 2 : 0;
+    if (command === 'backfill') {
+      if (!v.from || !v.to)
+        throw new PulseError(
+          'CONFIG',
+          'Backfill requires both --from and --to. Review pulse plan first.',
+        );
+      const plan = planCollection(config, plannedOptions(config));
+      if (plan.omittedJobs)
+        throw new PulseError(
+          'ROW_LIMIT',
+          'Backfill plan exceeds the job budget. Narrow the selection or explicitly raise --max-jobs; no provider requests were made.',
+        );
+      if (!plan.jobs.length)
+        throw new PulseError('UNAVAILABLE', 'No provider-retrievable dates remain in this plan.');
+      const results = [];
+      for (const job of plan.jobs)
+        results.push(
+          ...(await sync(config, store, process.env, {
+            resourceId: job.resourceId,
+            group: job.group,
+            window: job.window,
+            now,
+          })),
+        );
+      print({ plan, results });
+      return results.some((r) => r.status === 'failed') ? 2 : 0;
     }
     if (command === 'doctor') {
       const result = await doctor(config, store, process.env);
@@ -191,7 +317,20 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       const id = positionals[1];
       if (!id) throw new PulseError('CONFIG', 'Pass a project ID.');
       const result = await projectReport(config, store, id, period);
-      print(result, markdownReport(result));
+      await emit(result, v.format === 'csv' ? csvReport(result) : markdownReport(result));
+      return 0;
+    }
+    if (command === 'brief') {
+      const ids = positionals[1] ? [positionals[1]] : config.projects.map((p) => p.id);
+      const briefs = [];
+      for (const id of ids)
+        briefs.push(projectBrief(await projectReport(config, store, id, period, now)));
+      await emit(
+        positionals[1]
+          ? briefs[0]
+          : { schemaVersion: 1, demo: config.demo, window: period, briefs },
+        briefs.map(markdownBrief).join('\n---\n'),
+      );
       return 0;
     }
     if (command === 'compare') {

@@ -239,6 +239,8 @@ export class Store {
     maxRows: number,
   ): Promise<void> {
     validateCollected(data, resource.provider, maxRows);
+    for (const a of data.annotations ?? [])
+      invariant(a.resourceId === resource.id, 'Annotation belongs to a different resource.');
     if (data.identity) {
       const old = (
         await this.driver.all({
@@ -338,10 +340,28 @@ export class Store {
   async runs(limit = 1000, resourceId?: string): Promise<Run[]> {
     return (
       await this.driver.all({
-        sql: `SELECT * FROM runs ${resourceId ? 'WHERE resource_id=?' : ''} ORDER BY started_at DESC,id LIMIT ?`,
+        sql: `SELECT * FROM runs ${resourceId ? 'WHERE resource_id=?' : ''} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
         params: resourceId ? [resourceId, limit] : [limit],
       })
     ).map(run);
+  }
+  /** Latest state per dataset, independent of total historical run volume. */
+  async runHeads(): Promise<{ latest: Run[]; successful: Run[] }> {
+    const query = (successful: boolean) => ({
+      sql: `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY resource_id,group_id ORDER BY started_at DESC,rowid DESC) AS rank FROM runs ${successful ? "WHERE status='success'" : ''}) WHERE rank=1`,
+    });
+    const [latest, successful] = await this.driver.readBatch([query(false), query(true)]);
+    return { latest: (latest ?? []).map(run), successful: (successful ?? []).map(run) };
+  }
+  async observedThrough(): Promise<{ resourceId: string; group: string; date: string }[]> {
+    const rows = await this.driver.all({
+      sql: `SELECT o.resource_id,o.group_id,MAX(o.partition_day) AS day FROM observations o JOIN partitions p ON p.run_id=o.run_id AND p.resource_id=o.resource_id AND p.group_id=o.group_id AND p.day=o.partition_day JOIN runs r ON r.id=o.run_id AND r.status='success' GROUP BY o.resource_id,o.group_id`,
+    });
+    return rows.map((r) => ({
+      resourceId: String(r.resource_id),
+      group: String(r.group_id),
+      date: String(r.day),
+    }));
   }
   async coverage(
     resourceId: string,
@@ -435,7 +455,7 @@ export class Store {
       { sql: "SELECT value FROM metadata WHERE key='config'" },
       { sql: 'SELECT * FROM resources' },
       {
-        sql: "SELECT * FROM runs WHERE status!='running' AND (id IN (SELECT run_id FROM partitions) OR id IN (SELECT id FROM runs WHERE status!='running' ORDER BY started_at DESC LIMIT 1000))",
+        sql: "SELECT * FROM runs WHERE status!='running' AND (id IN (SELECT run_id FROM partitions) OR id IN (SELECT id FROM runs WHERE status!='running' ORDER BY started_at DESC LIMIT 1000)) ORDER BY rowid",
       },
       { sql: 'SELECT * FROM partitions' },
       { sql: RAW_OBS_SELECT + ' LIMIT ?', params: [maxRows + 1] },

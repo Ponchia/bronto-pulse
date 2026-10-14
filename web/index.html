@@ -15,11 +15,22 @@
       <a class="brand" href="/" aria-label="Pulse overview"
         ><span class="brand-icon">p</span><span>PULSE<small>by Bronto</small></span></a
       >
+      <form class="mobile-signout" action="/logout" method="post">
+        <button class="text-button" type="submit">Sign out</button>
+      </form>
       <p class="nav-label">WORKSPACE</p>
       <nav aria-label="Main navigation">
-        <button class="nav-item active" data-view="portfolio"><span>◫</span>Portfolio</button
-        ><button class="nav-item" data-view="health"><span>◉</span>Collection health</button
-        ><button class="nav-item" data-view="definitions"><span>≡</span>Metric definitions</button>
+        <button class="nav-item active" data-view="portfolio">
+          <span aria-hidden="true">◫</span>Portfolio</button
+        ><button class="nav-item" data-view="brief">
+          <span aria-hidden="true">↗</span>Project briefing</button
+        ><button class="nav-item" data-view="plan">
+          <span aria-hidden="true">☷</span>Collection plan</button
+        ><button class="nav-item" data-view="health">
+          <span aria-hidden="true">◉</span>Collection health</button
+        ><button class="nav-item" data-view="definitions">
+          <span aria-hidden="true">≡</span>Metric definitions
+        </button>
       </nav>
       <div class="sidebar-bottom">
         <span class="privacy-dot"></span><strong>Private by default</strong>
@@ -58,6 +69,7 @@
           ><button id="download" class="button quiet">Export report ↓</button>
         </div>
         <div id="message" class="notice" role="status" hidden></div>
+        <div id="error" class="notice" role="alert" hidden></div>
         <section id="content" aria-live="polite">
           <div class="loading">Loading source-aware reports…</div>
         </section>

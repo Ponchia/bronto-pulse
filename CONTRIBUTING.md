@@ -11,3 +11,23 @@ aggregation. New adapters must preserve old data when a page, token or lease
 fails. Interface changes must work at narrow mobile widths and retain keyboard
 access. Do not add a visitor tracker, general SQL endpoint or unrestricted
 provider URL proxy. Public release/visibility decisions belong to the maintainer.
+
+The detailed [maintainer guide](docs/releasing.md) explains installed-consumer
+verification and the CI trust boundary. Use the repository’s structured issue forms
+for reproducible defects with synthetic inputs. No change is considered tested
+merely because its own working directory happens to contain untracked fixtures.
+New tests must be committed and pass from a clean clone. The code owner reviews
+changes to source semantics, auth, migrations and release safeguards.
+
+## Public development
+
+Contributions do not require access to a maintainer account, remote development
+host or private database. Use the synthetic demo and fixtures. Run
+`npx playwright install --with-deps chromium` before the browser suite on Linux.
+A maintainer's optional workspace wrappers are not part of the public toolchain.
+
+Bronto Pulse uses AI-assisted implementation and review. Disclose material generated
+contributions where useful and include tests; model output is not evidence that
+behavior is correct. Do not submit confidential prompts, account data or material
+whose license does not permit contribution. Keep discussions respectful and
+technical; the maintainer may close abusive or off-topic contributions.

@@ -24,6 +24,17 @@ export async function collectGithub(
       'GitHub traffic requires selected-repository Administration: read access.',
     );
   const get = (suffix: string) => ctx.http.json(base + suffix, { headers });
+  // A previously pinned repository name can be renamed or recreated. Verify the
+  // stable ID before accepting traffic or release data under that resource.
+  if (r.repositoryId && group !== 'repository') {
+    const identity = object(await get(''));
+    if (number(identity.id, 'repository ID', true) !== r.repositoryId)
+      throw new PulseError(
+        'CONFLICT',
+        'GitHub repository ID does not match the pinned resource; no traffic history was accepted.',
+      );
+  }
+
   if (group === 'repository') {
     const data = object(await get(''));
     const id = number(data.id, 'repository ID', true);

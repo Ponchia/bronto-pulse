@@ -38,6 +38,8 @@ function status(label) {
     'never_collected',
     'running',
     'disabled',
+    'lagging',
+    'interrupted',
   ];
   return el('span', {
     class: 'status ' + (known.includes(label) ? label : 'unavailable'),
@@ -78,7 +80,7 @@ function spark(points, window) {
   svg.setAttribute('viewBox', '0 0 260 52');
   svg.setAttribute('class', 'sparkline');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Daily series; breaks indicate missing dates');
+  svg.setAttribute('aria-label', 'Source observations; breaks indicate missing dates');
   const max = Math.max(1, ...points.map((x) => x.value)),
     start = Date.parse(window.from),
     span = Math.max(86400000, Date.parse(window.to) - start);
@@ -106,6 +108,15 @@ function spark(points, window) {
   line.setAttribute('d', path);
   line.setAttribute('class', 'data-line');
   svg.append(line);
+  if (points.length === 1) {
+    const dot = document.createElementNS(svg.namespaceURI, 'circle');
+    dot.setAttribute('cx', String(2 + ((Date.parse(points[0].date) - start) / span) * 256));
+    dot.setAttribute('cy', String(47 - (points[0].value / max) * 40));
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', 'currentColor');
+    svg.append(dot);
+  }
+
   return svg;
 }
 const priority = [
@@ -132,7 +143,14 @@ function cardValue(card) {
 function cardHint(card) {
   if (card.value === null && card.latestValue !== null)
     return 'Latest source bucket only · not a period total';
+  if (card.aggregation === 'latest')
+    return card.comparison.absoluteChange !== null
+      ? `${card.comparison.absoluteChange >= 0 ? '+' : ''}${fmt(card.comparison.absoluteChange, card.unit)} net change · snapshot ${card.latestPeriod?.to ?? 'unknown'}`
+      : `Snapshot ${card.latestPeriod?.to ?? 'unavailable'} · not a period total`;
   if (card.coverage.status === 'unavailable') return 'Not collected or not available';
+  const uncertain = card.coverage.qualities.filter((q) => q !== 'observed');
+  if (uncertain.length)
+    return uncertain.join(' · ').replaceAll('_', ' ') + ' · not an exact-population claim';
   if (card.coverage.status === 'partial')
     return `${card.coverage.observedDays}/${card.coverage.expectedDays} dates observed`;
   if (card.coverage.qualities.includes('sampled')) return 'Provider sampling applies';
@@ -197,7 +215,7 @@ function empty(text) {
 }
 function renderPortfolio(data) {
   const all = data.reports.flatMap((x) => x.cards),
-    sources = new Set(all.map((x) => x.resourceId));
+    sources = new Set(all.filter((x) => x.points.length).map((x) => x.resourceId));
   content.append(
     stats([
       ['Projects', data.reports.length, 'Separate identities, shared context'],
@@ -251,7 +269,27 @@ function renderPortfolio(data) {
 function renderProject(report) {
   const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
   back.addEventListener('click', () => selectView('portfolio'));
-  content.append(back);
+  const csv = el('a', {
+    class: 'button secondary',
+    text: 'Download CSV',
+    href:
+      '/api/v1/projects/' +
+      encodeURIComponent(report.project.id) +
+      '/report?' +
+      query() +
+      '&format=csv',
+  });
+  const briefing = el('a', {
+    class: 'button quiet',
+    text: 'Download briefing',
+    href:
+      '/api/v1/projects/' +
+      encodeURIComponent(report.project.id) +
+      '/brief?' +
+      query() +
+      '&format=markdown',
+  });
+  content.append(el('div', { class: 'report-actions' }, [back, csv, briefing]));
   const grid = el('section', { class: 'metric-grid', 'aria-label': 'Project metrics' });
   for (const c of sortedCards(report.cards).slice(0, 12)) grid.append(metric(c, report.window));
   content.append(
@@ -337,14 +375,23 @@ function renderHealth(data) {
   content.append(heading('Connection and collection health', 'Credentials remain server-side'));
   content.append(
     table(
-      ['Resource / group', 'Status', 'Last success', 'Authentication', 'Latest outcome'],
+      ['Resource / group', 'Status', 'Last success / observed date', 'Authentication', 'Next step'],
       states.map((s) => [
         el('div', {}, [
           el('strong', { text: s.resourceId }),
           el('small', { text: s.provider + ' / ' + s.group }),
         ]),
         status(s.status),
-        s.lastSuccess ? new Date(s.lastSuccess).toLocaleString() : 'Never',
+        el('div', {}, [
+          s.lastSuccess ? new Date(s.lastSuccess).toLocaleString() : 'Never',
+          el('small', { text: 'Observed through: ' + (s.observedThrough ?? 'no observed dates') }),
+          el('small', {
+            text:
+              s.dataState === 'no_observations'
+                ? 'Successful empty response — not proof of zero.'
+                : '',
+          }),
+        ]),
         el('div', {}, [
           s.credentials.method,
           el('small', {
@@ -353,9 +400,13 @@ function renderHealth(data) {
               : s.credentials.missing.join(', '),
           }),
         ]),
-        s.lastRun?.code
-          ? el('div', {}, [s.lastRun.code, el('small', { text: s.lastRun.message ?? '' })])
-          : `${s.lastRun?.rows ?? 0} rows in last run`,
+        el('div', {}, [
+          s.nextAction.message,
+          el('small', { text: s.nextAction.command?.join(' ') ?? '' }),
+          ...(s.lastRun?.code
+            ? [el('small', { text: s.lastRun.code + ': ' + (s.lastRun.message ?? '') })]
+            : []),
+        ]),
       ]),
     ),
   );
@@ -371,20 +422,109 @@ function renderHealth(data) {
     ]),
   );
 }
+function renderBrief(data) {
+  content.append(
+    heading('Evidence-based briefing', 'Deterministic findings, not an AI growth score'),
+  );
+  content.append(
+    el('a', {
+      class: 'button quiet',
+      text: 'Download Markdown briefing',
+      href: '/api/v1/brief?' + query() + '&format=markdown',
+    }),
+  );
+  for (const brief of data.briefs) {
+    const panel = el('article', { class: 'brief-panel' });
+    const button = el('button', { class: 'text-button', text: brief.project.label });
+    button.addEventListener('click', () => selectProject(brief.project.id));
+    panel.append(el('h2', {}, [button]));
+    const list = el('ul', { class: 'findings' });
+    for (const finding of brief.findings)
+      list.append(
+        el('li', {}, [
+          el('span', { class: 'badge', text: finding.kind }),
+          el('p', { text: finding.message }),
+          ...(finding.kind === 'change'
+            ? [
+                el('small', {
+                  text: `${finding.resourceId} · ${finding.evidence.timezone} · ${finding.evidence.methodology}`,
+                }),
+              ]
+            : []),
+        ]),
+      );
+    panel.append(list, el('p', { class: 'muted small', text: brief.limitation }));
+    if (brief.omittedFindings)
+      panel.append(
+        el('p', {
+          text: `${brief.omittedFindings} further findings omitted; inspect the project report.`,
+        }),
+      );
+    content.append(panel);
+  }
+}
+function renderPlan(data) {
+  content.append(
+    el('aside', { class: 'callout' }, [
+      el('strong', { text: 'Preview only — no provider requests, writes or scheduled jobs.' }),
+    ]),
+  );
+  content.append(
+    heading('Bounded collection jobs', `${data.jobs.length} of ${data.totalJobs} jobs shown`),
+  );
+  content.append(
+    table(
+      ['Resource / group', 'Source dates', 'Mode / timezone', 'Explicit CLI command'],
+      data.jobs.map((j) => [
+        j.resourceId + ' / ' + j.group,
+        j.window.from + ' → ' + j.window.to,
+        j.mode + ' · ' + j.timezone,
+        el('code', { text: j.command.join(' ') }),
+      ]),
+    ),
+  );
+  if (data.omittedJobs)
+    content.append(
+      el('p', {
+        class: 'notice',
+        text: `${data.omittedJobs} jobs omitted by the preview budget. Narrow your selection before execution.`,
+      }),
+    );
+  const notes = el('ul', { class: 'warnings' });
+  for (const note of data.notices) notes.append(el('li', { text: note }));
+  content.append(notes);
+}
+function saveView() {
+  const params = new URLSearchParams({
+    view: state.view,
+    from: $('from').value,
+    to: $('to').value,
+  });
+  if (state.project) params.set('project', state.project);
+  history.replaceState(null, '', '/?' + params);
+}
 async function load() {
   const generation = ++state.loading;
   $('refresh').disabled = true;
+  $('download').disabled = true;
+  state.data = null;
+  $('error').hidden = true;
   message('');
+  saveView();
   content.replaceChildren(el('div', { class: 'loading', text: 'Reading source-aware history…' }));
   try {
     const data =
       state.view === 'health'
         ? await api('/health')
-        : state.view === 'definitions'
-          ? await api('/metrics')
-          : state.project
-            ? await api('/projects/' + encodeURIComponent(state.project) + '/report?' + query())
-            : await api('/portfolio?' + query());
+        : state.view === 'brief'
+          ? await api('/brief?' + query())
+          : state.view === 'plan'
+            ? await api('/plan?' + query())
+            : state.view === 'definitions'
+              ? await api('/metrics')
+              : state.project
+                ? await api('/projects/' + encodeURIComponent(state.project) + '/report?' + query())
+                : await api('/portfolio?' + query());
     if (generation !== state.loading) return;
     state.data = data;
     content.replaceChildren();
@@ -411,6 +551,18 @@ async function load() {
           'definitions',
         ),
       );
+    } else if (state.view === 'brief') {
+      renderBrief(data);
+      $('page-title').textContent = 'What changed, and what did not.';
+      $('page-description').textContent =
+        'Traceable changes, missing baselines and explicit limits.';
+      $('breadcrumb').textContent = 'PROJECT BRIEFING';
+    } else if (state.view === 'plan') {
+      renderPlan(data);
+      $('page-title').textContent = 'Know what a sync will do.';
+      $('page-description').textContent =
+        'Review date windows and provider limits before collection.';
+      $('breadcrumb').textContent = 'COLLECTION PLAN';
     } else if (state.project) {
       renderProject(data);
       $('page-title').textContent = data.project.label;
@@ -441,17 +593,22 @@ async function load() {
     content.replaceChildren(
       empty('The report could not be loaded. Existing collected history has not been changed.'),
     );
-    message(error.message);
+    $('error').textContent = error.message;
+    $('error').hidden = false;
   } finally {
-    if (generation === state.loading) $('refresh').disabled = false;
+    if (generation === state.loading) {
+      $('refresh').disabled = false;
+      $('download').disabled = !state.data;
+    }
   }
 }
 function selectView(view) {
   state.view = view;
   state.project = null;
-  document
-    .querySelectorAll('[data-view]')
-    .forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === view);
+    b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false');
+  });
   void load();
 }
 function selectProject(id) {
@@ -480,4 +637,14 @@ $('download').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 period(30);
+const initial = new URLSearchParams(location.search);
+if (['portfolio', 'brief', 'plan', 'health', 'definitions'].includes(initial.get('view')))
+  state.view = initial.get('view');
+if (state.view === 'portfolio' && /^[a-z][a-z0-9_-]{0,63}$/.test(initial.get('project') ?? ''))
+  state.project = initial.get('project');
+for (const id of ['from', 'to'])
+  if (/^\d{4}-\d{2}-\d{2}$/.test(initial.get(id) ?? '')) $(id).value = initial.get(id);
+document
+  .querySelectorAll('[data-view]')
+  .forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
 void load();

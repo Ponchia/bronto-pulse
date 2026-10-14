@@ -8,7 +8,7 @@ import {
   type Quality,
 } from './model.js';
 import { PulseError } from './errors.js';
-import { days, previous, range, type DateRange } from './time.js';
+import { days, previous, range, daysBetween, type DateRange } from './time.js';
 import { Store } from './storage/store.js';
 export interface Point {
   date: string;
@@ -28,6 +28,8 @@ export interface MetricCard {
   dimensions: Record<string, string>;
   timezone: string;
   methodology: string;
+  scope: { hostname?: string; pathPrefix?: string; effectiveFrom?: string; effectiveTo?: string };
+  latestCollectedAt: string | null;
   value: number | null;
   latestValue: number | null;
   latestPeriod: DateRange | null;
@@ -45,6 +47,8 @@ export interface MetricCard {
     absoluteChange: number | null;
     relativeChange: number | null;
     reason: string;
+    kind: 'period_change' | 'net_change' | null;
+    baselinePeriod: DateRange | null;
   };
 }
 export interface ProjectReport {
@@ -175,6 +179,17 @@ function summarize(
     dimensions,
     timezone: rows[0]?.timezone ?? (resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC'),
     methodology,
+    scope: {
+      ...binding.scope,
+      effectiveFrom: binding.effectiveFrom,
+      effectiveTo: binding.effectiveTo,
+    },
+    latestCollectedAt: rows.length
+      ? rows
+          .map((o) => o.collectedAt)
+          .sort()
+          .at(-1)!
+      : null,
     value: aggregate(rows, definition),
     latestValue: latest?.value ?? null,
     latestPeriod: latest ? { from: latest.from, to: latest.to } : null,
@@ -182,11 +197,7 @@ function summarize(
       observedDays: seen.size,
       expectedDays: expected.length,
       missingDays: missing,
-      status: !rows.length
-        ? 'unavailable'
-        : missing.length && definition.aggregation !== 'latest'
-          ? 'partial'
-          : 'complete',
+      status: !rows.length ? 'unavailable' : missing.length ? 'partial' : 'complete',
       qualities,
     },
     points,
@@ -196,6 +207,8 @@ function summarize(
       absoluteChange: null,
       relativeChange: null,
       reason: 'Not compared.',
+      kind: null,
+      baselinePeriod: null,
     },
   };
 }
@@ -205,7 +218,18 @@ function buildCards(
   rows: StoredObservation[],
   window: DateRange,
 ): MetricCard[] {
-  const accepted = rows.filter((o) => allowed(o, b) && primaryGroups(r, b).includes(o.group));
+  if (
+    (b.effectiveFrom && b.effectiveFrom > window.to) ||
+    (b.effectiveTo && b.effectiveTo < window.from)
+  )
+    return [];
+  const accepted = rows.filter(
+    (o) =>
+      o.from >= window.from &&
+      o.to <= window.to &&
+      allowed(o, b) &&
+      primaryGroups(r, b).includes(o.group),
+  );
   const buckets = new Map<
     string,
     {
@@ -281,19 +305,47 @@ export async function projectReport(
     );
     for (const card of current) {
       const before = previousCards.find((p) => p.key === card.key && p.timezone === card.timezone);
-      if (card.aggregation === 'latest')
-        card.comparison.reason =
-          'Snapshots show the last available total; net change requires an earlier matching snapshot.';
-      else if (card.aggregation === 'none')
+      const observedOnly = (c: MetricCard) => c.coverage.qualities.every((q) => q === 'observed');
+      const coversRequestedDates = (c: MetricCard, w: DateRange) =>
+        c.coverage.expectedDays === daysBetween(w.from, w.to);
+      if (card.aggregation === 'none') {
         card.comparison.reason = 'This metric cannot be combined across source periods.';
-      else if (
+      } else if (!observedOnly(card) || (before && !observedOnly(before))) {
+        card.comparison.reason =
+          'Provisional, sampled or provider-limited measurements are displayed, but do not support an unqualified trend comparison.';
+      } else if (card.aggregation === 'latest') {
+        const maxLag = config.settings.staleAfterHours / 24;
+        const fresh = (c: MetricCard, w: DateRange) =>
+          c.latestPeriod !== null && daysBetween(c.latestPeriod.to, w.to) - 1 <= maxLag;
+        if (
+          before &&
+          card.value !== null &&
+          before.value !== null &&
+          fresh(card, window) &&
+          fresh(before, prior) &&
+          coversRequestedDates(card, window) &&
+          coversRequestedDates(before, prior)
+        ) {
+          card.comparison = {
+            previousValue: before.value,
+            absoluteChange: card.value - before.value,
+            relativeChange: null,
+            reason: `Net change between snapshots dated ${before.latestPeriod!.to} and ${card.latestPeriod!.to}; not gross new users, stars or downloads.`,
+            kind: 'net_change',
+            baselinePeriod: before.latestPeriod,
+          };
+        } else {
+          card.comparison.reason =
+            'Net change needs matching snapshots near both period ends; stale snapshots and mapping boundaries are not a growth baseline.';
+        }
+      } else if (
         before &&
         before.value !== null &&
         card.value !== null &&
         before.coverage.status === 'complete' &&
         card.coverage.status === 'complete' &&
-        !card.coverage.qualities.some((x) => x === 'provisional') &&
-        !before.coverage.qualities.some((x) => x === 'provisional')
+        coversRequestedDates(card, window) &&
+        coversRequestedDates(before, prior)
       ) {
         card.comparison = {
           previousValue: before.value,
@@ -306,10 +358,13 @@ export async function projectReport(
             before.value < 10
               ? 'Absolute change only: the comparison baseline is small.'
               : 'Same metric, source scope, timezone and duration; correlation is not causation.',
+          kind: 'period_change',
+          baselinePeriod: prior,
         };
-      } else
+      } else {
         card.comparison.reason =
-          'Insufficient comparable coverage. Missing or provisional periods are not treated as zero.';
+          'Insufficient comparable coverage or changed mapping duration. Missing periods are not treated as zero.';
+      }
       cards.push(card);
     }
     // Breakdowns are separate dimensions of the same events, never extra totals.
@@ -345,6 +400,11 @@ export async function projectReport(
       warnings.push(
         `${resource.id}: some dates or metrics are unavailable; totals cover only observed buckets.`,
       );
+    if (current.some((c) => c.coverage.qualities.some((q) => q !== 'observed'))) {
+      warnings.push(
+        `${resource.id}: some values are provisional, sampled or provider-limited; these values are not exact complete-population totals.`,
+      );
+    }
     const runs = await store.runs(100, resource.id);
     for (const group of groups(resource)) {
       const latest = runs.find((x) => x.group === group);

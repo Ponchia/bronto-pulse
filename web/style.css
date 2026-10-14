@@ -917,3 +917,80 @@ code {
     margin-top: 20px;
   }
 }
+
+/* Operator reporting additions retain the responsive layout and local assets. */
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+.brief-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.3rem;
+  margin: 1rem 0;
+}
+.brief-panel h2 {
+  margin-top: 0;
+}
+.findings {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.findings li {
+  overflow-wrap: anywhere;
+}
+.findings p {
+  margin: 0.45rem 0;
+}
+.table-wrap code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}
+.status.lagging,
+.status.interrupted {
+  color: #795200;
+  background: #fff4d1;
+}
+#content a.button {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+#download:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Keep every navigation view available at narrow widths without body overflow. */
+@media (max-width: 800px) {
+  .sidebar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .sidebar nav {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .nav-item {
+    flex: 1 1 130px;
+    min-height: 40px;
+  }
+  .nav-item[data-view='definitions'] {
+    display: flex;
+  }
+}
+
+.mobile-signout {
+  display: none;
+}
+@media (max-width: 800px) {
+  .mobile-signout {
+    display: block;
+  }
+}

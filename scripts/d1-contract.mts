@@ -4,6 +4,8 @@ import { Store } from '../src/storage/store.js';
 import { D1Driver } from '../src/storage/driver.js';
 import { fixture, publish, sample, window, now } from '../tests/helpers.js';
 import { projectReport } from '../src/report.js';
+import { doctor } from '../src/sync.js';
+import { projectBrief } from '../src/brief.js';
 // Wrangler installs Miniflare for local Workers; this tests the actual D1 binding.
 const require = createRequire(import.meta.url);
 const { Miniflare } = require('miniflare');
@@ -52,6 +54,11 @@ try {
     3,
   );
   assert.equal((await store.observations('source', window)).length, 1);
+  const health = await doctor(config, store, { TEST_TOKEN: 'synthetic' }, now);
+  assert.equal(health.resources.find((r) => r.group === 'views')?.observedThrough, '2026-10-12');
+  assert.ok(
+    projectBrief(await projectReport(config, store, 'project', window, now)).findings.length > 0,
+  );
   const exported = await store.export();
   const recovery = new Store(new D1Driver(await mf.getD1Database('RESTORE', 'pulse')));
   await recovery.migrate();

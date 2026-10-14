@@ -9,3 +9,9 @@ export { sync, probe, doctor } from './sync.js';
 export { projectReport, portfolio, markdownReport } from './report.js';
 export { handle } from './api/handler.js';
 export { PulseError } from './errors.js';
+
+export { projectBrief, markdownBrief } from './brief.js';
+export { csvReport } from './report-export.js';
+export { planCollection, markdownPlan } from './plan.js';
+export type { Brief, Finding } from './brief.js';
+export type { CollectionPlan, PlannedJob } from './plan.js';

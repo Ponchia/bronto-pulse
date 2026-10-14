@@ -91,6 +91,20 @@ export function validateCollected(c: Collected, provider: string, maxRows: numbe
     }
     if (o.numerator !== undefined) number(o.numerator);
     if (o.denominator !== undefined) number(o.denominator);
+    if (o.kind !== 'rolling')
+      invariant(o.from === o.to, 'Daily observations and snapshots must have one source date.');
+    const definition = METRICS[o.metric]!;
+    if (definition.aggregation === 'weighted_mean' || definition.aggregation === 'ratio') {
+      invariant(
+        o.numerator !== undefined && o.denominator !== undefined && o.denominator > 0,
+        'Weighted metrics require a positive denominator and explicit numerator.',
+      );
+      invariant(
+        Math.abs(o.value - o.numerator / o.denominator) <= 1e-9 * Math.max(1, o.value),
+        'Weighted metric value disagrees with its numerator and denominator.',
+      );
+    }
+
     const key = observationKey(o);
     invariant(!seen.has(key), 'Provider returned duplicate observation keys.');
     seen.add(key);
@@ -99,6 +113,12 @@ export function validateCollected(c: Collected, provider: string, maxRows: numbe
     day(a.date);
     text(a.title, 'annotation', 160);
     text(a.id, 'annotation ID', 160);
+    invariant(a.kind === 'release' || a.kind === 'note', 'Unknown annotation kind.');
+    if (a.url)
+      invariant(
+        safeUrl(a.url) === a.url,
+        'Annotation URLs must not contain query strings or fragments.',
+      );
   }
 }
 /** Merge only counts after privacy sanitization collapses equivalent path dimensions. */

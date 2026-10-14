@@ -9,3 +9,13 @@ reports
 artifacts
 test-results
 playwright-report
+
+.wrangler
+pulse.config.json
+pulse.private.json
+wrangler.private.*
+wrangler.local.*
+*.bundle
+*.tgz
+*.age
+coverage

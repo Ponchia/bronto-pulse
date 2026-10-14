@@ -1,0 +1,20 @@
+name: Feature or provider capability
+description: Propose a concrete project question and the minimum data needed to answer it.
+title: '[feature] '
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: What project question should this answer?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source contract and limitations
+      description: Official API documentation, required permissions, metric meaning, timezone, available history and known sampling limits.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance and privacy boundaries
+      description: Explain how this can be fixture-tested and why no additional individual tracking is needed.
