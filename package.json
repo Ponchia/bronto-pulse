@@ -1,0 +1,64 @@
+{
+  "name": "@ponchia/pulse",
+  "version": "0.1.0",
+  "description": "Private, portable project analytics without another visitor tracker.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ponchia/bronto-pulse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ponchia/bronto-pulse/issues"
+  },
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "bin": {
+    "pulse": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./worker": "./dist/worker.js"
+  },
+  "files": [
+    "dist",
+    "web",
+    "migrations",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test tests/*.test.ts",
+    "test:browser": "playwright test",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run docs:check && npm run build",
+    "docs:check": "node scripts/docs-check.mjs",
+    "dev": "tsx src/cli.ts serve",
+    "demo": "tsx src/cli.ts demo",
+    "pulse": "tsx src/cli.ts",
+    "worker:check": "wrangler deploy --dry-run",
+    "worker:dev": "wrangler dev",
+    "prepare": "npm run build",
+    "schema:generate": "node scripts/generate-schema.mjs",
+    "test:d1": "node --import tsx scripts/d1-contract.mts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261014.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^24.0.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "wrangler": "4.151.0"
+  }
+}

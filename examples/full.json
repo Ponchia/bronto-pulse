@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "name": "Example portfolio",
+  "connections": [
+    {
+      "id": "github",
+      "provider": "github",
+      "tokenEnv": "GITHUB_TOKEN"
+    },
+    {
+      "id": "cloudflare",
+      "provider": "cloudflare",
+      "tokenEnv": "CLOUDFLARE_API_TOKEN"
+    },
+    {
+      "id": "google",
+      "provider": "gsc",
+      "tokenEnv": "GOOGLE_ACCESS_TOKEN",
+      "clientIdEnv": "GOOGLE_CLIENT_ID",
+      "clientSecretEnv": "GOOGLE_CLIENT_SECRET",
+      "refreshTokenEnv": "GOOGLE_REFRESH_TOKEN"
+    }
+  ],
+  "settings": {
+    "lookbackDays": 14,
+    "maxRows": 5000,
+    "requestTimeoutMs": 20000,
+    "staleAfterHours": 48
+  },
+  "resources": [
+    {
+      "id": "ui-repository",
+      "provider": "github",
+      "repository": "example/ui",
+      "connection": "github"
+    },
+    {
+      "id": "ui-package",
+      "provider": "npm",
+      "package": "@example/ui"
+    },
+    {
+      "id": "shared-docs",
+      "provider": "cloudflare",
+      "accountId": "00000000000000000000000000000000",
+      "siteTag": "11111111111111111111111111111111",
+      "hostname": "example.github.io",
+      "groups": ["totals", "pages", "referrers", "performance"],
+      "connection": "cloudflare"
+    },
+    {
+      "id": "search",
+      "provider": "gsc",
+      "siteUrl": "sc-domain:example.invalid",
+      "connection": "google",
+      "collectQueries": false
+    },
+    {
+      "id": "sense6",
+      "provider": "sense6",
+      "accountId": "00000000000000000000000000000000",
+      "databaseId": "00000000-0000-4000-8000-000000000001",
+      "connection": "cloudflare"
+    }
+  ],
+  "projects": [
+    {
+      "id": "ui",
+      "label": "Example UI",
+      "resources": [
+        {
+          "resource": "ui-repository"
+        },
+        {
+          "resource": "ui-package"
+        },
+        {
+          "resource": "shared-docs",
+          "scope": {
+            "hostname": "example.github.io",
+            "pathPrefix": "/ui/"
+          }
+        }
+      ]
+    },
+    {
+      "id": "annotations",
+      "label": "Example annotations",
+      "resources": [
+        {
+          "resource": "shared-docs",
+          "scope": {
+            "hostname": "example.github.io",
+            "pathPrefix": "/annotations/"
+          }
+        }
+      ]
+    },
+    {
+      "id": "website",
+      "label": "Personal website",
+      "resources": [
+        {
+          "resource": "search"
+        }
+      ]
+    },
+    {
+      "id": "sense6",
+      "label": "Sense6 aggregate activity",
+      "resources": [
+        {
+          "resource": "sense6"
+        }
+      ]
+    }
+  ]
+}

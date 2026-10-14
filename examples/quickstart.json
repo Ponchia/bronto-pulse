@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "name": "My project observatory",
+  "connections": [
+    {
+      "id": "github",
+      "provider": "github",
+      "tokenEnv": "GITHUB_TOKEN"
+    }
+  ],
+  "resources": [
+    {
+      "id": "pulse-repository",
+      "provider": "github",
+      "repository": "Ponchia/bronto-pulse",
+      "connection": "github"
+    },
+    {
+      "id": "typescript-package",
+      "provider": "npm",
+      "package": "typescript"
+    }
+  ],
+  "projects": [
+    {
+      "id": "pulse",
+      "label": "Bronto Pulse",
+      "description": "Repository discovery and distribution signals.",
+      "resources": [
+        {
+          "resource": "pulse-repository"
+        }
+      ]
+    },
+    {
+      "id": "typescript",
+      "label": "TypeScript downloads",
+      "description": "An example public npm distribution series, not unique users.",
+      "resources": [
+        {
+          "resource": "typescript-package"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+.pulse
+.env*
+*.db
+*.sqlite*
+reports
+artifacts
+test-results
+playwright-report

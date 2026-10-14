@@ -1,0 +1,36 @@
+name: Verify Pulse
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+env:
+  WRANGLER_SEND_METRICS: false
+permissions:
+  contents: read
+concurrency:
+  group: pulse-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    # Never direct untrusted fork code to a private self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.PULSE_RUNNER == ''
+    runs-on: ${{ vars.PULSE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify Node toolchain
+        run: |
+          node --version
+          node -e 'const v=process.versions.node.split(".").map(Number); if(v[0]<24||(v[0]===24&&v[1]<15))process.exit(1)'
+      - run: npm ci
+      - run: npm run check
+      - run: npm run worker:check
+      - run: npm run test:d1
+      - name: Install the locked browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:browser

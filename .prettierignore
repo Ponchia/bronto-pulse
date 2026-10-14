@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.pulse/
+.wrangler/
+artifacts/
+coverage/
+playwright-report/
+test-results/
+schemas/config.schema.json
+migrations/*.sql
+package-lock.json

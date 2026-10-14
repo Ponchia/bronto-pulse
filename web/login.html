@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Sign in · Bronto Pulse</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/login.js" type="module"></script>
+  </head>
+  <body class="login-page">
+    <main class="login-card">
+      <a class="brand" href="/"
+        ><span class="brand-icon">p</span><span>PULSE<small>by Bronto</small></span></a
+      >
+      <p class="eyebrow">PRIVATE PROJECT OBSERVATORY</p>
+      <h1>Your projects.<br />Your history.</h1>
+      <p>Enter the reporting access token from your local terminal or private deployment.</p>
+      <form id="login-form" action="/login" method="post">
+        <label for="token">Access token</label
+        ><input
+          id="token"
+          name="token"
+          type="password"
+          autocomplete="current-password"
+          required
+          minlength="24"
+        /><button class="button" type="submit">Open workspace →</button>
+        <p id="login-error" class="error" role="alert" hidden></p>
+      </form>
+      <p class="small muted">
+        Tokens are not saved in browser storage. A signed, HTTP-only session expires after one hour.
+      </p>
+    </main>
+  </body>
+</html>

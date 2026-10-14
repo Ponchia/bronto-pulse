@@ -1,0 +1,490 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "name": {
+      "default": "Project portfolio",
+      "type": "string",
+      "maxLength": 120
+    },
+    "demo": {
+      "default": false,
+      "type": "boolean"
+    },
+    "connections": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "github",
+              "cloudflare",
+              "gsc"
+            ]
+          },
+          "tokenEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "clientIdEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "clientSecretEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "refreshTokenEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "appIdEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "privateKeyEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
+          "installationIdEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "resources": {
+      "minItems": 1,
+      "maxItems": 500,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "connection": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "const": "github"
+              },
+              "repository": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+              },
+              "repositoryId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "groups": {
+                "default": [
+                  "repository",
+                  "views",
+                  "clones",
+                  "referrers",
+                  "paths",
+                  "releases"
+                ],
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "repository",
+                    "views",
+                    "clones",
+                    "referrers",
+                    "paths",
+                    "releases"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "enabled",
+              "provider",
+              "repository",
+              "groups"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "connection": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "const": "npm"
+              },
+              "package": {
+                "type": "string",
+                "maxLength": 214,
+                "pattern": "^(?:@[a-z0-9._-]+\\/)?[a-z0-9._-]+$"
+              }
+            },
+            "required": [
+              "id",
+              "enabled",
+              "provider",
+              "package"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "connection": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "const": "cloudflare"
+              },
+              "accountId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              "siteTag": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              "hostname": {
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+              },
+              "groups": {
+                "default": [
+                  "totals",
+                  "pages"
+                ],
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "totals",
+                    "pages",
+                    "referrers",
+                    "performance",
+                    "vitals"
+                  ]
+                }
+              },
+              "durationUnit": {
+                "default": "microseconds",
+                "type": "string",
+                "enum": [
+                  "microseconds",
+                  "milliseconds"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "enabled",
+              "provider",
+              "accountId",
+              "siteTag",
+              "groups",
+              "durationUnit"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "connection": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "const": "gsc"
+              },
+              "siteUrl": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "searchType": {
+                "default": "web",
+                "type": "string",
+                "enum": [
+                  "web",
+                  "image",
+                  "video",
+                  "news",
+                  "discover",
+                  "googleNews"
+                ]
+              },
+              "collectPages": {
+                "default": true,
+                "type": "boolean"
+              },
+              "collectQueries": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "enabled",
+              "provider",
+              "siteUrl",
+              "searchType",
+              "collectPages",
+              "collectQueries"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "connection": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "const": "sense6"
+              },
+              "accountId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              "databaseId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "id",
+              "enabled",
+              "provider",
+              "accountId",
+              "databaseId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "projects": {
+      "minItems": 1,
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 500
+          },
+          "resources": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resource": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "scope": {
+                  "type": "object",
+                  "properties": {
+                    "hostname": {
+                      "type": "string",
+                      "pattern": "^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+                    },
+                    "pathPrefix": {
+                      "type": "string",
+                      "maxLength": 500,
+                      "pattern": "^\\/[^?#]*$"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "effectiveFrom": {
+                  "type": "string"
+                },
+                "effectiveTo": {
+                  "type": "string"
+                },
+                "allowShared": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "resource",
+                "allowShared"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "resources"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "settings": {
+      "default": {
+        "lookbackDays": 14,
+        "maxRows": 5000,
+        "requestTimeoutMs": 20000,
+        "staleAfterHours": 48
+      },
+      "type": "object",
+      "properties": {
+        "lookbackDays": {
+          "default": 14,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "maxRows": {
+          "default": 5000,
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 50000
+        },
+        "requestTimeoutMs": {
+          "default": 20000,
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 60000
+        },
+        "staleAfterHours": {
+          "default": 48,
+          "type": "number",
+          "minimum": 1,
+          "maximum": 720
+        }
+      },
+      "required": [
+        "lookbackDays",
+        "maxRows",
+        "requestTimeoutMs",
+        "staleAfterHours"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version",
+    "name",
+    "demo",
+    "connections",
+    "resources",
+    "projects",
+    "settings"
+  ],
+  "additionalProperties": false
+}

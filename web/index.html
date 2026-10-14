@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Bronto Pulse · Project observatory</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to reports</a>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Pulse overview"
+        ><span class="brand-icon">p</span><span>PULSE<small>by Bronto</small></span></a
+      >
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-view="portfolio"><span>◫</span>Portfolio</button
+        ><button class="nav-item" data-view="health"><span>◉</span>Collection health</button
+        ><button class="nav-item" data-view="definitions"><span>≡</span>Metric definitions</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="privacy-dot"></span><strong>Private by default</strong>
+        <p>No visitor tracker.<br />No reconstructed identities.</p>
+        <form action="/logout" method="post">
+          <button class="text-button" type="submit">Sign out ↗</button>
+        </form>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">PROJECT OBSERVATORY</span
+          ><span id="mode" class="badge">PRIVATE WORKSPACE</span>
+        </div>
+        <span id="freshness" class="muted">Reading your history…</span>
+      </header>
+      <main id="main" tabindex="-1">
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow" id="breadcrumb">YOUR PORTFOLIO</p>
+            <h1 id="page-title">Signals, with context.</h1>
+            <p id="page-description">Follow discovery and distribution without following people.</p>
+          </div>
+          <button id="refresh" class="button secondary" type="button">↻ Refresh</button>
+        </section>
+        <div class="filters">
+          <div class="segmented" aria-label="Report period">
+            <button data-days="14">14 days</button
+            ><button data-days="30" class="selected">30 days</button
+            ><button data-days="90">90 days</button>
+          </div>
+          <label>From <input id="from" type="date" /></label
+          ><label>To <input id="to" type="date" /></label
+          ><button id="apply" class="button secondary">Apply</button
+          ><button id="download" class="button quiet">Export report ↓</button>
+        </div>
+        <div id="message" class="notice" role="status" hidden></div>
+        <section id="content" aria-live="polite">
+          <div class="loading">Loading source-aware reports…</div>
+        </section>
+        <footer class="page-footer">
+          <span>Independent signals. No invented conversion funnel.</span
+          ><span>BRONTO PULSE <span class="muted">/ 0.1</span></span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
