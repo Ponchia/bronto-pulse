@@ -107,3 +107,16 @@ test('timezone and preceding period remain explicit', () => {
   assert.deepEqual(previous(window), { from: '2026-10-10', to: '2026-10-11' });
   assert.equal(days(window).length, 2);
 });
+
+test('path normalization remains segment-aware with trailing slash sequences', () => {
+  assert.equal(pathMatches('/library/guide', '/library////'), true);
+  assert.equal(pathMatches('/library-secret', '/library////'), false);
+  assert.equal(pathMatches('/anywhere', '/'), true);
+  assert.equal(pathMatches('/anywhere', '////'), true);
+});
+test('direct library path matching handles adversarial slash repetitions linearly', () => {
+  const prefix = '/' + '/'.repeat(100000) + 'x';
+  assert.equal(pathMatches('/different', prefix), false);
+  assert.equal(pathMatches(prefix + '/guide', prefix), true);
+  assert.equal(pathMatches('/library/guide', '/library' + '/'.repeat(100000)), true);
+});

@@ -54,3 +54,11 @@ untrusted text. These encodings reduce output hazards but do not anonymize data
 or authorize publication. Download endpoints require normal authentication and
 send `Cache-Control: no-store`. Login request streams are bounded before full
 allocation. The browser cannot execute a collection plan or submit provider SQL.
+
+## Local startup credentials
+
+When no reporting token is configured, the loopback CLI generates a temporary
+local token and prints it once for interactive sign-in. Treat that terminal
+output as sensitive: for supervised or log-captured servers, supply
+`PULSE_API_TOKEN` instead. Configured tokens are never printed. An explicitly
+configured but invalid token fails closed rather than falling back to generation.

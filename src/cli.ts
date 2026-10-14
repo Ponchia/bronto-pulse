@@ -383,13 +383,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       return 0;
     }
     if (command === 'serve' || (isDemo && v.serve)) {
-      const token = process.env.PULSE_API_TOKEN ?? randomBytes(32).toString('hex');
+      const configuredToken = process.env.PULSE_API_TOKEN;
+      // Keep the displayable, newly generated local token separate from the
+      // operator-provided secret. Never send configured credentials to output.
+      const localToken =
+        configuredToken === undefined ? randomBytes(32).toString('hex') : undefined;
+      const token = configuredToken ?? localToken!;
       const server = await startServer(config, store, process.env, {
         port: numeric(v.port, 4177),
         token,
       });
       hold = true;
-      if (!process.env.PULSE_API_TOKEN) console.log(`One-session local access token: ${token}`);
+      if (localToken !== undefined) console.log(`One-session local access token: ${localToken}`);
       console.log(
         `Private ${config.demo ? 'SYNTHETIC demo' : 'project'} dashboard: http://127.0.0.1:${numeric(v.port, 4177)}`,
       );
