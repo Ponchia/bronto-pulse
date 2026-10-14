@@ -4,6 +4,7 @@ Lifecycle: current
 
 | Document                                             | Purpose                                                 |
 | ---------------------------------------------------- | ------------------------------------------------------- |
+| [Public preview](public-preview.md)                  | Source publication, privacy boundaries and maturity     |
 | [Quickstart](quickstart.md)                          | Demo, private setup, offline planning and first reports |
 | [Configuration](configuration.md)                    | Connections, resources, scopes and historical changes   |
 | [Reporting](reporting.md)                            | Evidence briefings, quality rules and private exports   |
@@ -18,7 +19,7 @@ Lifecycle: current
 | [ADR 0001](adr/0001-private-source-aware-history.md) | Durable product boundary                                |
 | [Roadmap](roadmap.md)                                | Explicitly unimplemented future work                    |
 
-Latest implementation review: [operator workflow refinement](validation-operator-refinement-2026-10-14.md).
+Archived implementation review: [operator workflow refinement](validation-operator-refinement-2026-10-14.md).
 
 Maintained documentation is checked by `npm run docs:check`. API capabilities
 come from code and tests, not marketing claims. Private deployment evidence

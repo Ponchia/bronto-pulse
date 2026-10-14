@@ -14,7 +14,7 @@
       "migrations_dir": "migrations",
     },
   ],
-  "triggers": { "crons": ["17 * * * *"] },
+  "triggers": { "crons": [] },
   "vars": { "PULSE_MAX_JOBS": "8" },
   "observability": { "enabled": false },
 }

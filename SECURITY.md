@@ -2,9 +2,17 @@
 
 Treat provider credentials, private reports, page/query dimensions and database
 exports as sensitive. Do not file public issues with tokens, cookies or raw
-provider responses. Report vulnerabilities privately to the maintainer through
-the repository's private reporting mechanism when enabled, without disclosing
-production secrets.
+provider responses. Use [GitHub private vulnerability reporting](https://github.com/Ponchia/bronto-pulse/security/advisories/new)
+for vulnerabilities. Include a minimal synthetic reproduction, affected commit
+and expected security boundary. Do not send production credentials, even privately.
+Ordinary support requests belong in the issue templates.
+
+## Supported source
+
+During the public preview, security fixes target the latest `main` commit.
+There is no supported npm release or long-term-support branch yet. Public source
+availability is not a warranty of production readiness; deployments require their
+own access, retention and recovery review.
 
 ## Boundaries
 

@@ -27,7 +27,8 @@ static assets and a bounded cron handler. It does not create billable resources
 or publish your installation automatically.
 
 1. Create a private D1 database using your own Cloudflare account. Put its ID in
-   a local copy of `wrangler.jsonc`. The all-zero ID is a placeholder.
+   an ignored `wrangler.private.jsonc` copied from `wrangler.jsonc`. The checked-in
+   database ID is a placeholder. Pass `--config wrangler.private.jsonc` to Wrangler.
 2. Apply `migrations/` to the selected database; use local D1 first.
 3. Store `PULSE_CONFIG` as the JSON configuration and `PULSE_API_TOKEN` as a
    strong random secret. Add only the provider secrets actually referenced by
@@ -35,8 +36,11 @@ or publish your installation automatically.
 4. Run `npm run worker:check`. Configure a custom private hostname and, ideally,
    an additional Cloudflare Access policy before enabling a route. The checked-in
    config disables workers.dev and preview URLs.
-5. Deploy explicitly. The hourly trigger processes eight independent jobs with
-   a persistent rotation cursor; `PULSE_MAX_JOBS` can bound it between 1 and 32.
+5. Deploy explicitly after verifying the private route. Cron triggers are disabled
+   in the checked-in example. Enable a schedule only in your ignored configuration
+   after checking dataset access and recovery. The handler processes up to eight
+   independent jobs per invocation using a rotation cursor; `PULSE_MAX_JOBS` can
+   bound it between 1 and 32.
 6. Verify authenticated API access, failure isolation, actual dataset access,
    request/CPU usage and D1 storage. Back up and restore into a second installation.
 
@@ -60,12 +64,13 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 
 ## GitHub Actions and system schedulers
 
-CI uses GitHub-hosted runners by default. A private repository may be blocked
-by the account's hosted-minute/spend limits; a passing local gate is not a
-passing hosted run. The workflow supports an explicit `PULSE_RUNNER` repository
-variable for a trusted runner. Only private same-repository jobs may use that runner setting; public repositories
-and fork pull requests are routed to isolated hosted runners, not silently skipped.
-Never run untrusted fork code with self-hosted secrets. Do not set this variable casually on a public repository.
+Public-source CI always uses standard GitHub-hosted `ubuntu-24.04` runners.
+No self-hosted runner or repository variable is consulted. Fork pull requests
+run with read-only validation permissions and synthetic data, never maintainer
+provider credentials. CodeQL publishes only source-analysis findings.
+
+GitHub Actions in this repository validates code; it is not the deployment or
+collector scheduler. Do not put private analytics backups into public CI artifacts.
 
 For cron/systemd, invoke a one-shot `pulse sync --max-jobs 8 --rotate` with a
 persistent database and secret environment. No timer is enabled automatically.

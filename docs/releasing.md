@@ -4,10 +4,15 @@ Lifecycle: current
 
 ## Current release boundary
 
-The repository and package are private during validation. `private: true` in
-`package.json`, the repository privacy contract and disabled public Worker URLs
-are deliberate safeguards. MIT licensing is not a claim that private collected
-analytics are public. There is no automated npm or website publication workflow.
+The GitHub repository is public and MIT-licensed as a **source preview**. The
+npm package remains unpublished and `private: true` deliberately prevents
+accidental registry publication. Public source, npm distribution and a hosted
+analytics deployment are three independent decisions.
+
+Collected analytics, credentials, backup archives and local deployment settings
+are never public release material. The checked-in Worker configuration disables
+public preview URLs and cron triggers. There is no automatic npm, website or
+collector-deployment workflow.
 
 ## Review gates
 
@@ -35,26 +40,36 @@ read-only planning, refresh failure, login and storage boundaries.
 
 ## CI trust
 
-Actions are pinned to immutable commits and checkout credentials are not retained.
-The optional `PULSE_RUNNER` variable is considered only for private, same-repository
-code. Fork pull requests and any future public repository use isolated hosted
-runners rather than silently skipping validation. Never use elevated
-`pull_request_target` execution for untrusted code.
+All CI and CodeQL jobs use the standard GitHub-hosted `ubuntu-24.04` label.
+There is no repository-variable or self-hosted fallback. Actions are pinned to
+immutable commits; checkout credentials are not retained. Validation has
+`contents: read` only. CodeQL has the additional `security-events: write` permission
+needed to publish its analysis, but receives no provider secrets.
 
-A billing-blocked hosted job is **not** a failed source test and is **not** a
-successful check. Record the blocked run separately from local evidence. Selecting
-a trusted runner or changing billing is an explicit operator action; do not
-weaken merge requirements or fabricate a successful check to get past a block.
+Fork contributions use `pull_request`, never elevated `pull_request_target`.
+CI uses synthetic fixtures only and cannot read or synchronize a live installation.
+There are no recurring collection workflows or artifact-upload steps. Dependency
+caching uses the normal bounded GitHub cache; do not opt into paid cache capacity
+or larger runners without an explicit maintainer decision.
 
-## Preparing a future public release
+Standard hosted-runner execution is free for public repositories; larger runners
+and separate storage products have different billing rules. See
+[GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+Old private-repository jobs that never started are historical failures, not evidence
+of either a source defect or a passing check. Do not bypass a required check.
 
-1. Resolve issue #1's live-account, scheduler, recovery and CI activation evidence.
-2. Review package contents, documentation, private data boundaries and license.
-3. Review the changelog and version together; retain documented migration paths.
-4. Obtain the maintainer's explicit decision on repository and package publication.
-5. Change the private safeguards only as part of that reviewed release change.
+## Review before a future package or hosted release
+
+1. Review the public code, license, generated schemas and exact package contents.
+2. Resolve live-account and operational validation separately in issue #1.
+3. Update the changelog and version together, with documented migration paths.
+4. Obtain the maintainer's explicit decision before npm or deployment publication.
+5. Remove the npm publication guard only in that reviewed package-release change.
 6. Test the exact package bytes in a clean consumer, then verify the published
-   artifact independently when publication is eventually authorized.
+   artifact independently when registry publication is authorized.
+
+An external contributor can reproduce source checks using Node, npm and the
+locked browser; maintainer-only workspace tools are optional.
 
 Do not describe a dry-run bundle or fixture-tested connector as an operational
 production installation. Security reports must follow [SECURITY.md](../SECURITY.md)

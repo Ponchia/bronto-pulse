@@ -18,3 +18,10 @@ pulse.config.json
 pulse.private.json
 reports/
 artifacts/
+
+# Local deployment configuration and release archives are not public source.
+wrangler.private.*
+wrangler.local.*
+*.bundle
+*.tgz
+*.age

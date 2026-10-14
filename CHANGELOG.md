@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Public source preview
+
+- Public MIT repository with standard GitHub-hosted CI and pinned CodeQL analysis.
+- Clear separation between public source, unpublished npm distribution and private deployments.
+- Publication checks for tracked private artifacts, deployment defaults and secret-free workflows.
+- Anonymous cloning, contributor guidance, private vulnerability reporting and public-release documentation.
+- GitHub no-reply author metadata before publication; code history preserved.
+
 ### Added
 
 - Deterministic project/portfolio briefings with traceable evidence and explicit omissions.

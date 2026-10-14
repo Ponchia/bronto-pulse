@@ -1,7 +1,7 @@
 # Bronto Pulse — repository contract
 
-Pulse is a private project-analytics collector and reporter, not a visitor
-tracking product. Read [docs/README.md](docs/README.md) before changing behavior.
+Pulse is an open-source project-analytics collector with private-by-default data,
+not a visitor tracking product. Read [docs/README.md](docs/README.md) before changing behavior.
 
 ## Source of truth
 
@@ -17,9 +17,10 @@ tracking product. Read [docs/README.md](docs/README.md) before changing behavior
 
 ## Checks
 
-Run `npm run check`, `npm run test:browser`, `npm run test:d1`,
-`npm run worker:check`, and `repo-instruction-audit --repo .`.
-Use the workspace `box-test-run --` wrapper for expensive checks on the devbox.
+Run `npm run check`, `npm run test:browser`, `npm run test:d1` and
+`npm run worker:check`. On the maintainer workspace, also use
+`repo-instruction-audit --repo .` and its `box-test-run --` wrapper when available.
+Those maintainer helpers are not prerequisites for external contributors.
 Run `git status --short --branch` before editing. Do not overwrite parallel work.
 
 ## Hazards

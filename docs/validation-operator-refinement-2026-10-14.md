@@ -1,6 +1,9 @@
 # Operator workflow refinement — 14 October 2026
 
-Lifecycle: current
+Lifecycle: archive
+
+Historical pre-publication validation record. For current source availability,
+CI and deployment boundaries, see [maintainer releases](releasing.md).
 
 This review extends the initial implementation; it does not supersede the live
 activation work in repository issue #1. No provider account grants, production
