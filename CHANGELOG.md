@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Deterministic project/portfolio briefings with traceable evidence and explicit omissions.
+- Offline collection planning, dry-run sync and bounded date-chunk backfill.
+- Private CSV and Markdown downloads, exclusive CLI output and formula-safe CSV text.
+- Browser briefing/plan views, persistent view URLs, actionable health and stale-export protection.
+- Clean-consumer package smoke checks, generated-schema consistency and repository quality gates.
+- Configuration, reporting, quickstart and maintainer release guides; issue forms, CODEOWNERS and dependency-update configuration.
+
+### Corrected
+
+- Snapshot net-change baselines and suppression of misleading partial/estimated comparisons.
+- Consistent completed-date defaults, effective-date boundary handling and weighted observation checks.
+- Per-group capability probes, observed-data lag, interrupted-run health and historical run lookup.
+- Lease release after run-creation failure and independently scoped rotation cursors.
+- Bounded streaming login bodies, proper HEAD responses and isolated fork/public CI routing.
+
 ## 0.1.0 — initial implementation
 
 - Portable project/resource config and effective path scopes.

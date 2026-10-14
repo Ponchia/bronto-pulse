@@ -50,6 +50,26 @@ configuration with placeholder account identifiers. Substitute verified IDs
 before collection. Missing permissions become explicit health states, not
 zeroes. `probe` is read-only; `sync` saves history.
 
+## Operator workflow
+
+Preview a bounded sync before making provider requests, then read an evidence-based
+briefing or export a source-aware CSV:
+
+```sh
+node dist/cli.js plan --provider github --json
+node dist/cli.js sync --provider github --dry-run --json
+node dist/cli.js brief --days 30
+node dist/cli.js report pulse --format csv --out /private/pulse-report.csv
+```
+
+`plan` and `validate` never open the database or the network. Backfill supports
+explicit date chunks and budgets. Briefings keep coverage problems, limited
+measurements and missing baselines visible; snapshot changes are net changes,
+not gross new users. No tracker or LLM service is added.
+
+Read the [quickstart](docs/quickstart.md), [configuration guide](docs/configuration.md)
+and [reporting contracts](docs/reporting.md) before connecting live sources.
+
 ## Implemented capabilities
 
 | Area           | Behavior                                                                                                                                                            |

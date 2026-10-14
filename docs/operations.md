@@ -13,7 +13,7 @@ that a zero in a provider UI means a zero in a source dataset.
 ### Steps
 
 1. Read the failed group's safe error code and last successful refresh.
-2. Run `pulse probe --resource RESOURCE --json` to verify identity, permissions
+2. Run `pulse probe --resource RESOURCE --group GROUP --json` to verify identity, permissions
    and a bounded request. Cloudflare siteTag is not the public beacon token.
 3. Repair credentials through the provider's normal access flow. Do not broaden
    permissions to arbitrary repositories or scrape a signed-in browser.
@@ -79,3 +79,33 @@ transactional snapshot. Active collectors are reported as a conflict. Abandoned
 unpublished runs are omitted so they cannot make an otherwise healthy backup
 unrestorable. Import validates resource identities, annotations and observation
 contracts before atomically restoring an empty database.
+
+## Dry runs and bounded catch-up
+
+`pulse plan` and `pulse sync --dry-run` do not open a database, read credentials
+or contact a provider. `pulse backfill --from DATE --to DATE` executes its plan
+serially with a bounded number of independently published chunks. Plans report
+unrecoverable dates, current-only snapshots and omitted jobs. Backfill refuses
+an over-budget plan before issuing any provider requests. It is not a resumable
+high-cardinality task queue; narrow failed jobs and rerun them explicitly.
+
+`pulse probe` now tests each configured group, not merely the first group.
+Capability-discovery failure does not pretend a supported data query failed:
+both results remain visible. Capped probes report `omittedJobs` and return exit
+code 2 until all requested groups have been tested. Probe never writes history.
+
+The scheduler rotation cursor is scoped to the source/resource/group selection.
+A manual filtered sync does not move the cursor for an unrelated portfolio run.
+Even failure to insert a run record releases its owned lease; a storage error
+cannot leave a ten-minute artificial block on that dataset.
+
+### Exit codes
+
+- `0`: requested operation completed; a plan is not an executed collection.
+- `1`: invalid input, unsafe output overwrite, storage error or another fatal failure.
+- `2`: one or more selected collection/probe jobs failed, a probe omitted selected
+  work, or health needs operator attention. Successful independent chunks remain.
+
+Both ordinary backups and report output are private. Report destinations use
+exclusive creation and never overwrite an older file implicitly. The local
+`.pulse` directory and files must remain outside source control and publication.

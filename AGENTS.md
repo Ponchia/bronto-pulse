@@ -9,7 +9,9 @@ tracking product. Read [docs/README.md](docs/README.md) before changing behavior
 - `src/model.ts`: metric meanings and legal aggregation operations.
 - `src/collectors/`: bounded provider requests and schema normalization.
 - `src/storage/`: portable SQL, leases, staging and publication.
-- `src/report.ts`: deterministic reporting; no inferred person-level funnels.
+- `src/report.ts`, `src/brief.ts`: deterministic reporting; no inferred person-level funnels.
+- `src/plan.ts`: pure offline job planning; no database, credentials or network.
+- `src/report-export.ts`: private output encoding, never public publication.
 - `src/api/`, `web/`: authenticated read-only reporting; no provider credentials.
 - `src/worker.ts`, `src/cli.ts`: execution adapters, not separate business logic.
 

@@ -37,3 +37,12 @@ rate limiting should be supplied by a private proxy/Cloudflare for any exposed
 deployment; the standalone loopback server is not an Internet-facing perimeter.
 Review key rotation, backup access, optional query terms and storage retention
 before wider deployment.
+
+## Reports and downloads
+
+CSV text is quoted and neutralized when its prefix could be interpreted as a
+spreadsheet formula; numeric columns remain numeric. Markdown briefings escape
+untrusted text. These encodings reduce output hazards but do not anonymize data
+or authorize publication. Download endpoints require normal authentication and
+send `Cache-Control: no-store`. Login request streams are bounded before full
+allocation. The browser cannot execute a collection plan or submit provider SQL.

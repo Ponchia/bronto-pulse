@@ -52,3 +52,15 @@ export function defaultRange(now: Date, lookback = 14, zone = 'UTC'): DateRange 
 export function contains(window: DateRange, value: string): boolean {
   return value >= window.from && value <= window.to;
 }
+
+/** Shared report default across CLI, API and UI: last completed UTC dates. */
+export function reportRange(
+  options: { from?: string; to?: string; days?: number } = {},
+  now = new Date(),
+): DateRange {
+  const count = options.days ?? 30;
+  if (!Number.isSafeInteger(count) || count < 1 || count > 366)
+    throw new PulseError('CONFIG', 'Report days must be between 1 and 366.');
+  const to = options.to ?? addDays(dateInZone(now), -1);
+  return range(options.from ?? addDays(to, -count + 1), to);
+}

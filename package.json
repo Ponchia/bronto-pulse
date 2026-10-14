@@ -28,7 +28,12 @@
     "migrations",
     "examples",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "schemas"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -36,7 +41,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:coverage": "node --import tsx --experimental-test-coverage --test tests/*.test.ts",
     "test:browser": "playwright test",
-    "check": "npm run format:check && npm run typecheck && npm test && npm run docs:check && npm run build",
+    "check": "npm run format:check && npm run typecheck && npm run typecheck:tests && npm test && npm run docs:check && npm run build && npm run schema:check && npm run package:check && npm run repo:check",
     "docs:check": "node scripts/docs-check.mjs",
     "dev": "tsx src/cli.ts serve",
     "demo": "tsx src/cli.ts demo",
@@ -47,7 +52,11 @@
     "schema:generate": "node scripts/generate-schema.mjs",
     "test:d1": "node --import tsx scripts/d1-contract.mts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "schema:check": "node scripts/schema-check.mjs",
+    "package:check": "node scripts/package-check.mjs",
+    "repo:check": "node scripts/quality-contract.mjs",
+    "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {
     "zod": "4.6.7"
@@ -60,5 +69,6 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "wrangler": "4.151.0"
-  }
+  },
+  "types": "./dist/index.d.ts"
 }

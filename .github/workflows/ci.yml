@@ -13,12 +13,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
-    # Never direct untrusted fork code to a private self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.PULSE_RUNNER == ''
-    runs-on: ${{ vars.PULSE_RUNNER || 'ubuntu-latest' }}
+    # Only private same-repository code may use an operator-selected trusted runner.
+    # Forks and any future public repository use isolated hosted runners, not skipped checks.
+    runs-on: ${{ github.event.repository.private && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.PULSE_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'

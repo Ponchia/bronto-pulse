@@ -63,8 +63,9 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 CI uses GitHub-hosted runners by default. A private repository may be blocked
 by the account's hosted-minute/spend limits; a passing local gate is not a
 passing hosted run. The workflow supports an explicit `PULSE_RUNNER` repository
-variable for a trusted runner. Never run untrusted fork code with self-hosted
-secrets. Do not set this variable casually on a public repository.
+variable for a trusted runner. Only private same-repository jobs may use that runner setting; public repositories
+and fork pull requests are routed to isolated hosted runners, not silently skipped.
+Never run untrusted fork code with self-hosted secrets. Do not set this variable casually on a public repository.
 
 For cron/systemd, invoke a one-shot `pulse sync --max-jobs 8 --rotate` with a
 persistent database and secret environment. No timer is enabled automatically.
