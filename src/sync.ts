@@ -134,45 +134,47 @@ export function expectedGroups(config: Config): Map<string, string[]> {
 }
 export async function doctor(config: Config, store: Store, secrets: Secrets, now = new Date()) {
   const runs = await store.runs(10000);
-  const states = jobs(config).map(({ resource, group }) => {
-    const latest = runs.find((r) => r.resourceId === resource.id && r.group === group);
-    const success = runs.find(
-      (r) => r.resourceId === resource.id && r.group === group && r.status === 'success',
-    );
-    const age = success
-      ? (now.getTime() - Date.parse(success.finishedAt ?? success.startedAt)) / 3600000
-      : null;
-    const credentials =
-      resource.provider === 'npm'
-        ? { available: true, method: 'public', missing: [] }
-        : credentialStatus(
-            config.connections.find((c) => c.id === resource.connection),
-            secrets,
-          );
-    const status = !resource.enabled
-      ? 'disabled'
-      : !credentials.available && !config.demo
-        ? 'credentials_missing'
-        : !latest
-          ? 'never_collected'
-          : latest.status === 'failed'
-            ? 'failed'
-            : age !== null && age > config.settings.staleAfterHours
-              ? 'stale'
-              : latest.status === 'running'
-                ? 'running'
-                : 'healthy';
-    return {
-      resourceId: resource.id,
-      provider: resource.provider,
-      group,
-      status,
-      credentials,
-      lastRun: latest ?? null,
-      lastSuccess: success?.finishedAt ?? null,
-      ageHours: age,
-    };
-  });
+  const states = config.resources
+    .flatMap((resource) => groups(resource).map((group) => ({ resource, group })))
+    .map(({ resource, group }) => {
+      const latest = runs.find((r) => r.resourceId === resource.id && r.group === group);
+      const success = runs.find(
+        (r) => r.resourceId === resource.id && r.group === group && r.status === 'success',
+      );
+      const age = success
+        ? (now.getTime() - Date.parse(success.finishedAt ?? success.startedAt)) / 3600000
+        : null;
+      const credentials =
+        resource.provider === 'npm'
+          ? { available: true, method: 'public', missing: [] }
+          : credentialStatus(
+              config.connections.find((c) => c.id === resource.connection),
+              secrets,
+            );
+      const status = !resource.enabled
+        ? 'disabled'
+        : !credentials.available && !config.demo
+          ? 'credentials_missing'
+          : !latest
+            ? 'never_collected'
+            : latest.status === 'failed'
+              ? 'failed'
+              : age !== null && age > config.settings.staleAfterHours
+                ? 'stale'
+                : latest.status === 'running'
+                  ? 'running'
+                  : 'healthy';
+      return {
+        resourceId: resource.id,
+        provider: resource.provider,
+        group,
+        status,
+        credentials,
+        lastRun: latest ?? null,
+        lastSuccess: success?.finishedAt ?? null,
+        ageHours: age,
+      };
+    });
   return {
     generatedAt: now.toISOString(),
     schemaVersion: 1,

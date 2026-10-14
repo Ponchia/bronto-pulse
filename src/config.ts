@@ -257,6 +257,7 @@ export function assertHistoricalMappings(previous: Config, next: Config, changeD
   const normalize = (b: Binding) =>
     JSON.stringify({
       resource: b.resource,
+      scoped: Boolean(b.scope),
       hostname: b.scope?.hostname ?? null,
       pathPrefix: b.scope?.pathPrefix?.replace(/\/+$/, '') || '/',
     });

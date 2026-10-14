@@ -1,0 +1,140 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { HttpClient } from '../src/http.js';
+import { Credentials, credentialStatus, githubAppJwt } from '../src/auth.js';
+import { authorized, makeSession } from '../src/api/auth.js';
+import { safeError } from '../src/errors.js';
+const token = 'this-is-a-strong-synthetic-access-token';
+test('provider origin allowlist prevents secret-bearing SSRF', async () => {
+  let calls = 0;
+  const h = new HttpClient(async () => {
+    calls++;
+    return new Response('{}');
+  });
+  await assert.rejects(h.json('http://127.0.0.1/'), /not permitted/);
+  await assert.rejects(h.json('https://evil.invalid/'), /not permitted/);
+  assert.equal(calls, 0);
+});
+test('rate limits retry boundedly and preserve JSON', async () => {
+  let calls = 0;
+  const h = new HttpClient(
+    async (_u, init) => {
+      assert.equal(init?.redirect, 'error');
+      return ++calls < 3
+        ? new Response('{}', { status: 429, headers: { 'retry-after': '0' } })
+        : new Response('{"ok":true}');
+    },
+    1000,
+    async () => {},
+  );
+  assert.deepEqual(await h.json('https://api.github.com/'), { ok: true });
+  assert.equal(calls, 3);
+});
+test('long Retry-After is not slept inside a worker', async () => {
+  const h = new HttpClient(
+    async () => new Response('{}', { status: 429, headers: { 'retry-after': '300' } }),
+    1000,
+    async () => {
+      throw Error('Should not sleep');
+    },
+  );
+  await assert.rejects(h.json('https://api.github.com/'), /later collection/);
+});
+test('untrusted provider errors are never echoed', async () => {
+  const h = new HttpClient(async () => new Response('secret-test-value', { status: 403 }));
+  try {
+    await h.json('https://api.github.com/');
+    assert.fail();
+  } catch (e) {
+    assert.equal(safeError(e).code, 'PERMISSION');
+    assert.ok(!safeError(e).message.includes('secret-test-value'));
+  }
+});
+test('response-size and malformed JSON budgets fail closed', async () => {
+  const big = new HttpClient(
+    async () => new Response('x'.repeat(50)),
+    1000,
+    async () => {},
+    20,
+  );
+  await assert.rejects(big.json('https://api.github.com/'), /byte budget/);
+  const bad = new HttpClient(async () => new Response('<html>'));
+  await assert.rejects(bad.json('https://api.github.com/'), /malformed JSON/);
+});
+test('credential inspection never reveals the token value', () => {
+  const c = { id: 'g', provider: 'github' as const, tokenEnv: 'TOKEN' };
+  assert.equal(credentialStatus(c, { TOKEN: token }).available, true);
+  assert.ok(!JSON.stringify(credentialStatus(c, { TOKEN: token })).includes(token));
+});
+test('OAuth refresh posts credentials only to Google and caches access token', async () => {
+  let calls = 0;
+  const http = new HttpClient(async (url, init) => {
+    calls++;
+    assert.equal(String(url), 'https://oauth2.googleapis.com/token');
+    assert.equal(init?.method, 'POST');
+    return new Response('{"access_token":"short-lived-token","expires_in":3600}');
+  });
+  const credentials = new Credentials({ ID: 'id', SECRET: 'secret', REFRESH: 'refresh' }, http);
+  const c = {
+    id: 'g',
+    provider: 'gsc' as const,
+    clientIdEnv: 'ID',
+    clientSecretEnv: 'SECRET',
+    refreshTokenEnv: 'REFRESH',
+  };
+  assert.equal(await credentials.token(c), 'short-lived-token');
+  assert.equal(await credentials.token(c), 'short-lived-token');
+  assert.equal(calls, 1);
+});
+test('GitHub key validation rejects encrypted and PKCS1 forms', async () => {
+  await assert.rejects(githubAppJwt('1', '-----BEGIN RSA PRIVATE KEY-----', new Date()), /PKCS8/);
+});
+test('authentication fails closed and ignores spoofed Access headers', async () => {
+  assert.equal(
+    await authorized(
+      new Request('https://pulse.test', {
+        headers: { 'cf-access-authenticated-user-email': 'owner@example.com' },
+      }),
+      token,
+    ),
+    false,
+  );
+  assert.equal(
+    await authorized(
+      new Request('https://pulse.test', { headers: { Authorization: `Bearer ${token}` } }),
+      token,
+    ),
+    true,
+  );
+  assert.equal(await authorized(new Request('https://pulse.test'), ''), false);
+});
+test('signed sessions expire and reject tampering', async () => {
+  const at = Date.now(),
+    session = await makeSession(token, at);
+  assert.equal(
+    await authorized(
+      new Request('https://pulse.test', { headers: { Cookie: 'pulse_session=' + session } }),
+      token,
+      at,
+    ),
+    true,
+  );
+  assert.equal(
+    await authorized(
+      new Request('https://pulse.test', { headers: { Cookie: 'pulse_session=' + session } }),
+      token,
+      at + 3601000,
+    ),
+    false,
+  );
+  assert.equal(
+    await authorized(
+      new Request('https://pulse.test', {
+        headers: { Cookie: 'pulse_session=' + session.replace(/.$/, 'g') },
+      }),
+      token,
+      at,
+    ),
+    false,
+  );
+});

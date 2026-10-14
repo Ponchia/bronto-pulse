@@ -260,8 +260,7 @@ export async function projectReport(
   for (const binding of project.resources) {
     const resource = config.resources.find((r) => r.id === binding.resource)!;
     if (!resource.enabled) {
-      warnings.push(`${resource.id}: collection is disabled.`);
-      continue;
+      warnings.push(`${resource.id}: collection is disabled; retained history remains available.`);
     }
     let rows = cache.get(resource.id);
     if (!rows) {
