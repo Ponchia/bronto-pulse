@@ -21,6 +21,8 @@
 
 ### Corrected
 
+- Offline package verification now uses locked runtime tarballs rather than relying on a warmed registry metadata cache.
+
 - Snapshot net-change baselines and suppression of misleading partial/estimated comparisons.
 - Consistent completed-date defaults, effective-date boundary handling and weighted observation checks.
 - Per-group capability probes, observed-data lag, interrupted-run health and historical run lookup.

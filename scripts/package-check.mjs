@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { consumerInstallation } from './package-consumer-lock.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dir = await mkdtemp(join(tmpdir(), 'pulse-package-contract-'));
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -45,19 +46,18 @@ try {
     'schemas/config.schema.json',
   ])
     if (!files.includes(path)) throw Error('Package is missing ' + path);
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
-  run(
-    npm,
-    [
-      'install',
-      join(dir, result.filename),
-      '--ignore-scripts',
-      '--offline',
-      '--no-audit',
-      '--no-fund',
-    ],
-    dir,
+  const sourceLock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
+  const { consumer, lock } = consumerInstallation(
+    manifest,
+    result,
+    join(dir, result.filename),
+    sourceLock,
   );
+  await writeFile(join(dir, 'package.json'), JSON.stringify(consumer));
+  await writeFile(join(dir, 'package-lock.json'), JSON.stringify(lock));
+  // npm ci populated integrity-checked tarballs, but need not have cached the
+  // registry packument. A locked install avoids that hidden warm-cache dependency.
+  run(npm, ['ci', '--ignore-scripts', '--offline', '--no-audit', '--no-fund'], dir);
   const installed = resolve(dir, 'node_modules', manifest.name);
   const exports = JSON.parse(
     run(

@@ -32,7 +32,10 @@ compilation, generated schema consistency, installed-package verification and
 repository policy. `package:check` packs a tarball into temporary storage,
 rejects unexpected/private entries, installs it in a clean **offline** consumer
 and exercises imports plus CLI initialization. It removes its temporary files.
-No registry write occurs. The npm cache populated by `npm ci` supplies dependencies.
+No registry write occurs. A generated consumer lockfile reuses the runtime
+tarball URLs and integrity hashes from the repository lock. `npm ci --offline`
+therefore needs only tarballs already fetched by the main install, not a previously
+warmed registry-metadata cache.
 
 D1 tests exercise an actual local D1-compatible runtime rather than just a mock.
 Browser tests use only synthetic data and cover narrow widths, downloads,

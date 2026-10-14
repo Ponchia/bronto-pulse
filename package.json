@@ -38,8 +38,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "test:coverage": "node --import tsx --experimental-test-coverage --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test tests/*.test.ts tests/*.test.mjs",
     "test:browser": "playwright test",
     "check": "npm run format:check && npm run typecheck && npm run typecheck:tests && npm test && npm run docs:check && npm run build && npm run schema:check && npm run package:check && npm run repo:check && npm run publication:check",
     "docs:check": "node scripts/docs-check.mjs",
