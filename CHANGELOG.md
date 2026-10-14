@@ -21,6 +21,9 @@
 
 ### Corrected
 
+- Separate configured reporting secrets from generated local startup tokens; explicit tokens never enter the display path.
+- Replace trailing-slash regexes with linear scanning, including direct library callers outside configuration size limits.
+
 - Offline package verification now uses locked runtime tarballs rather than relying on a warmed registry metadata cache.
 
 - Snapshot net-change baselines and suppression of misleading partial/estimated comparisons.

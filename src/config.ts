@@ -157,8 +157,14 @@ export type Connection = Config['connections'][number];
 export type Project = Config['projects'][number];
 export type Binding = Project['resources'][number];
 export type Provider = Resource['provider'];
+/** Linear trimming also protects direct library callers outside config size limits. */
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
+}
 export function pathMatches(path: string, prefix: string): boolean {
-  const normalized = prefix === '/' ? '/' : prefix.replace(/\/+$/, '');
+  const normalized = prefix === '/' ? '/' : stripTrailingSlashes(prefix);
   return normalized === '/' || path === normalized || path.startsWith(normalized + '/');
 }
 function scopesOverlap(a: Binding, b: Binding): boolean {
@@ -259,7 +265,7 @@ export function assertHistoricalMappings(previous: Config, next: Config, changeD
       resource: b.resource,
       scoped: Boolean(b.scope),
       hostname: b.scope?.hostname ?? null,
-      pathPrefix: b.scope?.pathPrefix?.replace(/\/+$/, '') || '/',
+      pathPrefix: (b.scope?.pathPrefix ? stripTrailingSlashes(b.scope.pathPrefix) : '') || '/',
     });
   for (const project of previous.projects) {
     const replacement = next.projects.find((p) => p.id === project.id);
