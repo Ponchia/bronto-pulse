@@ -8,8 +8,8 @@ updates:
     # Keep Node type definitions aligned with the supported Node 24 runtime.
     # Revisit when CI and production both qualify Node 26.
     ignore:
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       tooling:
         dependency-type: development
