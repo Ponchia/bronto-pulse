@@ -114,3 +114,74 @@ test('authorized HEAD failures preserve security headers and contain no response
   assert.equal(await response.text(), '');
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
 });
+
+test('a failed old initialization cannot discard a newer successful cached context', async () => {
+  let reached!: () => void;
+  const started = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let fail!: (error: Error) => void;
+  const blocked = new Promise<never>((_resolve, reject) => {
+    fail = reject;
+  });
+  const first = environment().env;
+  first.DB = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async all<T>() {
+              reached();
+              await blocked;
+              return { results: [] as T[] };
+            },
+          };
+        },
+      };
+    },
+    async batch() {
+      reached();
+      return blocked;
+    },
+  };
+  const next = environment().env;
+  let nextCalls = 0;
+  // Minimal successful initialization fixture, not a full SQL implementation.
+  next.DB = {
+    prepare(sql) {
+      nextCalls++;
+      return {
+        bind(...values) {
+          return {
+            async all<T>() {
+              const schema =
+                sql === 'SELECT value FROM metadata WHERE key=?' && values[0] === 'schema_version';
+              return { results: (schema ? [{ value: '1' }] : []) as T[] };
+            },
+          };
+        },
+      };
+    },
+    async batch(statements) {
+      nextCalls++;
+      return statements.map(() => ({ results: [] }));
+    },
+  };
+  const request = () =>
+    new Request('https://pulse.example/api/v1/projects', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+  const older = worker.fetch(request(), first);
+  await started;
+  assert.equal((await worker.fetch(request(), next)).status, 200);
+  const completedCalls = nextCalls;
+  assert.ok(completedCalls > 0);
+  fail(new Error('synthetic-old-initialization-failure'));
+  assert.equal((await older).status, 503);
+  assert.equal((await worker.fetch(request(), next)).status, 200);
+  assert.equal(
+    nextCalls,
+    completedCalls,
+    'failed old context must not force healthy migrations again',
+  );
+});
