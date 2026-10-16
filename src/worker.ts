@@ -3,6 +3,7 @@ import { D1Driver, type D1Like } from './storage/driver.js';
 import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
 import { sync } from './sync.js';
+import { scheduleOptions } from './worker-schedule.js';
 import { safeError } from './errors.js';
 import type { Secrets } from './auth.js';
 export interface WorkerEnv {
@@ -17,6 +18,7 @@ export interface WorkerEnv {
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REFRESH_TOKEN?: string;
   PULSE_MAX_JOBS?: string;
+  PULSE_PROVIDER?: string;
 }
 let cached:
   | {
@@ -74,16 +76,16 @@ export default {
     }
   },
   async scheduled(_event: { scheduledTime: number }, env: WorkerEnv): Promise<void> {
+    // Validate explicit scheduling controls before touching private storage.
+    const selection = scheduleOptions(env);
     const { store, config } = await context(env);
     if (config.demo) return;
     const owner = crypto.randomUUID(),
       key = 'scheduler';
     if (!(await store.acquire(key, owner))) return;
     try {
-      const max = Number(env.PULSE_MAX_JOBS ?? '8');
-      if (!Number.isInteger(max) || max < 1 || max > 32) throw new Error('Invalid job bound');
       const results = await sync(config, store, environmentSecrets(env), {
-        maxJobs: max,
+        ...selection,
         rotate: true,
       });
       // Only aggregate result codes. No URLs, credentials or provider payloads in logs.

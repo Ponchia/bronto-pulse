@@ -41,6 +41,11 @@ or publish your installation automatically.
    after checking dataset access and recovery. The handler processes up to eight
    independent jobs per invocation using a rotation cursor; `PULSE_MAX_JOBS` can
    bound it between 1 and 32.
+   For staged activation, set `PULSE_PROVIDER` to exactly one of `github`, `npm`,
+   `cloudflare`, `gsc` or `sense6`. For example, `npm` collects only configured npm
+   packages while other credentials are awaiting authorization. Unset it to rotate
+   through all configured providers. Invalid values fail before database work;
+   filtering never marks uncollected providers as healthy.
 6. Verify authenticated API access, failure isolation, actual dataset access,
    request/CPU usage and D1 storage. Back up and restore into a second installation.
 
