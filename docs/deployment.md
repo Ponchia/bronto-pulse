@@ -76,3 +76,17 @@ For cron/systemd, invoke a one-shot `pulse sync --max-jobs 8 --rotate` with a
 persistent database and secret environment. No timer is enabled automatically.
 GitHub scheduled workflows can be delayed or disabled for inactivity; monitor
 `pulse doctor` and do not rely on ephemeral Actions artifacts as durable history.
+
+## Cold-start and authentication boundary
+
+The Worker authenticates reporting requests before opening D1 or parsing private
+provider configuration. The login page, its fixed static assets, rejected requests
+and `/health` liveness endpoint do not initialize storage. A missing or short API
+token keeps private routes locked even when database configuration is incomplete.
+Successful login proves token ownership, not provider access or database readiness.
+
+Authorized data routes initialize the private store lazily; unavailable storage or
+invalid configuration returns a redacted HTTP 503 with private-cache and security
+headers. `/health` is deliberately only process liveness, not a D1 readiness test.
+Use an authenticated reporting request for that check. Fixture tests establish
+these boundaries; no reduction in live-account billed usage is claimed.

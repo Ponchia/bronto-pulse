@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Authenticate Worker requests before initializing D1; serve login/static assets
+  and liveness independently, retaining fail-closed private data access.
+- Preserve redacted configuration failures and HEAD/security headers; keep failed
+  initialization from clearing a newer cached context.
+
+## Unreleased
+
 ### Public source preview
 
 - Public MIT repository with standard GitHub-hosted CI and pinned CodeQL analysis.

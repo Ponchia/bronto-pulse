@@ -11,13 +11,20 @@ import { projectBrief, markdownBrief } from '../brief.js';
 import { csvReport } from '../report-export.js';
 import { markdownReport } from '../report.js';
 import { authorized, makeSession, validToken } from './auth.js';
-export interface ApiContext {
+export interface ApiData {
   config: Config;
   store: Store;
+}
+interface ApiAccessContext {
   secrets: Secrets;
   apiToken: string;
   asset: (path: string) => Promise<Response>;
   now?: () => Date;
+}
+export interface ApiContext extends ApiAccessContext, ApiData {}
+export interface LazyApiContext extends ApiAccessContext {
+  /** Resolve private configuration/storage only after request authentication. */
+  loadData: () => Promise<ApiData>;
 }
 const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
@@ -62,7 +69,10 @@ const ASSETS = new Set([
   '/login.js',
   '/favicon.svg',
 ]);
-export async function handle(request: Request, ctx: ApiContext): Promise<Response> {
+export async function handle(
+  request: Request,
+  ctx: ApiContext | LazyApiContext,
+): Promise<Response> {
   const response = await route(request, ctx);
   return request.method === 'HEAD'
     ? new Response(null, { status: response.status, headers: response.headers })
@@ -82,7 +92,7 @@ function sameOriginWrite(request: Request, url: URL): boolean {
   // Preserve explicit non-browser clients without Origin/Fetch Metadata.
   return origin === null && (site === null || site === 'same-origin');
 }
-async function route(request: Request, ctx: ApiContext): Promise<Response> {
+async function route(request: Request, ctx: ApiContext | LazyApiContext): Promise<Response> {
   const now = ctx.now?.() ?? new Date();
   const url = new URL(request.url);
   try {
@@ -189,13 +199,30 @@ async function route(request: Request, ctx: ApiContext): Promise<Response> {
               : url.pathname,
         ),
       );
+    let data: ApiData;
+    try {
+      data = 'loadData' in ctx ? await ctx.loadData() : ctx;
+    } catch {
+      return secure(
+        json(
+          {
+            error: {
+              code: 'CONFIG',
+              message:
+                'Private reporting service is not configured. Check the operator deployment settings.',
+            },
+          },
+          503,
+        ),
+      );
+    }
     const root = '/api/v1';
     if (url.pathname === root + '/projects')
       return secure(
         json({
-          name: ctx.config.name,
-          demo: ctx.config.demo,
-          projects: ctx.config.projects.map((p) => ({
+          name: data.config.name,
+          demo: data.config.demo,
+          projects: data.config.projects.map((p) => ({
             id: p.id,
             label: p.label,
             description: p.description,
@@ -206,12 +233,12 @@ async function route(request: Request, ctx: ApiContext): Promise<Response> {
     if (url.pathname === root + '/plan')
       return secure(
         json({
-          ...planCollection(ctx.config, { now, window: windowFor(url, now) }),
-          demo: ctx.config.demo,
+          ...planCollection(data.config, { now, window: windowFor(url, now) }),
+          demo: data.config.demo,
         }),
       );
     if (url.pathname === root + '/brief') {
-      const reports = await portfolio(ctx.config, ctx.store, windowFor(url, now), now);
+      const reports = await portfolio(data.config, data.store, windowFor(url, now), now);
       const briefs = reports.reports.map((r) => projectBrief(r));
       const format = url.searchParams.get('format') ?? 'json';
       if (format === 'markdown')
@@ -227,7 +254,7 @@ async function route(request: Request, ctx: ApiContext): Promise<Response> {
       return secure(
         json({
           schemaVersion: 1,
-          demo: ctx.config.demo,
+          demo: data.config.demo,
           window: reports.window,
           generatedAt: reports.generatedAt,
           briefs,
@@ -235,20 +262,20 @@ async function route(request: Request, ctx: ApiContext): Promise<Response> {
       );
     }
     if (url.pathname === root + '/portfolio')
-      return secure(json(await portfolio(ctx.config, ctx.store, windowFor(url, now), now)));
+      return secure(json(await portfolio(data.config, data.store, windowFor(url, now), now)));
     if (url.pathname === root + '/health')
-      return secure(json(await doctor(ctx.config, ctx.store, ctx.secrets, now)));
+      return secure(json(await doctor(data.config, data.store, ctx.secrets, now)));
     if (url.pathname === root + '/runs')
       return secure(
         json({
-          runs: await ctx.store.runs(limitFor(url), url.searchParams.get('resource') ?? undefined),
+          runs: await data.store.runs(limitFor(url), url.searchParams.get('resource') ?? undefined),
         }),
       );
     if (url.pathname === root + '/metrics')
       return secure(json({ definitions: Object.values(METRICS) }));
     if (url.pathname === root + '/export')
       return secure(
-        new Response(JSON.stringify(await ctx.store.export()), {
+        new Response(JSON.stringify(await data.store.export()), {
           headers: {
             'Content-Type': 'application/json',
             'Content-Disposition': 'attachment; filename="pulse-private-export.json"',
@@ -264,8 +291,8 @@ async function route(request: Request, ctx: ApiContext): Promise<Response> {
       if (!['json', 'markdown', ...(isBrief ? [] : ['csv'])].includes(format))
         throw new PulseError('CONFIG', 'Unsupported report format.');
       const report = await projectReport(
-        ctx.config,
-        ctx.store,
+        data.config,
+        data.store,
         match[1]!,
         windowFor(url, now),
         now,
