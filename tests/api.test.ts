@@ -219,3 +219,30 @@ test('same-origin metadata does not authenticate a login token', async () => {
     c.store.driver.close?.();
   }
 });
+
+test('lazy authenticated data access retains the normal project response and does not collect', async () => {
+  const c = await setup();
+  let loads = 0;
+  const lazy = {
+    apiToken: c.apiToken,
+    secrets: c.secrets,
+    asset: c.asset,
+    now: c.now,
+    loadData: async () => {
+      loads++;
+      return { config: c.config, store: c.store };
+    },
+  };
+  try {
+    assert.equal((await handle(request('/api/v1/projects', false), lazy)).status, 401);
+    assert.equal(loads, 0);
+    const response = await handle(request('/api/v1/projects'), lazy);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { projects: { id: string }[] };
+    assert.equal(body.projects[0]!.id, 'project');
+    assert.equal(loads, 1);
+    assert.equal((await c.store.runs()).length, 0);
+  } finally {
+    c.store.driver.close?.();
+  }
+});

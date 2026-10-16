@@ -44,17 +44,15 @@ async function context(env: WorkerEnv) {
   try {
     return await ready;
   } catch (error) {
-    cached = undefined;
+    if (cached?.ready === ready) cached = undefined;
     throw error;
   }
 }
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     try {
-      const { store, config } = await context(env);
       return await handle(request, {
-        config,
-        store,
+        loadData: () => context(env),
         secrets: environmentSecrets(env),
         apiToken: env.PULSE_API_TOKEN ?? '',
         asset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
