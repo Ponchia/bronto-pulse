@@ -57,7 +57,8 @@
     "package:check": "node scripts/package-check.mjs",
     "repo:check": "node scripts/quality-contract.mjs",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
-    "publication:check": "node scripts/publication-check.mjs"
+    "publication:check": "node scripts/publication-check.mjs",
+    "test:worker": "npm run build && node scripts/worker-contract.mjs"
   },
   "dependencies": {
     "zod": "4.6.7"

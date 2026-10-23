@@ -109,3 +109,22 @@ cannot leave a ten-minute artificial block on that dataset.
 Both ordinary backups and report output are private. Report destinations use
 exclusive creation and never overwrite an older file implicitly. The local
 `.pulse` directory and files must remain outside source control and publication.
+
+## Scheduled failures and runtime diagnostics
+
+A scheduled handler rejects when any selected collection job fails, after other
+independent jobs finish. It logs only aggregate counts and controlled error text;
+per-job details remain in the private run history. The scheduler lease is released
+on both success and failure. A zero-failure invocation alone does not prove that
+all resources are current: inspect the authenticated `/api/v1/health` response or
+`pulse doctor --json` for missing credentials, failed groups and stale coverage.
+
+`REDIRECT` means a provider returned a 3xx response that Pulse refused to follow.
+Verify the official endpoint; never disable the origin allowlist or forward tokens
+to a redirect target. `NETWORK` is a connection or response-stream failure, not
+proof that the provider is down. Compare the same request in the actual Worker
+runtime and the local CLI before assigning a cause.
+
+`/health` is unauthenticated liveness only and must not be used as a collection
+success monitor. Cron failure reporting is not a notification delivery service;
+configure an owner-approved alert consumer separately.

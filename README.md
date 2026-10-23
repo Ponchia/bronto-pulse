@@ -125,6 +125,7 @@ and may include explicitly enabled query text. Never commit them to Git.
 npm run check          # Source/test types, contracts, docs, schema and installed package
 npm run test:browser   # Dashboard flows and 320/390/1440px layout checks
 npm run test:d1        # Real local D1-compatible runtime contract (Miniflare)
+npm run test:worker    # Bundled scheduled handler + native fetch contracts in workerd
 npm run worker:check   # Cloudflare deployment bundle dry run; no publication
 ```
 

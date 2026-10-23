@@ -34,6 +34,7 @@ jobs:
       - run: npm run check
       - run: npm run worker:check
       - run: npm run test:d1
+      - run: npm run test:worker
       - name: Install the locked browser
         run: npx playwright install --with-deps chromium
       - run: npm run test:browser

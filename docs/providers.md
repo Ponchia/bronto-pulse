@@ -5,7 +5,10 @@ Lifecycle: current
 Run `pulse probe --json` before activating a source. A fixture passing is not
 evidence that your account grants access. All collectors use a fixed HTTPS
 origin allowlist, bounded response sizes, three-attempt retry budgets and safe
-errors. There is no dashboard scraping or access-token capture from browsers.
+errors. Provider requests use manual redirect handling for Workers compatibility.
+All 3xx responses fail with `REDIRECT`, without following the Location header,
+retrying the redirect or storing upstream bodies. Credentials never move to a
+redirect target. There is no dashboard scraping or access-token capture from browsers.
 
 ## GitHub
 

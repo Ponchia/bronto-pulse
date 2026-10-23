@@ -4,6 +4,7 @@ export type ErrorCode =
   | 'PERMISSION'
   | 'RATE_LIMIT'
   | 'NETWORK'
+  | 'REDIRECT'
   | 'SCHEMA'
   | 'ROW_LIMIT'
   | 'UNAVAILABLE'
