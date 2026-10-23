@@ -22,6 +22,7 @@ From a fresh checkout with the locked dependencies:
 npm ci
 npm run check
 npm run test:d1
+npm run test:worker
 npm run worker:check
 npm run test:browser
 npm audit

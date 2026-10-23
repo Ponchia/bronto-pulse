@@ -19,7 +19,7 @@ test('rate limits retry boundedly and preserve JSON', async () => {
   let calls = 0;
   const h = new HttpClient(
     async (_u, init) => {
-      assert.equal(init?.redirect, 'error');
+      assert.equal(init?.redirect, 'manual');
       return ++calls < 3
         ? new Response('{}', { status: 429, headers: { 'retry-after': '0' } })
         : new Response('{"ok":true}');
@@ -138,3 +138,49 @@ test('signed sessions expire and reject tampering', async () => {
     false,
   );
 });
+
+for (const status of [300, 301, 302, 303, 304, 307, 308]) {
+  test(`provider HTTP ${status} redirects are refused without following or retrying`, async () => {
+    let calls = 0;
+    let canceled = false;
+    const client = new HttpClient(
+      async (_url, init) => {
+        calls++;
+        assert.equal(init?.redirect, 'manual');
+        assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer synthetic-token');
+        return new Response(
+          status === 304
+            ? null
+            : new ReadableStream({
+                cancel() {
+                  canceled = true;
+                },
+              }),
+          {
+            status,
+            headers: { Location: 'https://untrusted.invalid/?token=private-provider-value' },
+          },
+        );
+      },
+      1000,
+      async () => {
+        assert.fail('Redirects must not consume retry delays');
+      },
+    );
+    await assert.rejects(
+      client.json('https://api.github.com/', {
+        headers: { Authorization: 'Bearer synthetic-token' },
+      }),
+      (error: unknown) => {
+        const safe = safeError(error);
+        assert.equal(safe.code, 'REDIRECT');
+        assert.equal(safe.message, 'Provider redirect refused. Verify the provider endpoint.');
+        assert.ok(!JSON.stringify(safe).includes('private-provider-value'));
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+    assert.equal(client.requests, 1);
+    if (status !== 304) assert.equal(canceled, true);
+  });
+}

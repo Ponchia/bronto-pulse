@@ -30,3 +30,16 @@ Real account tokens and retrieved private metrics must live outside tracked
 files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
 requirements should be reported separately from code completion.
+
+## Worker runtime contract
+
+`npm run test:worker` bundles the actual scheduled handler and executes it inside
+workerd with a real local D1 binding. The provider responses are synthetic; every
+outbound request is constructed with the runtime's native `Request`. This catches
+runtime differences that Node-only fetch stubs cannot, including unsupported
+redirect modes. The test verifies publication, rejected redirects, failed cron
+outcomes, preserved history, released leases and subsequent recovery.
+
+This test makes no live provider requests and does not prove account access,
+production CPU usage or successful future cron delivery. Those remain separate
+installation checks.

@@ -42,8 +42,8 @@ queryable. Collection completeness is not the same as provider data completeness
 ## Scheduling
 
 Local `sync` is one-shot. External schedulers can call it with a bounded job
-count and a persistent rotating cursor. The Worker uses an hourly trigger,
-a scheduler lease and eight jobs by default, so small resources do not need
+count and a persistent rotating cursor. The Worker supports an explicitly configured trigger,
+a scheduler lease and eight jobs per invocation by default, so small resources do not need
 an always-running service. Large installations should lower detail/cardinality,
 use smaller date windows or a queue-oriented scheduler rather than assume all
 providers fit into one invocation.

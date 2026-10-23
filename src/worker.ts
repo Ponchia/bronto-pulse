@@ -4,7 +4,7 @@ import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
 import { sync } from './sync.js';
 import { scheduleOptions } from './worker-schedule.js';
-import { safeError } from './errors.js';
+import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
 export interface WorkerEnv {
   DB: D1Like;
@@ -96,6 +96,10 @@ export default {
           failed: results.filter((x) => x.status === 'failed').length,
         }),
       );
+      // sync records per-job failures instead of throwing, so propagate the outcome
+      // after independent jobs have finished. Cron must not report a false success.
+      if (results.some((result) => result.status === 'failed'))
+        throw new PulseError('UNAVAILABLE', 'One or more scheduled collection jobs failed.', true);
     } catch (error) {
       console.error(JSON.stringify({ event: 'collection_failed', ...safeError(error) }));
       throw error;

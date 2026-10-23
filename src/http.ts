@@ -32,7 +32,9 @@ export class HttpClient {
       try {
         response = await this.fetcher(url, {
           ...init,
-          redirect: 'error',
+          // Workers supports manual/follow, not the Fetch-standard error mode.
+          // Never follow provider redirects: credentials must stay on the pinned origin.
+          redirect: 'manual',
           signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch {
@@ -41,6 +43,14 @@ export class HttpClient {
           continue;
         }
         throw new PulseError('NETWORK', 'Provider connection failed or timed out.', true);
+      }
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel();
+        // Do not store the upstream Location header or response body.
+        throw new PulseError(
+          'REDIRECT',
+          'Provider redirect refused. Verify the provider endpoint.',
+        );
       }
       if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
         const raw = response.headers.get('retry-after');

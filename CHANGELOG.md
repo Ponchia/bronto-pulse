@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Use Workers-compatible manual redirects and reject every provider 3xx response
+  without following it, retrying it or exposing upstream URLs and response bodies.
+- Reject scheduled invocations after failed collection jobs, while preserving
+  successful independent jobs and releasing scheduler leases.
+- Exercise the bundled scheduled handler, native Request and D1 inside workerd
+  in CI, including failure preservation and a successful recovery collection.
+
 - Authenticate Worker requests before initializing D1; serve login/static assets
   and liveness independently, retaining fail-closed private data access.
 - Preserve redacted configuration failures and HEAD/security headers; keep failed
