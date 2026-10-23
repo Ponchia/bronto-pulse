@@ -32,11 +32,33 @@ async function suite() {
 }
 test('frozen suite has 12 unbranded prompts and 3 identity controls, with English, Italian and Spanish', async () => {
   const s = await suite();
-  assert.equal(s.prompts.filter((p) => p.kind === 'unbranded').length, 12);
-  assert.equal(s.prompts.filter((p) => p.kind === 'branded').length, 3);
+  assert.equal(s.version, '1.1.0');
+  const discovery = s.prompts.filter((p) => p.kind === 'unbranded');
+  assert.equal(discovery.length, 12);
+  assert.equal(discovery.filter((p) => p.targetIds.includes('sense6')).length, 6);
+  assert.deepEqual(
+    discovery.filter((p) => p.targetIds.includes('sense6')).map((p) => p.id),
+    [
+      'perception-browser',
+      'reaction-time',
+      'tetrachromacy-limits',
+      'hearing-device-limits',
+      'perception-it',
+      'perception-es',
+    ],
+  );
+  for (const target of ['ui', 'annotations', 'layout'])
+    assert.equal(discovery.filter((p) => p.targetIds.includes(target)).length, 2);
+  assert.equal(discovery.filter((p) => p.targetIds.includes('portfolio')).length, 6);
+  assert.deepEqual(
+    s.prompts.filter((p) => p.kind === 'branded').map((p) => p.id),
+    ['sense6-control', 'owner-portfolio-control', 'package-responsibilities-control'],
+  );
+  assert.deepEqual(s.targets.find((t) => t.id === 'portfolio')?.urls, [
+    'https://brontolotto.observer/',
+  ]);
   assert.deepEqual([...new Set(s.prompts.map((p) => p.language))].sort(), ['en', 'es', 'it']);
-  for (const p of s.prompts.filter((p) => p.kind === 'unbranded'))
-    assert.doesNotMatch(p.text, /sense6|bronto/i);
+  for (const p of discovery) assert.doesNotMatch(p.text, /sense6|bronto|ponchia|zeno/i);
 });
 test('hostname and path boundaries reject lookalikes, sibling projects and unsafe URL credentials', () => {
   const target = 'https://github.com/Ponchia/bronto-ui';
@@ -57,6 +79,18 @@ test('hostname and path boundaries reject lookalikes, sibling projects and unsaf
     'javascript:https://github.com/Ponchia/bronto-ui',
   ])
     assert.equal(targetUrlMatches(candidate, target), false, candidate);
+  assert.equal(
+    targetUrlMatches(
+      'https://brontolotto.observer/projects/bronto-ui/',
+      'https://brontolotto.observer/',
+    ),
+    true,
+  );
+  assert.equal(
+    targetUrlMatches('https://brontolotto.observer.evil/', 'https://brontolotto.observer/'),
+    false,
+  );
+  assert.equal(targetUrlMatches('https://sense6.net/', 'https://brontolotto.observer/'), false);
 });
 test('offline template and promptfoo export do not execute models and carry prompt hashes', async () => {
   const s = await suite(),
@@ -105,13 +139,18 @@ test('missing, unrun and error are unknown, and reports separate branded, langua
       g.kind === 'unbranded' &&
       g.language === 'en',
   )!;
-  assert.equal(sense6.expected, 2);
+  assert.equal(sense6.expected, 4);
   assert.equal(sense6.completed, 1);
   assert.equal(sense6.errors, 1);
-  assert.deepEqual(sense6.signals.mention, { positive: 1, observed: 1, unknown: 1 });
-  assert.deepEqual(sense6.signals.link, { positive: 1, observed: 1, unknown: 1 });
-  assert.deepEqual(sense6.signals.citation, { positive: 0, observed: 1, unknown: 1 });
-  assert.deepEqual(sense6.signals.recommendation, { positive: 0, observed: 0, unknown: 2 });
+  assert.deepEqual(sense6.signals.mention, { positive: 1, observed: 1, unknown: 3 });
+  assert.deepEqual(sense6.signals.link, { positive: 1, observed: 1, unknown: 3 });
+  assert.deepEqual(sense6.signals.citation, { positive: 0, observed: 1, unknown: 3 });
+  assert.deepEqual(sense6.signals.recommendation, { positive: 0, observed: 0, unknown: 4 });
+  const portfolio = report.groups.find(
+    (g) => g.session.id === 'synthetic' && g.targetId === 'portfolio' && g.kind === 'unbranded',
+  )!;
+  assert.equal(portfolio.expected, 6);
+  assert.equal(portfolio.unrun, 6);
   const branded = report.groups.find(
     (g) => g.session.id === 'synthetic' && g.targetId === 'sense6' && g.kind === 'branded',
   )!;
@@ -155,6 +194,22 @@ test('citations and reviewed labels remain distinct from mention and answer link
   assert.equal(g.signals.recommendation.positive, 1);
   assert.equal(g.signals.misrepresentation.observed, 1);
   assert.equal(g.signals.misrepresentation.positive, 0);
+});
+test('portfolio discovery records the owner website without crediting an unrelated package link', async () => {
+  const s = await suite(),
+    data = await visibilityTemplate(s, session);
+  const run = data.runs.find((r) => r.promptId === 'ui-css')!;
+  run.status = 'completed';
+  run.rawAnswer = 'See Zeno Trevisan at https://brontolotto.observer/ for independent projects.';
+  run.citations = [];
+  const report = await visibilityReport(s, data);
+  const portfolio = report.groups.find(
+    (g) => g.targetId === 'portfolio' && g.kind === 'unbranded',
+  )!;
+  const ui = report.groups.find((g) => g.targetId === 'ui' && g.kind === 'unbranded')!;
+  assert.equal(portfolio.signals.mention.positive, 1);
+  assert.equal(portfolio.signals.link.positive, 1);
+  assert.equal(ui.signals.link.positive, 0);
 });
 test('a bare answer URL is a link, and alias suffixes do not become text mentions', async () => {
   const s = await suite(),

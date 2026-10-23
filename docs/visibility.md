@@ -5,10 +5,15 @@ Lifecycle: current
 The operator CLI prepares and scores manually captured answers. It makes no
 model/API calls, uses no credentials and creates no billing or schedule.
 The [example suite](../examples/visibility-suite.json) contains 12 unbranded
-discovery prompts and 3 branded accuracy controls covering Sense6, Bronto UI,
-Bronto Annotations and Bronto Layout. English is primary; selected prompts use
-Italian and Spanish. These prompts define a repeatable sample, not a measure
-of overall market visibility.
+discovery prompts: 6 for Sense6 and 6 for Bronto packages (2 per package).
+Sense6 cases cover general discovery, reaction time without an account,
+the `tetrachromacy-limits` prompt, hearing/device limits, Italian and Spanish.
+The 3 branded controls cover Sense6, Zeno Trevisan/Ponchia and the
+`brontolotto.observer` portfolio, and the responsibilities of all 3 packages.
+Package discovery prompts also score the portfolio target, so citations and
+links to both requested websites remain measurable. English is primary, with
+selected Italian and Spanish cases. Suite version `1.1.0` defines a curated
+sample, not a market-share estimate or a measure of overall market visibility.
 
 ## Prepare a session
 
