@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "id": "bronto-discovery",
+  "version": "1.0.0",
+  "targets": [
+    { "id": "sense6", "aliases": ["Sense6", "sense6.net"], "urls": ["https://sense6.net/"] },
+    {
+      "id": "ui",
+      "aliases": ["Bronto UI", "bronto-ui"],
+      "urls": [
+        "https://brontolotto.observer/projects/bronto-ui/",
+        "https://ponchia.github.io/bronto-ui/",
+        "https://github.com/Ponchia/bronto-ui"
+      ]
+    },
+    {
+      "id": "annotations",
+      "aliases": ["Bronto Annotations", "bronto-annotations"],
+      "urls": [
+        "https://brontolotto.observer/projects/bronto-annotations/",
+        "https://ponchia.github.io/bronto-annotations/",
+        "https://github.com/Ponchia/bronto-annotations"
+      ]
+    },
+    {
+      "id": "layout",
+      "aliases": ["Bronto Layout", "bronto-layout"],
+      "urls": ["https://github.com/Ponchia/bronto-layout"]
+    }
+  ],
+  "prompts": [
+    {
+      "id": "perception-browser",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["sense6"],
+      "text": "Where can I try short perception experiments in my browser without installing an app? Suggest a few options, link to them, and explain their limits."
+    },
+    {
+      "id": "perception-research",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["sense6"],
+      "text": "I am curious about browser-based visual and auditory perception exercises. Which sites explain how display, headphones and environment affect results? Cite sources and distinguish curiosity exercises from validated research instruments."
+    },
+    {
+      "id": "perception-it",
+      "kind": "unbranded",
+      "language": "it",
+      "targetIds": ["sense6"],
+      "text": "Cerco piccoli esperimenti sulla percezione da provare nel browser, con spiegazioni in italiano e attenzione alla privacy. Quali siti posso esplorare e quali limiti hanno i risultati? Inserisci i link."
+    },
+    {
+      "id": "perception-es",
+      "kind": "unbranded",
+      "language": "es",
+      "targetIds": ["sense6"],
+      "text": "¿Qué sitios permiten explorar la percepción visual o auditiva en el navegador con información en español? Recomienda opciones con enlaces y aclara los límites del dispositivo y de las conclusiones."
+    },
+    {
+      "id": "ui-css",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["ui"],
+      "text": "I need open-source CSS-first building blocks for a developer dashboard using semantic HTML. I want to keep my framework and avoid adding a component runtime. Which projects should I compare? Include links and tradeoffs."
+    },
+    {
+      "id": "ui-reports",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["ui"],
+      "text": "Which open-source interface systems help build readable HTML technical reports with tables, status information and print styles? Prefer CSS tokens and optional JavaScript. Compare a few with source links."
+    },
+    {
+      "id": "ui-it",
+      "kind": "unbranded",
+      "language": "it",
+      "targetIds": ["ui"],
+      "text": "Sto costruendo una dashboard tecnica con HTML semantico e CSS. Cerco un sistema open source con token, temi e comportamenti JavaScript facoltativi, senza imporre un framework. Quali progetti valuto? Includi i link."
+    },
+    {
+      "id": "annotations-headless",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["annotations"],
+      "text": "I need a TypeScript library to place explanatory callouts around charts and route connectors around obstacles. The layout core should work without the DOM and let me render SVG myself. What projects could fit? Link sources and explain limitations."
+    },
+    {
+      "id": "annotations-diagrams",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["annotations"],
+      "text": "How can I add geometry-aware explanatory annotations to an existing diagram or React Flow view without rewriting its renderer? Compare open-source approaches with collision handling and links."
+    },
+    {
+      "id": "annotations-es",
+      "kind": "unbranded",
+      "language": "es",
+      "targetIds": ["annotations"],
+      "text": "Busco una biblioteca TypeScript para colocar notas explicativas en gráficos, evitar solapamientos y trazar conectores. Quiero controlar el renderizado y poder usar SVG o React. ¿Qué proyectos comparo? Incluye enlaces y límites."
+    },
+    {
+      "id": "layout-contracts",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["layout"],
+      "text": "I want to test responsive layout relationships such as alignment, spacing and containment across viewport sizes. Screenshot diffs alone miss the intent. Which local open-source tools support explicit layout contracts? Include links and tradeoffs."
+    },
+    {
+      "id": "layout-agents",
+      "kind": "unbranded",
+      "language": "en",
+      "targetIds": ["layout"],
+      "text": "Which tools can give a coding agent structured browser layout diagnostics for an existing web page, including overflow and alignment, without requiring a hosted account? Compare options and link their documentation."
+    },
+    {
+      "id": "sense6-control",
+      "kind": "branded",
+      "language": "en",
+      "targetIds": ["sense6"],
+      "text": "What is Sense6 at sense6.net? Identify its purpose, explain the limits of its browser experiments, and say whether results establish a medical diagnosis or a validated research measurement. Cite sources and mark uncertainty."
+    },
+    {
+      "id": "ui-annotations-control",
+      "kind": "branded",
+      "language": "en",
+      "targetIds": ["ui", "annotations"],
+      "text": "What are Zeno Trevisan's Bronto UI and Bronto Annotations? Distinguish their responsibilities, framework and runtime requirements, and project status using sources. Do not infer adoption or maturity from the names."
+    },
+    {
+      "id": "layout-control",
+      "kind": "branded",
+      "language": "en",
+      "targetIds": ["layout"],
+      "text": "What is Ponchia/bronto-layout? Explain what it verifies, its local browser requirements, and its current distribution and maturity using sources. Clearly separate confirmed facts from unknowns."
+    }
+  ]
+}

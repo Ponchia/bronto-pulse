@@ -1,0 +1,10 @@
+{
+  "id": "replace-with-session-id",
+  "provider": "replace-with-provider",
+  "product": "replace-with-product-and-interface",
+  "model": "replace-with-displayed-model-or-unknown",
+  "date": "2026-10-23",
+  "searchMode": "unknown",
+  "context": "fresh",
+  "repeats": 1
+}

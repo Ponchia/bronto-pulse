@@ -21,16 +21,20 @@ export function credentialStatus(
     c.tokenEnv && env[c.tokenEnv]
       ? 'token'
       : c.provider === 'gsc'
-        ? 'oauth-refresh'
+        ? c.serviceAccountJsonEnv
+          ? 'service-account'
+          : 'oauth-refresh'
         : c.provider === 'github' && c.appIdEnv
           ? 'github-app'
           : 'token';
   const names =
     method === 'token'
       ? [c.tokenEnv]
-      : method === 'oauth-refresh'
-        ? [c.clientIdEnv, c.clientSecretEnv, c.refreshTokenEnv]
-        : [c.appIdEnv, c.privateKeyEnv, c.installationIdEnv];
+      : method === 'service-account'
+        ? [c.serviceAccountJsonEnv]
+        : method === 'oauth-refresh'
+          ? [c.clientIdEnv, c.clientSecretEnv, c.refreshTokenEnv]
+          : [c.appIdEnv, c.privateKeyEnv, c.installationIdEnv];
   const missing = names.filter((n) => !n || !env[n]).map((n) => n ?? '(not configured)');
   return { available: missing.length === 0, method, missing };
 }
@@ -71,6 +75,63 @@ export async function githubAppJwt(appId: string, pem: string, now: Date): Promi
   const signed = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, encoder.encode(message));
   return message + '.' + b64url(new Uint8Array(signed));
 }
+/** Only the signing identity/key are read; supplied token_uri, scopes and delegation are ignored. */
+export async function googleServiceAccountJwt(raw: string, now: Date): Promise<string> {
+  try {
+    if (raw.length > 32768) throw new Error();
+    const data = JSON.parse(raw);
+    if (
+      !data ||
+      data.type !== 'service_account' ||
+      typeof data.client_email !== 'string' ||
+      data.client_email !== data.client_email.trim() ||
+      data.client_email.includes('..') ||
+      !/^[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9-]*\.iam\.gserviceaccount\.com$/i.test(
+        data.client_email,
+      ) ||
+      data.client_email.length > 254 ||
+      typeof data.private_key !== 'string' ||
+      !/^-----BEGIN PRIVATE KEY-----\s+[A-Za-z0-9+/=\s]+-----END PRIVATE KEY-----\s*$/.test(
+        data.private_key,
+      )
+    )
+      throw new Error();
+    const bytes = Uint8Array.from(
+      atob(data.private_key.replace(/-----[^-]+-----/g, '').replace(/\s/g, '')),
+      (c) => c.charCodeAt(0),
+    );
+    const key = await crypto.subtle.importKey(
+      'pkcs8',
+      bytes,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    if ((key.algorithm as RsaKeyAlgorithm).modulusLength < 2048) throw new Error();
+    const time = Math.floor(now.getTime() / 1000);
+    const message =
+      b64url(encoder.encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))) +
+      '.' +
+      b64url(
+        encoder.encode(
+          JSON.stringify({
+            iss: data.client_email,
+            scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+            aud: 'https://oauth2.googleapis.com/token',
+            iat: time,
+            exp: time + 3600,
+          }),
+        ),
+      );
+    const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, encoder.encode(message));
+    return message + '.' + b64url(new Uint8Array(signature));
+  } catch {
+    throw new PulseError(
+      'AUTH',
+      'Google service-account JSON, signing identity or PKCS8 RSA key is invalid.',
+    );
+  }
+}
 export class Credentials {
   private readonly cache = new Map<string, { value: string; expires: number }>();
   constructor(
@@ -85,12 +146,22 @@ export class Credentials {
     const cached = this.cache.get(c.id);
     if (cached && cached.expires > this.now().getTime() + 60000) return cached.value;
     if (c.provider === 'gsc') {
-      const body = new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: required(this.env, c.clientIdEnv),
-        client_secret: required(this.env, c.clientSecretEnv),
-        refresh_token: required(this.env, c.refreshTokenEnv),
-      });
+      const body = new URLSearchParams(
+        c.serviceAccountJsonEnv
+          ? {
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion: await googleServiceAccountJwt(
+                required(this.env, c.serviceAccountJsonEnv),
+                this.now(),
+              ),
+            }
+          : {
+              grant_type: 'refresh_token',
+              client_id: required(this.env, c.clientIdEnv),
+              client_secret: required(this.env, c.clientSecretEnv),
+              refresh_token: required(this.env, c.refreshTokenEnv),
+            },
+      );
       const data = object(
         await this.http.json('https://oauth2.googleapis.com/token', {
           method: 'POST',
@@ -99,7 +170,16 @@ export class Credentials {
         }),
       );
       const value = text(data.access_token, 'Google access token', 8192);
-      const lifetime = typeof data.expires_in === 'number' ? Math.min(data.expires_in, 3600) : 3600;
+      const lifetime =
+        data.expires_in === undefined
+          ? 3600
+          : typeof data.expires_in === 'number' &&
+              Number.isFinite(data.expires_in) &&
+              data.expires_in > 0
+            ? Math.min(data.expires_in, 3600)
+            : 0;
+      if (!value || lifetime === 0)
+        throw new PulseError('AUTH', 'Google returned an invalid token lifetime or access token.');
       this.cache.set(c.id, { value, expires: this.now().getTime() + lifetime * 1000 });
       return value;
     }

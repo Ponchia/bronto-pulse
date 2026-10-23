@@ -19,6 +19,7 @@ import { days, range, type DateRange, day, dateInZone } from '../time.js';
 import { validateCollected } from '../validation.js';
 import type { SqlDriver, Statement } from './driver.js';
 import { SCHEMA } from './schema.js';
+import { validateInspection, type Inspection } from '../inspection.js';
 
 type Row = Record<string, unknown>;
 export interface Archive {
@@ -31,6 +32,7 @@ export interface Archive {
   partitions: Row[];
   observations: Row[];
   annotations: Row[];
+  inspections?: Row[];
 }
 const json = (v: unknown) => JSON.stringify(v);
 async function digest(value: string): Promise<string> {
@@ -122,7 +124,14 @@ export class Store {
     const previous = await this.getConfig();
     if (previous && previous.demo !== config.demo)
       throw new PulseError('CONFLICT', 'Synthetic and live data must use separate databases.');
-    if (previous && (await this.driver.all({ sql: 'SELECT day FROM partitions LIMIT 1' })).length) {
+    if (
+      previous &&
+      (
+        await this.driver.all({
+          sql: 'SELECT day FROM partitions UNION ALL SELECT inspected_at FROM url_inspections LIMIT 1',
+        })
+      ).length
+    ) {
       assertHistoricalMappings(previous, config, dateInZone(now));
       for (const old of previous.resources) {
         const updated = config.resources.find((r) => r.id === old.id);
@@ -435,6 +444,36 @@ export class Store {
       },
     ]);
   }
+  /** Append normalized attempts atomically. Failed/unknown attempts never overwrite successes. */
+  async addInspections(input: Inspection[]): Promise<void> {
+    invariant(input.length > 0 && input.length <= 20, 'Invalid inspection write budget.');
+    const config = await this.getConfig();
+    invariant(config, 'Register configuration before storing inspections.');
+    const rows = input.map((row) => {
+      const resource = config.resources.find((r) => r.id === row.resourceId);
+      invariant(resource, 'Unknown inspection resource.');
+      return validateInspection(row, resource);
+    });
+    await this.driver.batch(
+      rows.map((row) => ({
+        sql: 'INSERT INTO url_inspections(id,resource_id,url,inspected_at,result_json) VALUES(?,?,?,?,?)',
+        params: [row.id, row.resourceId, row.url, row.inspectedAt, json(row)],
+      })),
+    );
+  }
+  async inspections(resourceId: string, window: DateRange): Promise<Inspection[]> {
+    range(window.from, window.to, 3660);
+    const rows = await this.driver.all({
+      sql: 'SELECT result_json FROM url_inspections WHERE resource_id=? AND substr(inspected_at,1,10)>=? AND substr(inspected_at,1,10)<=? ORDER BY inspected_at DESC,id LIMIT 10001',
+      params: [resourceId, window.from, window.to],
+    });
+    if (rows.length > 10000)
+      throw new PulseError(
+        'ROW_LIMIT',
+        'Inspection report budget exceeded. Narrow the date range.',
+      );
+    return rows.map((row) => JSON.parse(String(row.result_json)) as Inspection);
+  }
   async export(maxRows = 100000): Promise<Archive> {
     invariant(
       Number.isSafeInteger(maxRows) && maxRows > 0 && maxRows <= 100000,
@@ -450,6 +489,7 @@ export class Store {
       partitions = [],
       observations = [],
       annotations = [],
+      inspections = [],
     ] = await this.driver.readBatch([
       { sql: 'SELECT key FROM leases WHERE expires_at>unixepoch()*1000' },
       { sql: "SELECT value FROM metadata WHERE key='config'" },
@@ -460,12 +500,13 @@ export class Store {
       { sql: 'SELECT * FROM partitions' },
       { sql: RAW_OBS_SELECT + ' LIMIT ?', params: [maxRows + 1] },
       { sql: 'SELECT * FROM annotations' },
+      { sql: 'SELECT * FROM url_inspections LIMIT ?', params: [maxRows + 1] },
     ]);
     if (locks.length)
       throw new PulseError('CONFLICT', 'Wait for active collection jobs before exporting.');
     if (!configRows[0]) throw new PulseError('CONFIG', 'No configuration is registered.');
     const config = parseConfig(JSON.parse(String(configRows[0].value)));
-    if (observations.length > maxRows)
+    if (observations.length > maxRows || inspections.length > maxRows)
       throw new PulseError(
         'ROW_LIMIT',
         'Export exceeds the bounded row limit. Use an encrypted database backup for a larger installation.',
@@ -482,12 +523,18 @@ export class Store {
       partitions,
       observations,
       annotations,
+      inspections,
     };
   }
   async import(input: unknown): Promise<void> {
     const a = input as Archive;
     invariant(a && a.format === 'bronto-pulse' && a.version === 1, 'Unsupported archive format.');
     const config = parseConfig(a.config);
+    const inspections = a.inspections === undefined ? [] : a.inspections;
+    invariant(
+      Array.isArray(inspections) && inspections.length <= 100000,
+      'Invalid archived inspection budget.',
+    );
     for (const key of ['resources', 'runs', 'partitions', 'observations', 'annotations'] as const)
       invariant(
         Array.isArray(a[key]) && a[key].length <= 100000,
@@ -554,6 +601,19 @@ export class Store {
           'Unsafe archived annotation URL.',
         );
       }
+    }
+
+    for (const row of inspections) {
+      const resource = config.resources.find((r) => r.id === row.resource_id);
+      invariant(
+        resource && typeof row.result_json === 'string',
+        'Invalid archived inspection reference.',
+      );
+      const result = validateInspection(JSON.parse(row.result_json), resource);
+      invariant(
+        result.id === row.id && result.url === row.url && result.inspectedAt === row.inspected_at,
+        'Archived inspection key mismatch.',
+      );
     }
 
     for (const r of a.runs) {
@@ -631,6 +691,7 @@ export class Store {
       ['observations', a.observations, OBS_FIELDS],
       ['partitions', a.partitions, ['resource_id', 'group_id', 'day', 'run_id']],
       ['annotations', a.annotations, ['id', 'resource_id', 'date', 'title', 'url', 'kind']],
+      ['url_inspections', inspections, ['id', 'resource_id', 'url', 'inspected_at', 'result_json']],
     ];
     for (const [table, rows, fields] of tables) {
       for (let i = 0; i < rows.length; i += 100) {

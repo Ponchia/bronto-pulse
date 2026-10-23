@@ -17,6 +17,7 @@ export interface WorkerEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REFRESH_TOKEN?: string;
+  GSC_SERVICE_ACCOUNT_JSON?: string;
   PULSE_MAX_JOBS?: string;
   PULSE_PROVIDER?: string;
 }
