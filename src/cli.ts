@@ -16,6 +16,8 @@ import { dateInZone, reportRange } from './time.js';
 import { planCollection, markdownPlan } from './plan.js';
 import { projectBrief, markdownBrief } from './brief.js';
 import { csvReport } from './report-export.js';
+import { visibilityCli, privateJson } from './visibility-cli.js';
+import { inspectUrls } from './inspection.js';
 
 const HELP = `Bronto Pulse 0.1.0 — private project analytics, not a visitor tracker
 
@@ -25,6 +27,8 @@ pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or 
 pulse sync [--provider github]       Collect bounded source windows; --dry-run previews
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
 pulse probe                          Read-only provider capability and permission checks
+pulse inspect --resource ID --input FILE  Inspect an explicit JSON list of 1–20 GSC URLs
+pulse visibility template|report|promptfoo  Offline benchmark; --suite FILE, --session FILE or --input FILE
 pulse doctor                         Check coverage, freshness and credential availability
 pulse report PROJECT [--days 30]      Source-aware report; --format json|markdown|csv
 pulse brief [PROJECT]                Evidence-based summary; omitting ID covers portfolio
@@ -78,6 +82,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       format: { type: 'string' },
       out: { type: 'string' },
       input: { type: 'string' },
+      suite: { type: 'string' },
+      session: { type: 'string' },
       port: { type: 'string' },
       title: { type: 'string' },
       date: { type: 'string' },
@@ -113,6 +119,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     'compact',
     'serve',
     'demo',
+    'inspect',
+    'visibility',
   ]);
   if (!known.has(command)) throw new PulseError('CONFIG', 'Unknown command. Run pulse --help.');
   if (v.format && !['json', 'markdown', 'csv'].includes(v.format))
@@ -159,8 +167,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           )
         : undefined,
   });
-  if (v.out && !['report', 'brief', 'export'].includes(command))
-    throw new PulseError('CONFIG', '--out applies to report, brief or export.');
+  if (v.out && !['report', 'brief', 'export', 'inspect', 'visibility'].includes(command))
+    throw new PulseError(
+      'CONFIG',
+      '--out applies to report, brief, export, inspect or visibility.',
+    );
+  if (command === 'visibility') return visibilityCli(positionals[1], v);
   const configPath = resolve(v.config ?? 'pulse.config.json');
   if (command === 'probe') {
     const config = await configFrom(configPath);
@@ -237,6 +249,20 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
     } else config = await configFrom(configPath);
     await store.register(config);
+    if (command === 'inspect') {
+      if (!v.resource)
+        throw new PulseError('CONFIG', 'Inspection requires --resource ID and --input FILE.');
+      const input = await privateJson(v.input, 65536);
+      if (!Array.isArray(input) || input.some((url) => typeof url !== 'string'))
+        throw new PulseError('CONFIG', 'Inspection input must be a JSON array of URL strings.');
+      const results = await inspectUrls(config, v.resource, input, process.env);
+      await store.addInspections(results);
+      const output =
+        JSON.stringify({ schemaVersion: 1, resourceId: v.resource, results }, null, 2) + '\n';
+      if (v.out) await writeFile(v.out, output, { flag: 'wx', mode: 0o600 });
+      else console.log(output);
+      return results.some((row) => row.status !== 'observed') ? 2 : 0;
+    }
     const today = dateInZone(now),
       period = reportRange({ from: v.from, to: v.to, days: numeric(v.days, 30) }, now);
     const emit = async (value: unknown, text: string, format = 'markdown') => {

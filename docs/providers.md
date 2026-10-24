@@ -72,6 +72,23 @@ OAuth app left in Testing can lose refresh access after seven days; configure
 the Google app's publishing/consent state deliberately. Credentials are never
 requested through the browser reporting UI.
 
+For a service account, set `serviceAccountJsonEnv` to the environment variable
+containing its JSON credential. For example, a connection can contain
+`{"id":"search","provider":"gsc","serviceAccountJsonEnv":"GSC_SERVICE_ACCOUNT_JSON"}`.
+Grant that service-account identity access to the selected Search Console
+property separately; possessing a key does not grant property access. Keep the
+JSON in your secret manager and inject it into the process environment.
+
+Pulse validates the service-account type, signing email and PKCS8 RSA key
+without a password. It signs an RS256 assertion with WebCrypto, requests only
+`webmasters.readonly`, and exchanges it at the fixed
+`https://oauth2.googleapis.com/token` endpoint. Supplied `token_uri`, scope and
+delegation fields do not alter the request. Access tokens are cached in memory
+with a one-minute expiry margin. Choose service-account JSON or refresh OAuth
+per connection; a populated `tokenEnv` still takes precedence over both.
+Credential availability checks establish presence only. Synthetic auth tests
+do not establish live property access or longevity.
+
 Totals, canonical pages and optional queries remain separate groups. Pacific
 source dates are preserved. Incomplete recent dates are provisional. Pagination
 is bounded and does not make Google's internally limited rows exhaustive.
@@ -79,7 +96,40 @@ Queries are disabled unless `collectQueries` is true. Page URLs have query
 strings and fragments removed. No search term is logged in an operational error.
 
 Sources: [Search Analytics query](https://developers.google.com/webmaster-tools/v1/searchanalytics/query),
-[OAuth expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
+[OAuth expiration](https://developers.google.com/identity/protocols/oauth2#expiration),
+[service-account exchange](https://developers.google.com/identity/protocols/oauth2/service-account).
+
+### Explicit URL inspection
+
+Create a private JSON array of 1–20 HTTPS URLs and run:
+
+```sh
+pulse inspect --resource search --input /private/urls.json --out /private/inspections.json
+pulse report PROJECT --days 30 --format json --out /private/report.json
+```
+
+Every URL must belong to the configured GSC property. URL-prefix properties
+require the exact origin and a path segment match; domain properties allow
+the domain and its subdomains. Credentials, nonstandard ports, queries,
+fragments and encoded path separators are refused. No sitemap is fetched or
+expanded. This command makes explicit read-only API requests and appends
+normalized attempts to the existing private database.
+
+Inspections retain the attempt timestamp, verdict, coverage state, declared
+and Google canonicals, last crawl and sitemap association. Missing fields are
+null. An unknown result or error never becomes zero or `indexed: false`.
+Failed attempts remain separate from prior successful records. The command
+returns exit 2 if any attempt is unknown or failed. JSON and Markdown project
+reports include inspection history under the applicable date and page scopes;
+CSV remains a numeric metric-card export. Database exports include inspections
+and import accepts older archives without them. Existing D1 installations need
+the additive `0002_url_inspections.sql` migration before inspecting or reporting
+with this version; local Store migration applies it idempotently.
+
+The only added endpoint is the exact read-only
+`POST https://searchconsole.googleapis.com/v1/urlInspection/index:inspect`.
+It reports Google's indexed view, not a live-page test, and submits nothing
+for indexing. See [Google's inspection reference](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect).
 
 ## Sense6 optional counters
 

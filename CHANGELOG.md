@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Integrate bounded read-only Search Console URL inspection, service-account
+  support and offline visibility benchmarks with Free-profile execution and
+  owner-verified Access authentication. Require the additive inspection migration
+  before starting a Free-profile Worker; no provider grant or model traffic is
+  created by the source changes.
+
 - Add explicit owner-only Cloudflare Access authentication with signed JWT
   verification, issuer/audience/hostname pinning and a bounded cached key set.
 - Preserve token authentication by default; Access mode rejects spoofed identity

@@ -1,5 +1,6 @@
 /** SQLite-compatible schema shared by the local and D1 drivers. No provider payload table. */
-export const SCHEMA = [
+export const INSPECTION_SCHEMA = `CREATE TABLE IF NOT EXISTS url_inspections (id TEXT PRIMARY KEY,resource_id TEXT NOT NULL,url TEXT NOT NULL,inspected_at TEXT NOT NULL,result_json TEXT NOT NULL,FOREIGN KEY(resource_id) REFERENCES resources(id))`;
+export const INITIAL_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS resources (id TEXT PRIMARY KEY, provider TEXT NOT NULL, identity TEXT NOT NULL, provider_identity TEXT, config_json TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS config_versions (hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, config_json TEXT NOT NULL)`,
@@ -12,3 +13,4 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS annotations (id TEXT PRIMARY KEY,resource_id TEXT NOT NULL,date TEXT NOT NULL,title TEXT NOT NULL,url TEXT,kind TEXT NOT NULL CHECK(kind IN ('release','note')))`,
   `INSERT OR IGNORE INTO metadata(key,value) VALUES('schema_version','1')`,
 ];
+export const SCHEMA = [...INITIAL_SCHEMA, INSPECTION_SCHEMA];

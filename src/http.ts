@@ -7,6 +7,7 @@ const ORIGINS = new Set([
   'https://api.cloudflare.com',
   'https://www.googleapis.com',
   'https://oauth2.googleapis.com',
+  'https://searchconsole.googleapis.com',
 ]);
 /** Report only fixed, operator-actionable transport categories. Never persist upstream
  * exception messages: runtime exceptions may contain URLs or credentials. */
@@ -36,6 +37,14 @@ export class HttpClient {
     const target = new URL(url);
     if (!ORIGINS.has(target.origin) || target.username || target.password)
       throw new PulseError('CONFIG', 'Provider request origin is not permitted.');
+    if (
+      target.origin === 'https://searchconsole.googleapis.com' &&
+      (target.pathname !== '/v1/urlInspection/index:inspect' ||
+        target.search ||
+        target.hash ||
+        init.method !== 'POST')
+    )
+      throw new PulseError('CONFIG', 'Only the read-only URL inspection endpoint is permitted.');
     const failures: string[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
       if (++this.requests > this.maximumRequests)

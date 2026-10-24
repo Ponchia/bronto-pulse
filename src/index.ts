@@ -15,3 +15,15 @@ export { csvReport } from './report-export.js';
 export { planCollection, markdownPlan } from './plan.js';
 export type { Brief, Finding } from './brief.js';
 export type { CollectionPlan, PlannedJob } from './plan.js';
+export { inspectUrls, inspectionUrl } from './inspection.js';
+export type { Inspection } from './inspection.js';
+export {
+  parseVisibilitySuite,
+  parseVisibilityRuns,
+  promptHash,
+  visibilityTemplate,
+  visibilityReport,
+  promptfooConfig,
+  targetUrlMatches,
+} from './visibility.js';
+export type { VisibilitySuite, VisibilityRuns, VisibilitySession } from './visibility.js';

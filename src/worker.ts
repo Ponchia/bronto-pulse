@@ -18,6 +18,7 @@ export interface WorkerEnv extends AccessEnvironment {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REFRESH_TOKEN?: string;
+  GSC_SERVICE_ACCOUNT_JSON?: string;
   PULSE_MAX_JOBS?: string;
   PULSE_PROVIDER?: string;
   PULSE_EXECUTION_PROFILE?: string;
@@ -49,7 +50,14 @@ async function context(env: WorkerEnv) {
     const store = new Store(new D1Driver(env.DB));
     if (env.PULSE_EXECUTION_PROFILE === 'free') {
       // Provision schema once through migrations rather than on every cold start.
-      if ((await store.getSetting('schema_version')) !== '1')
+      if (
+        (await store.getSetting('schema_version')) !== '1' ||
+        !(
+          await store.driver.all({
+            sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='url_inspections'",
+          })
+        ).length
+      )
         throw new PulseError(
           'SCHEMA',
           'Apply supported database migrations before enabling the Free profile.',
