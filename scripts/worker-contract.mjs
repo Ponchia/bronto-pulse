@@ -134,6 +134,15 @@ try {
   assert.equal(wrongSchema.requests, 0);
   assert.equal(wrongSchema.code, 'SCHEMA');
   await db.prepare("UPDATE metadata SET value='1' WHERE key='schema_version'").run();
+  const inspectionSchema = await db
+    .prepare("SELECT sql FROM sqlite_master WHERE name='url_inspections'")
+    .first();
+  await db.prepare('DROP TABLE url_inspections').run();
+  const missingInspection = await run('free');
+  assert.equal(missingInspection.ok, false);
+  assert.equal(missingInspection.requests, 0);
+  assert.equal(missingInspection.code, 'SCHEMA');
+  await db.prepare(inspectionSchema.sql).run();
   assert.deepEqual(await run('free'), { ok: true, requests: 1 });
   console.log(
     'WORKER CONTRACT PASSED: native Request, provider parsing, scheduled failure, redirect refusal, private errors, D1 publication, preserved history, released leases and recovery.',

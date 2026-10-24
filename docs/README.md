@@ -12,6 +12,7 @@ Lifecycle: current
 | [Architecture](architecture.md)                      | Data flow, transaction model, portable boundaries       |
 | [Metric contracts](metrics.md)                       | Aggregation semantics, attribution, coverage            |
 | [Providers](providers.md)                            | API permissions, configuration and limitations          |
+| [AI visibility](visibility.md)                       | Offline prompts and private evidence                    |
 | [Deployment](deployment.md)                          | Local, container and Cloudflare Workers/D1              |
 | [API](api.md)                                        | Read-only endpoint and agent interface                  |
 | [Operations](operations.md)                          | Repair, backup, restore, retention, rollback            |

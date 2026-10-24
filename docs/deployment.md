@@ -147,3 +147,13 @@ key-service failure never switches to anonymous or bearer access. Keep the defau
 and the Workers Free CPU limits still require installation validation.
 
 Reference: [Cloudflare's JWT validation contract](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/).
+
+### Additive search-monitoring migration
+
+Before deploying a Free-profile Worker with URL-inspection reporting, apply
+`migrations/0002_url_inspections.sql` to the intended D1 database after taking a
+backup. The initial migration is unchanged. The Free profile verifies that both
+the supported base schema and the additive inspection table exist before any
+collection or private reporting initialization. Merging source does not grant
+Search Console access or start inspections; the inspection CLI still requires an
+explicit bounded URL list and a read-only provider credential.

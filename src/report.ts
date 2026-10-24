@@ -68,6 +68,7 @@ export interface ProjectReport {
     quality: Quality;
   }[];
   annotations: Awaited<ReturnType<Store['annotations']>>;
+  inspections: Awaited<ReturnType<Store['inspections']>>;
   warnings: string[];
 }
 function allowed(o: StoredObservation, b: Binding): boolean {
@@ -281,8 +282,22 @@ export async function projectReport(
     breakdowns: ProjectReport['breakdowns'] = [],
     warnings: string[] = [];
   const cache = new Map<string, StoredObservation[]>();
+  const inspections = new Map<string, ProjectReport['inspections'][number]>();
   for (const binding of project.resources) {
     const resource = config.resources.find((r) => r.id === binding.resource)!;
+    if (resource.provider === 'gsc') {
+      for (const row of await store.inspections(resource.id, window)) {
+        const url = new URL(row.url),
+          date = row.inspectedAt.slice(0, 10);
+        if (
+          (!binding.effectiveFrom || date >= binding.effectiveFrom) &&
+          (!binding.effectiveTo || date <= binding.effectiveTo) &&
+          (!binding.scope?.hostname || binding.scope.hostname === url.hostname) &&
+          (!binding.scope?.pathPrefix || pathMatches(url.pathname, binding.scope.pathPrefix))
+        )
+          inspections.set(row.id, row);
+      }
+    }
     if (!resource.enabled) {
       warnings.push(`${resource.id}: collection is disabled; retained history remains available.`);
     }
@@ -430,6 +445,7 @@ export async function projectReport(
     demo: config.demo,
     cards,
     breakdowns,
+    inspections: [...inspections.values()],
     annotations: await store.annotations(
       [...new Set(project.resources.map((x) => x.resource))],
       window,
@@ -476,6 +492,36 @@ export function markdownReport(report: ProjectReport): string {
   }
   if (report.warnings.length)
     lines.push('', '## Data quality', ...report.warnings.map((x) => `- ${x}`));
+  if (report.inspections.length) {
+    lines.push(
+      '',
+      '## URL inspections',
+      '',
+      'Read-only indexed view; missing fields remain unknown. No index submission or live-page test.',
+      '',
+      '| URL | Inspected at (UTC) | Status | Verdict | Coverage | Declared canonical | Google canonical | Last crawl | Sitemaps | Error |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    );
+    for (const row of report.inspections)
+      lines.push(
+        '| ' +
+          [
+            row.url,
+            row.inspectedAt,
+            row.status,
+            row.verdict,
+            row.coverageState,
+            row.declaredCanonical,
+            row.googleCanonical,
+            row.lastCrawlTime,
+            row.sitemaps?.join(', '),
+            row.errorCode,
+          ]
+            .map((value) => (value ?? 'Unknown').replaceAll('|', '\\|').replace(/[\r\n]/g, ' '))
+            .join(' | ') +
+          ' |',
+      );
+  }
   lines.push('', 'No individual journeys or causal conversions are inferred.');
   return lines.join('\n');
 }

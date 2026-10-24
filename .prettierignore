@@ -6,6 +6,6 @@ artifacts/
 coverage/
 playwright-report/
 test-results/
-schemas/config.schema.json
+schemas/*.schema.json
 migrations/*.sql
 package-lock.json

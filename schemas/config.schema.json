@@ -49,6 +49,10 @@
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
           },
+          "serviceAccountJsonEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          },
           "appIdEnv": {
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]{0,127}$"

@@ -21,6 +21,7 @@ const connection = z
     clientIdEnv: envName.optional(),
     clientSecretEnv: envName.optional(),
     refreshTokenEnv: envName.optional(),
+    serviceAccountJsonEnv: envName.optional(),
     appIdEnv: envName.optional(),
     privateKeyEnv: envName.optional(),
     installationIdEnv: envName.optional(),
@@ -190,6 +191,18 @@ export function parseConfig(input: unknown): Config {
           .join('; '),
     );
   const c = result.data;
+  for (const conn of c.connections) {
+    if (conn.serviceAccountJsonEnv && conn.provider !== 'gsc')
+      throw new PulseError('CONFIG', 'Service-account JSON authentication requires GSC.');
+    if (
+      conn.serviceAccountJsonEnv &&
+      (conn.clientIdEnv || conn.clientSecretEnv || conn.refreshTokenEnv)
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Choose service-account JSON or refresh OAuth for a GSC connection.',
+      );
+  }
   for (const list of [c.connections, c.resources, c.projects]) {
     const ids = list.map((x) => x.id);
     if (new Set(ids).size !== ids.length)

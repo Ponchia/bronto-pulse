@@ -6,6 +6,7 @@ import { fixture, publish, sample, window, now } from '../tests/helpers.js';
 import { projectReport } from '../src/report.js';
 import { doctor } from '../src/sync.js';
 import { projectBrief } from '../src/brief.js';
+import { parseConfig } from '../src/config.js';
 // Wrangler installs Miniflare for local Workers; this tests the actual D1 binding.
 const require = createRequire(import.meta.url);
 const { Miniflare } = require('miniflare');
@@ -37,8 +38,40 @@ try {
   const db = await mf.getD1Database('DB', 'pulse');
   const store = new Store(new D1Driver(db));
   await store.migrate();
-  const config = fixture();
+  const base = fixture();
+  const config = parseConfig({
+    ...base,
+    connections: [...base.connections, { id: 'search', provider: 'gsc', tokenEnv: 'TEST_TOKEN' }],
+    resources: [
+      ...base.resources,
+      { id: 'search', provider: 'gsc', siteUrl: 'sc-domain:example.invalid', connection: 'search' },
+    ],
+    projects: base.projects.map((p) => ({
+      ...p,
+      resources: [...p.resources, { resource: 'search' }],
+    })),
+  });
   await store.register(config, now);
+  await store.addInspections([
+    {
+      id: crypto.randomUUID(),
+      resourceId: 'search',
+      url: 'https://example.invalid/',
+      inspectedAt: '2026-10-12T12:00:00Z',
+      status: 'observed',
+      verdict: 'PASS',
+      coverageState: 'Synthetic indexed',
+      declaredCanonical: null,
+      googleCanonical: null,
+      lastCrawlTime: null,
+      sitemaps: null,
+      errorCode: null,
+    },
+  ]);
+  assert.equal(
+    (await projectReport(config, store, 'project', window, now)).inspections[0]?.verdict,
+    'PASS',
+  );
   await publish(store, config, [sample('2026-10-12', 9), sample('2026-10-13', 4)]);
   assert.equal(
     (await projectReport(config, store, 'project', window, now)).cards.find(
@@ -68,7 +101,7 @@ try {
     await projectReport(config, store, 'project', window, now),
   );
   console.log(
-    'REAL D1 CONTRACT PASSED: schema, JSON1, fenced publication, correction, replacement, reporting, transactional snapshot, independent recovery.',
+    'REAL D1 CONTRACT PASSED: schema, JSON1, fenced publication, correction, replacement, reporting, normalized URL inspection history, transactional snapshot, independent recovery.',
   );
 } finally {
   await mf.dispose();
