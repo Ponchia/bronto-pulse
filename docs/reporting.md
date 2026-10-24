@@ -63,3 +63,13 @@ reopens that view without storing tokens in browser storage. A failed refresh
 removes the old data from the export action; the UI never offers an old report as
 though the failed new request had succeeded. Collection plans in the browser are
 read-only previews. Actual collection remains an explicit CLI or scheduler action.
+
+## Portfolio read snapshots
+
+Portfolios requiring at most 40 distinct SQL reads use a single transactional
+read batch. The request-local snapshot preserves the existing per-source row
+limits, coverage and inspection rules; it does not cache reports across users
+or requests. Snapshot writes and reads outside the prepared scope are refused.
+Larger portable installations keep the existing per-source read path rather than
+silently omitting sources. This reduces network round trips, not a guarantee of
+Workers Free CPU qualification; deployment CPU must still be observed.

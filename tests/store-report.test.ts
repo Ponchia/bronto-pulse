@@ -5,7 +5,7 @@ import { collected, entry } from '../src/collectors/context.js';
 import { Store } from '../src/storage/store.js';
 import { SqliteDriver } from '../src/storage/sqlite.js';
 import { D1Driver, type D1Prepared } from '../src/storage/driver.js';
-import { projectReport } from '../src/report.js';
+import { projectReport, portfolio } from '../src/report.js';
 import { parseConfig } from '../src/config.js';
 import { sync } from '../src/sync.js';
 
@@ -310,4 +310,43 @@ test('demo and live history can never share a database', async () => {
   } finally {
     s.driver.close?.();
   }
+});
+
+test('small portfolio uses one request-scoped snapshot with identical report content', async () => {
+  const c = fixture();
+  const s = await database(c);
+  try {
+    await publish(s, c, [sample('2026-10-12', 8), sample('2026-10-13', 4)]);
+    const expected = await projectReport(c, s, 'project', window, now);
+    let batches = 0;
+    let singleReads = 0;
+    const counted = new Store({
+      all: async (q) => {
+        singleReads++;
+        return s.driver.all(q);
+      },
+      batch: async () => assert.fail('Portfolio must not write'),
+      readBatch: async (queries) => {
+        batches++;
+        return s.driver.readBatch(queries);
+      },
+    });
+    const result = await portfolio(c, counted, window, now);
+    assert.deepEqual(result.reports, [expected]);
+    assert.equal(batches, 1);
+    assert.equal(singleReads, 0);
+    const snapshot = await s.reportingSnapshot(c, window);
+    await publish(s, c, [sample('2026-10-12', 1)]);
+    assert.deepEqual(await projectReport(c, snapshot, 'project', window, now), expected);
+    await assert.rejects(snapshot.setSetting('unwanted', 'write'), /read-only/);
+    await assert.rejects(snapshot.runs(10, 'outside'), /outside this report/);
+    assert.notDeepEqual(await projectReport(c, s, 'project', window, now), expected);
+  } finally {
+    s.driver.close?.();
+  }
+});
+test('malformed portfolio snapshot results fail closed', async () => {
+  const c = fixture();
+  const s = new Store({ all: async () => [], batch: async () => {}, readBatch: async () => [] });
+  await assert.rejects(portfolio(c, s, window, now), /Incomplete portfolio snapshot/);
 });

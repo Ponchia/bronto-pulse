@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bronto-pulse",
   "main": "src/worker.ts",
+  "minify": true,
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
   "preview_urls": false,

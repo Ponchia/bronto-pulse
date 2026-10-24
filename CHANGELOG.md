@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Batch small-portfolio report reads into one request-scoped SQL snapshot,
+  retaining the same coverage semantics and avoiding repeated D1 round trips.
+
 - Add an explicit private D1 backup helper with bounded exports, verified SQLite
   restore, private gzip archives, safe retention and no off-box custody claims.
 

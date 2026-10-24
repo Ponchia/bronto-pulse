@@ -15,7 +15,7 @@ import {
   type Annotation,
   type Observation,
 } from '../model.js';
-import { days, range, type DateRange, day, dateInZone } from '../time.js';
+import { days, range, type DateRange, day, dateInZone, previous } from '../time.js';
 import { validateCollected } from '../validation.js';
 import type { SqlDriver, Statement } from './driver.js';
 import { SCHEMA } from './schema.js';
@@ -96,6 +96,33 @@ const OBS_FIELDS = [
   'methodology',
 ];
 const RAW_OBS_SELECT = `SELECT o.* FROM observations o JOIN partitions p ON p.run_id=o.run_id AND p.resource_id=o.resource_id AND p.group_id=o.group_id AND p.day=o.partition_day JOIN runs r ON r.id=o.run_id AND r.status='success'`;
+const reportStatements = {
+  observations(resourceId: string, window: DateRange, limit: number): Statement {
+    return {
+      sql: `${RAW_OBS_SELECT.replace('SELECT o.*', 'SELECT o.*,r.started_at')} WHERE o.resource_id=? AND o.partition_day>=? AND o.partition_day<=? ORDER BY o.partition_day,o.metric,o.dimensions_json LIMIT ?`,
+      params: [resourceId, window.from, window.to, limit + 1],
+    };
+  },
+  runs(limit: number, resourceId?: string): Statement {
+    return {
+      sql: `SELECT * FROM runs ${resourceId ? 'WHERE resource_id=?' : ''} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
+      params: resourceId ? [resourceId, limit] : [limit],
+    };
+  },
+  annotations(resourceIds: string[], window: DateRange): Statement {
+    return {
+      sql: 'SELECT * FROM annotations WHERE resource_id IN (SELECT value FROM json_each(?)) AND date>=? AND date<=? ORDER BY date DESC,id',
+      params: [json(resourceIds), window.from, window.to],
+    };
+  },
+  inspections(resourceId: string, window: DateRange): Statement {
+    return {
+      sql: 'SELECT result_json FROM url_inspections WHERE resource_id=? AND substr(inspected_at,1,10)>=? AND substr(inspected_at,1,10)<=? ORDER BY inspected_at DESC,id LIMIT 10001',
+      params: [resourceId, window.from, window.to],
+    };
+  },
+};
+const statementKey = (s: Statement) => JSON.stringify([s.sql, s.params ?? []]);
 export class Store {
   constructor(readonly driver: SqlDriver) {}
   async migrate(): Promise<void> {
@@ -342,21 +369,13 @@ export class Store {
     limit = 100000,
   ): Promise<StoredObservation[]> {
     range(window.from, window.to, 3660);
-    const rows = await this.driver.all({
-      sql: `${RAW_OBS_SELECT.replace('SELECT o.*', 'SELECT o.*,r.started_at')} WHERE o.resource_id=? AND o.partition_day>=? AND o.partition_day<=? ORDER BY o.partition_day,o.metric,o.dimensions_json LIMIT ?`,
-      params: [resourceId, window.from, window.to, limit + 1],
-    });
+    const rows = await this.driver.all(reportStatements.observations(resourceId, window, limit));
     if (rows.length > limit)
       throw new PulseError('ROW_LIMIT', 'Report row budget exceeded. Narrow the date range.');
     return rows.map(observation);
   }
   async runs(limit = 1000, resourceId?: string): Promise<Run[]> {
-    return (
-      await this.driver.all({
-        sql: `SELECT * FROM runs ${resourceId ? 'WHERE resource_id=?' : ''} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
-        params: resourceId ? [resourceId, limit] : [limit],
-      })
-    ).map(run);
+    return (await this.driver.all(reportStatements.runs(limit, resourceId))).map(run);
   }
   /** Latest state per dataset, independent of total historical run volume. */
   async runHeads(): Promise<{ latest: Run[]; successful: Run[] }> {
@@ -405,12 +424,7 @@ export class Store {
   }
   async annotations(resourceIds: string[], window: DateRange): Promise<Annotation[]> {
     if (!resourceIds.length) return [];
-    return (
-      await this.driver.all({
-        sql: 'SELECT * FROM annotations WHERE resource_id IN (SELECT value FROM json_each(?)) AND date>=? AND date<=? ORDER BY date DESC,id',
-        params: [json(resourceIds), window.from, window.to],
-      })
-    ).map((x) => ({
+    return (await this.driver.all(reportStatements.annotations(resourceIds, window))).map((x) => ({
       id: String(x.id),
       resourceId: String(x.resource_id),
       date: String(x.date),
@@ -467,16 +481,55 @@ export class Store {
   }
   async inspections(resourceId: string, window: DateRange): Promise<Inspection[]> {
     range(window.from, window.to, 3660);
-    const rows = await this.driver.all({
-      sql: 'SELECT result_json FROM url_inspections WHERE resource_id=? AND substr(inspected_at,1,10)>=? AND substr(inspected_at,1,10)<=? ORDER BY inspected_at DESC,id LIMIT 10001',
-      params: [resourceId, window.from, window.to],
-    });
+    const rows = await this.driver.all(reportStatements.inspections(resourceId, window));
     if (rows.length > 10000)
       throw new PulseError(
         'ROW_LIMIT',
         'Inspection report budget exceeded. Narrow the date range.',
       );
     return rows.map((row) => JSON.parse(String(row.result_json)) as Inspection);
+  }
+  /** Request-scoped, read-only portfolio snapshot. No state survives the response. */
+  async reportingSnapshot(config: Config, window: DateRange): Promise<Store> {
+    range(window.from, window.to);
+    const observationWindow = { from: previous(window).from, to: window.to };
+    const pending = new Map<string, Statement>();
+    const add = (statement: Statement) => pending.set(statementKey(statement), statement);
+    for (const project of config.projects) {
+      const ids = [...new Set(project.resources.map((binding) => binding.resource))];
+      for (const id of ids) {
+        add(reportStatements.observations(id, observationWindow, 100000));
+        add(reportStatements.runs(100, id));
+        if (config.resources.find((r) => r.id === id)?.provider === 'gsc')
+          add(reportStatements.inspections(id, window));
+      }
+      if (ids.length) add(reportStatements.annotations(ids, window));
+      // Large portable installations keep their existing bounded per-source reads.
+      // A small portfolio uses at most forty SQL reads in a single D1 round trip.
+      if (pending.size > 40) return this;
+    }
+    const statements = [...pending.values()];
+    const results = await this.driver.readBatch(statements);
+    invariant(results.length === statements.length, 'Incomplete portfolio snapshot.');
+    const values = new Map(
+      statements.map((statement, i) => [statementKey(statement), results[i]!]),
+    );
+    const read = (statement: Statement): Row[] => {
+      const rows = values.get(statementKey(statement));
+      if (!rows) throw new PulseError('CONFIG', 'Read is outside this report snapshot.');
+      return rows;
+    };
+    return new Store({
+      async all<T extends Record<string, unknown>>(statement: Statement): Promise<T[]> {
+        return read(statement) as T[];
+      },
+      async readBatch(input: Statement[]) {
+        return input.map(read);
+      },
+      async batch() {
+        throw new PulseError('CONFIG', 'Report snapshots are read-only.');
+      },
+    });
   }
   async export(maxRows = 100000): Promise<Archive> {
     invariant(

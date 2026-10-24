@@ -6,6 +6,7 @@ const { build } = require('esbuild');
 const bundle = await build({
   entryPoints: [new URL('../src/worker.ts', import.meta.url).pathname],
   bundle: true,
+  minify: true,
   write: false,
   format: 'esm',
   platform: 'browser',

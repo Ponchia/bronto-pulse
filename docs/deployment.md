@@ -157,3 +157,11 @@ the supported base schema and the additive inspection table exist before any
 collection or private reporting initialization. Merging source does not grant
 Search Console access or start inspections; the inspection CLI still requires an
 explicit bounded URL list and a read-only provider credential.
+
+### Production bundle and report read costs
+
+Worker builds are minified, and the native collection, Access and aggregate
+contracts exercise minified bundles in workerd. This changes bundle representation,
+not authorization or storage semantics. Small portfolios share a request-local
+read snapshot to avoid repeated D1 round trips. Neither optimization certifies
+CPU limits: inspect per-version production invocation measurements after rollout.
