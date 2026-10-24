@@ -8,6 +8,18 @@ const ORIGINS = new Set([
   'https://www.googleapis.com',
   'https://oauth2.googleapis.com',
 ]);
+/** Report only fixed, operator-actionable transport categories. Never persist upstream
+ * exception messages: runtime exceptions may contain URLs or credentials. */
+function transportFailureCategory(error: unknown): string {
+  if (!(error instanceof Error)) return 'non-error';
+  if (error.name === 'TimeoutError') return 'timeout';
+  if (error.name === 'AbortError') return 'aborted';
+  if (error.message === 'Network connection lost' || error.message === 'Network connection lost.')
+    return 'connection-lost';
+  if (error.name === 'TypeError') return 'type-error';
+  if (error.name === 'RangeError') return 'range-error';
+  return 'other';
+}
 export class HttpClient {
   requests = 0;
   constructor(
@@ -22,6 +34,7 @@ export class HttpClient {
     const target = new URL(url);
     if (!ORIGINS.has(target.origin) || target.username || target.password)
       throw new PulseError('CONFIG', 'Provider request origin is not permitted.');
+    const failures: string[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
       if (++this.requests > this.maximumRequests)
         throw new PulseError(
@@ -37,12 +50,17 @@ export class HttpClient {
           redirect: 'manual',
           signal: AbortSignal.timeout(this.timeoutMs),
         });
-      } catch {
+      } catch (error) {
+        failures.push(transportFailureCategory(error));
         if (attempt < 2) {
           await this.sleep(100 * 2 ** attempt);
           continue;
         }
-        throw new PulseError('NETWORK', 'Provider connection failed or timed out.', true);
+        throw new PulseError(
+          'NETWORK',
+          `Provider fetch failed (${failures.join(', ')}). No upstream error content retained.`,
+          true,
+        );
       }
       if (response.status >= 300 && response.status < 400) {
         await response.body?.cancel();

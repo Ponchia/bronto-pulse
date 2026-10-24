@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve bounded, secret-safe connection failure categories across retries so
+  production Worker errors distinguish timeouts, runtime rejections and transport
+  disconnections without persisting provider exception messages or URLs.
+
 - Use Workers-compatible manual redirects and reject every provider 3xx response
   without following it, retrying it or exposing upstream URLs and response bodies.
 - Reject scheduled invocations after failed collection jobs, while preserving

@@ -184,3 +184,56 @@ for (const status of [300, 301, 302, 303, 304, 307, 308]) {
     if (status !== 304) assert.equal(canceled, true);
   });
 }
+
+for (const scenario of [
+  {
+    label: 'timeout',
+    cause: () => new DOMException('private-value', 'TimeoutError'),
+    category: 'timeout',
+  },
+  {
+    label: 'abort',
+    cause: () => new DOMException('private-value', 'AbortError'),
+    category: 'aborted',
+  },
+  {
+    label: 'network disconnect',
+    cause: () => new Error('Network connection lost'),
+    category: 'connection-lost',
+  },
+  {
+    label: 'runtime type failure',
+    cause: () => new TypeError('private-value'),
+    category: 'type-error',
+  },
+  { label: 'untrusted error', cause: () => new Error('private-value'), category: 'other' },
+  { label: 'non-Error thrown', cause: () => ({ token: 'private-value' }), category: 'non-error' },
+]) {
+  test(`transport diagnostics classify ${scenario.label} without leaking upstream values`, async () => {
+    let calls = 0;
+    const http = new HttpClient(
+      async () => {
+        calls++;
+        throw scenario.cause();
+      },
+      1000,
+      async () => {},
+    );
+    await assert.rejects(
+      http.json('https://api.npmjs.org/downloads/point/last-day/example'),
+      (error: unknown) => {
+        const safe = safeError(error);
+        assert.equal(safe.code, 'NETWORK');
+        assert.equal(
+          safe.message,
+          `Provider fetch failed (${Array(3).fill(scenario.category).join(', ')}). No upstream error content retained.`,
+        );
+        assert.ok(!JSON.stringify(safe).includes('private-value'));
+        assert.ok(!JSON.stringify(safe).includes('https://'));
+        return true;
+      },
+    );
+    assert.equal(calls, 3);
+    assert.equal(http.requests, 3);
+  });
+}
