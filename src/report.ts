@@ -460,8 +460,9 @@ export async function projectReport(
 }
 export async function portfolio(config: Config, store: Store, window: DateRange, now = new Date()) {
   const reports = [];
+  const snapshot = await store.reportingSnapshot(config, window);
   for (const p of config.projects)
-    reports.push(await projectReport(config, store, p.id, window, now));
+    reports.push(await projectReport(config, snapshot, p.id, window, now));
   return {
     schemaVersion: 1,
     name: config.name,

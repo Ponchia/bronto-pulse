@@ -29,6 +29,7 @@ const token = await new SignJWT({ email: 'owner@example.invalid', type: 'app' })
 const bundle = await build({
   entryPoints: [new URL('../src/api/access.ts', import.meta.url).pathname],
   bundle: true,
+  minify: true,
   write: false,
   format: 'esm',
   platform: 'browser',
