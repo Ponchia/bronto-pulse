@@ -50,6 +50,7 @@ export default { async fetch(request, bindings) {
   };
   const env = {...bindings, PULSE_CONFIG:${JSON.stringify(JSON.stringify(config))},
     PULSE_API_TOKEN:'synthetic-worker-contract-token', PULSE_PROVIDER:'npm', PULSE_MAX_JOBS:'1',
+    PULSE_EXECUTION_PROFILE:mode === 'free' ? 'free' : undefined,
     ASSETS:{fetch:async()=>new Response('synthetic')}};
   try {
     await worker.scheduled({scheduledTime:Date.now()}, env);
@@ -127,6 +128,13 @@ try {
     (await db.prepare("SELECT COUNT(*) AS n FROM runs WHERE status='success'").first()).n,
     2,
   );
+  await db.prepare("UPDATE metadata SET value='999' WHERE key='schema_version'").run();
+  const wrongSchema = await run('free');
+  assert.equal(wrongSchema.ok, false);
+  assert.equal(wrongSchema.requests, 0);
+  assert.equal(wrongSchema.code, 'SCHEMA');
+  await db.prepare("UPDATE metadata SET value='1' WHERE key='schema_version'").run();
+  assert.deepEqual(await run('free'), { ok: true, requests: 1 });
   console.log(
     'WORKER CONTRACT PASSED: native Request, provider parsing, scheduled failure, redirect refusal, private errors, D1 publication, preserved history, released leases and recovery.',
   );

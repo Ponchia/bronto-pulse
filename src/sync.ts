@@ -17,6 +17,10 @@ export interface SyncOptions {
   now?: Date;
   fetcher?: Fetcher;
   sleep?: (ms: number) => Promise<void>;
+  readyOnly?: boolean;
+  maximumRequests?: number;
+  maximumBytes?: number;
+  maximumRows?: number;
 }
 export interface SyncResult {
   resourceId: string;
@@ -33,6 +37,21 @@ export function jobs(config: Config): { resource: Resource; group: string }[] {
     .filter((r) => r.enabled)
     .flatMap((resource) => groups(resource).map((group) => ({ resource, group })));
 }
+/** Public GitHub groups do not require moving an operator credential to a Worker.
+ * Private traffic remains unavailable until its selected-repository grant exists. */
+export function readyResource(
+  config: Config,
+  resource: Resource,
+  group: string,
+  secrets: Secrets,
+): Resource | undefined {
+  if (resource.provider === 'npm') return resource;
+  const connection = config.connections.find((c) => c.id === resource.connection);
+  if (credentialStatus(connection, secrets).available) return resource;
+  if (resource.provider === 'github' && ['repository', 'releases'].includes(group))
+    return { ...resource, connection: undefined };
+  return undefined;
+}
 export async function sync(
   config: Config,
   store: Store,
@@ -46,14 +65,33 @@ export async function sync(
     );
   const now = options.now ?? new Date();
   let selected = selectCollectionJobs(config, options);
+  if (options.readyOnly)
+    selected = selected.flatMap(({ resource, group }) => {
+      const ready = readyResource(config, resource, group, secrets);
+      return ready ? [{ resource: ready, group }] : [];
+    });
   if (
     options.maxJobs !== undefined &&
     (!Number.isSafeInteger(options.maxJobs) || options.maxJobs < 1 || options.maxJobs > 1000)
   )
     throw new PulseError('CONFIG', 'Job bound must be between 1 and 1000.');
   if (options.window) range(options.window.from, options.window.to);
+  for (const bound of [options.maximumRequests, options.maximumBytes, options.maximumRows])
+    if (bound !== undefined && (!Number.isSafeInteger(bound) || bound < 1))
+      throw new PulseError('CONFIG', 'Collection budgets must be positive integers.');
   await store.register(config, now);
-  const cursorKey = `scheduler_cursor:${options.provider ?? '*'}:${options.resourceId ?? '*'}:${options.group ?? '*'}`;
+  if (!selected.length) return [];
+  const collectionConfig =
+    options.maximumRows === undefined
+      ? config
+      : {
+          ...config,
+          settings: {
+            ...config.settings,
+            maxRows: Math.min(config.settings.maxRows, options.maximumRows),
+          },
+        };
+  const cursorKey = `scheduler_cursor:${options.provider ?? '*'}:${options.resourceId ?? '*'}:${options.group ?? '*'}${options.readyOnly ? ':ready' : ''}`;
   const storedCursor = options.rotate ? Number((await store.getSetting(cursorKey)) ?? 0) : 0;
   const cursor = Number.isSafeInteger(storedCursor) && storedCursor >= 0 ? storedCursor : 0;
   if (options.rotate)
@@ -88,11 +126,23 @@ export async function sync(
       continue;
     }
     let id: string | undefined;
-    const http = new HttpClient(options.fetcher, config.settings.requestTimeoutMs, options.sleep);
+    const http = new HttpClient(
+      options.fetcher,
+      config.settings.requestTimeoutMs,
+      options.sleep,
+      options.maximumBytes,
+      options.maximumRequests,
+    );
     try {
       id = await store.begin(resource, group, window, now);
       const credentials = new Credentials(secrets, http, () => now);
-      const data = await collect(resource, group, { config, http, credentials, window, now });
+      const data = await collect(resource, group, {
+        config: collectionConfig,
+        http,
+        credentials,
+        window,
+        now,
+      });
       await store.publish(
         id,
         resource,
@@ -102,7 +152,7 @@ export async function sync(
         owner,
         http.requests,
         new Date(),
-        config.settings.maxRows,
+        collectionConfig.settings.maxRows,
       );
       results.push({
         resourceId: resource.id,
@@ -150,8 +200,11 @@ export async function doctor(config: Config, store: Store, secrets: Secrets, now
       const credentials =
         resource.provider === 'npm' ||
         (resource.provider === 'github' &&
-          !resource.connection &&
-          ['repository', 'releases'].includes(group))
+          ['repository', 'releases'].includes(group) &&
+          !credentialStatus(
+            config.connections.find((c) => c.id === resource.connection),
+            secrets,
+          ).available)
           ? { available: true, method: 'public', missing: [] }
           : credentialStatus(
               config.connections.find((c) => c.id === resource.connection),
