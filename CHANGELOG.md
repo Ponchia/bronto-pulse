@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Use Zod's lightweight schema API for Worker configuration and normalized URL
+  inspection validation while retaining identical generated configuration schema,
+  defaults, strict object boundaries and semantic validation.
+
 - Batch small-portfolio report reads into one request-scoped SQL snapshot,
   retaining the same coverage semantics and avoiding repeated D1 round trips.
 

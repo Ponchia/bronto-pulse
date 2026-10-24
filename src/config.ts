@@ -1,157 +1,137 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { PulseError } from './errors.js';
 import { day, addDays } from './time.js';
-const id = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/);
-const envName = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/);
-const date = z.string().refine((v) => {
-  try {
-    day(v);
-    return true;
-  } catch {
-    return false;
-  }
-}, 'Invalid date');
-const hash = z.string().regex(/^[a-f0-9]{32}$/i);
-const host = z.string().regex(/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/);
-const connection = z
-  .object({
-    id,
-    provider: z.enum(['github', 'cloudflare', 'gsc']),
-    tokenEnv: envName.optional(),
-    clientIdEnv: envName.optional(),
-    clientSecretEnv: envName.optional(),
-    refreshTokenEnv: envName.optional(),
-    serviceAccountJsonEnv: envName.optional(),
-    appIdEnv: envName.optional(),
-    privateKeyEnv: envName.optional(),
-    installationIdEnv: envName.optional(),
-  })
-  .strict();
+z.config(z.locales.en());
+const id = z.string().check(z.regex(/^[a-z][a-z0-9_-]{0,63}$/));
+const envName = z.string().check(z.regex(/^[A-Z][A-Z0-9_]{0,127}$/));
+const date = z.string().check(
+  z.refine((v) => {
+    try {
+      day(v);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Invalid date'),
+);
+const hash = z.string().check(z.regex(/^[a-f0-9]{32}$/i));
+const host = z.string().check(z.regex(/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/));
+const connection = z.strictObject({
+  id,
+  provider: z.enum(['github', 'cloudflare', 'gsc']),
+  tokenEnv: z.optional(envName),
+  clientIdEnv: z.optional(envName),
+  clientSecretEnv: z.optional(envName),
+  refreshTokenEnv: z.optional(envName),
+  serviceAccountJsonEnv: z.optional(envName),
+  appIdEnv: z.optional(envName),
+  privateKeyEnv: z.optional(envName),
+  installationIdEnv: z.optional(envName),
+});
 const common = {
   id,
-  label: z.string().min(1).max(120).optional(),
-  connection: id.optional(),
-  enabled: z.boolean().default(true),
+  label: z.optional(z.string().check(z.minLength(1), z.maxLength(120))),
+  connection: z.optional(id),
+  enabled: z._default(z.boolean(), true),
 };
 const resource = z.discriminatedUnion('provider', [
-  z
-    .object({
-      ...common,
-      provider: z.literal('github'),
-      repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
-      repositoryId: z.number().int().positive().optional(),
-      groups: z
+  z.strictObject({
+    ...common,
+    provider: z.literal('github'),
+    repository: z.string().check(z.regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)),
+    repositoryId: z.optional(z.int().check(z.gt(0))),
+    groups: z._default(
+      z
         .array(z.enum(['repository', 'views', 'clones', 'referrers', 'paths', 'releases']))
-        .min(1)
-        .default(['repository', 'views', 'clones', 'referrers', 'paths', 'releases']),
-    })
-    .strict(),
-  z
-    .object({
-      ...common,
-      provider: z.literal('npm'),
-      package: z
-        .string()
-        .max(214)
-        .regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/),
-    })
-    .strict(),
-  z
-    .object({
-      ...common,
-      provider: z.literal('cloudflare'),
-      accountId: hash,
-      siteTag: hash,
-      hostname: host.optional(),
-      groups: z
+        .check(z.minLength(1)),
+      ['repository', 'views', 'clones', 'referrers', 'paths', 'releases'],
+    ),
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('npm'),
+    package: z.string().check(z.maxLength(214), z.regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/)),
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('cloudflare'),
+    accountId: hash,
+    siteTag: hash,
+    hostname: z.optional(host),
+    groups: z._default(
+      z
         .array(z.enum(['totals', 'pages', 'referrers', 'performance', 'vitals']))
-        .min(1)
-        .default(['totals', 'pages']),
-      durationUnit: z.enum(['microseconds', 'milliseconds']).default('microseconds'),
-    })
-    .strict(),
-  z
-    .object({
-      ...common,
-      provider: z.literal('gsc'),
-      siteUrl: z
-        .string()
-        .max(500)
-        .refine((s) => {
-          if (s.startsWith('sc-domain:')) return /^[a-z0-9.-]+$/.test(s.slice(10));
-          try {
-            const u = new URL(s);
-            return u.protocol === 'https:' && !u.username && !u.password && !u.search && !u.hash;
-          } catch {
-            return false;
-          }
-        }),
-      searchType: z
-        .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
-        .default('web'),
-      collectPages: z.boolean().default(true),
-      collectQueries: z.boolean().default(false),
-    })
-    .strict(),
-  z
-    .object({
-      ...common,
-      provider: z.literal('sense6'),
-      accountId: hash,
-      databaseId: z.string().uuid(),
-    })
-    .strict(),
+        .check(z.minLength(1)),
+      ['totals', 'pages'],
+    ),
+    durationUnit: z._default(z.enum(['microseconds', 'milliseconds']), 'microseconds'),
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('gsc'),
+    siteUrl: z.string().check(
+      z.maxLength(500),
+      z.refine((s) => {
+        if (s.startsWith('sc-domain:')) return /^[a-z0-9.-]+$/.test(s.slice(10));
+        try {
+          const u = new URL(s);
+          return u.protocol === 'https:' && !u.username && !u.password && !u.search && !u.hash;
+        } catch {
+          return false;
+        }
+      }),
+    ),
+    searchType: z._default(
+      z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews']),
+      'web',
+    ),
+    collectPages: z._default(z.boolean(), true),
+    collectQueries: z._default(z.boolean(), false),
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('sense6'),
+    accountId: hash,
+    databaseId: z.uuid(),
+  }),
 ]);
-const scope = z
-  .object({
-    hostname: host.optional(),
-    pathPrefix: z
-      .string()
-      .max(500)
-      .regex(/^\/[^?#]*$/)
-      .optional(),
-  })
-  .strict();
-const binding = z
-  .object({
-    resource: id,
-    scope: scope.optional(),
-    effectiveFrom: date.optional(),
-    effectiveTo: date.optional(),
-    allowShared: z.boolean().default(false),
-  })
-  .strict();
-export const configSchema = z
-  .object({
-    version: z.literal(1),
-    name: z.string().max(120).default('Project portfolio'),
-    demo: z.boolean().default(false),
-    connections: z.array(connection).default([]),
-    resources: z.array(resource).min(1).max(500),
-    projects: z
-      .array(
-        z
-          .object({
-            id,
-            label: z.string().min(1).max(120),
-            description: z.string().max(500).default(''),
-            resources: z.array(binding).min(1).max(50),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(200),
-    settings: z
-      .object({
-        lookbackDays: z.number().int().min(1).max(366).default(14),
-        maxRows: z.number().int().min(10).max(50000).default(5000),
-        requestTimeoutMs: z.number().int().min(100).max(60000).default(20000),
-        staleAfterHours: z.number().min(1).max(720).default(48),
-      })
-      .strict()
-      .default({ lookbackDays: 14, maxRows: 5000, requestTimeoutMs: 20000, staleAfterHours: 48 }),
-  })
-  .strict();
+const scope = z.strictObject({
+  hostname: z.optional(host),
+  pathPrefix: z.optional(z.string().check(z.maxLength(500), z.regex(/^\/[^?#]*$/))),
+});
+const binding = z.strictObject({
+  resource: id,
+  scope: z.optional(scope),
+  effectiveFrom: z.optional(date),
+  effectiveTo: z.optional(date),
+  allowShared: z._default(z.boolean(), false),
+});
+export const configSchema = z.strictObject({
+  version: z.literal(1),
+  name: z._default(z.string().check(z.maxLength(120)), 'Project portfolio'),
+  demo: z._default(z.boolean(), false),
+  connections: z._default(z.array(connection), []),
+  resources: z.array(resource).check(z.minLength(1), z.maxLength(500)),
+  projects: z
+    .array(
+      z.strictObject({
+        id,
+        label: z.string().check(z.minLength(1), z.maxLength(120)),
+        description: z._default(z.string().check(z.maxLength(500)), ''),
+        resources: z.array(binding).check(z.minLength(1), z.maxLength(50)),
+      }),
+    )
+    .check(z.minLength(1), z.maxLength(200)),
+  settings: z._default(
+    z.strictObject({
+      lookbackDays: z._default(z.int().check(z.gte(1), z.lte(366)), 14),
+      maxRows: z._default(z.int().check(z.gte(10), z.lte(50000)), 5000),
+      requestTimeoutMs: z._default(z.int().check(z.gte(100), z.lte(60000)), 20000),
+      staleAfterHours: z._default(z.number().check(z.gte(1), z.lte(720)), 48),
+    }),
+    { lookbackDays: 14, maxRows: 5000, requestTimeoutMs: 20000, staleAfterHours: 48 },
+  ),
+});
 export type Config = z.infer<typeof configSchema>;
 export type Resource = Config['resources'][number];
 export type Connection = Config['connections'][number];

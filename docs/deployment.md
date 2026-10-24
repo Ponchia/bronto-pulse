@@ -165,3 +165,13 @@ contracts exercise minified bundles in workerd. This changes bundle representati
 not authorization or storage semantics. Small portfolios share a request-local
 read snapshot to avoid repeated D1 round trips. Neither optimization certifies
 CPU limits: inspect per-version production invocation measurements after rollout.
+
+### Lightweight runtime validation
+
+Worker configuration and normalized inspection records use the lightweight API
+of the same pinned Zod dependency. The generated configuration JSON Schema must
+remain identical, including defaults, bounds and strict object rules. Historical
+mapping and provider-scope checks are unchanged. The native Worker contract
+refuses reintroducing the classic Zod implementation into the qualified Worker
+dependency graph. Offline visibility tooling may still use its existing API.
+Smaller bundle size is not a substitute for measuring actual invocation CPU.

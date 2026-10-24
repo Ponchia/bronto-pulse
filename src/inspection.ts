@@ -1,42 +1,40 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { pathMatches, type Config, type Resource } from './config.js';
 import { Credentials, type Secrets } from './auth.js';
 import { HttpClient } from './http.js';
 import { PulseError, safeError } from './errors.js';
 import { object, text, array, safeUrl } from './validation.js';
 
-const field = z.string().max(2048).nullable();
-export const inspectionSchema = z
-  .object({
-    id: z.string().uuid(),
-    resourceId: z.string().min(1).max(64),
-    url: z.string().max(2048),
-    inspectedAt: z.iso.datetime(),
-    status: z.enum(['observed', 'unknown', 'error']),
-    verdict: field,
-    coverageState: field,
-    declaredCanonical: field,
-    googleCanonical: field,
-    lastCrawlTime: z.iso.datetime({ offset: true }).nullable(),
-    sitemaps: z.array(z.string().max(2048)).max(100).nullable(),
-    errorCode: z
-      .enum([
-        'CONFIG',
-        'AUTH',
-        'PERMISSION',
-        'RATE_LIMIT',
-        'NETWORK',
-        'REDIRECT',
-        'SCHEMA',
-        'ROW_LIMIT',
-        'UNAVAILABLE',
-        'LEASE_LOST',
-        'CONFLICT',
-        'NOT_FOUND',
-      ])
-      .nullable(),
-  })
-  .strict();
+const field = z.nullable(z.string().check(z.maxLength(2048)));
+export const inspectionSchema = z.strictObject({
+  id: z.uuid(),
+  resourceId: z.string().check(z.minLength(1), z.maxLength(64)),
+  url: z.string().check(z.maxLength(2048)),
+  inspectedAt: z.iso.datetime(),
+  status: z.enum(['observed', 'unknown', 'error']),
+  verdict: field,
+  coverageState: field,
+  declaredCanonical: field,
+  googleCanonical: field,
+  lastCrawlTime: z.nullable(z.iso.datetime({ offset: true })),
+  sitemaps: z.nullable(z.array(z.string().check(z.maxLength(2048))).check(z.maxLength(100))),
+  errorCode: z.nullable(
+    z.enum([
+      'CONFIG',
+      'AUTH',
+      'PERMISSION',
+      'RATE_LIMIT',
+      'NETWORK',
+      'REDIRECT',
+      'SCHEMA',
+      'ROW_LIMIT',
+      'UNAVAILABLE',
+      'LEASE_LOST',
+      'CONFLICT',
+      'NOT_FOUND',
+    ]),
+  ),
+});
 export type Inspection = z.infer<typeof inspectionSchema>;
 
 /** No fetch of the target URL. Exact origin and segment bounds prevent prefix confusion. */

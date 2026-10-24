@@ -9,11 +9,16 @@ const bundle = await build({
   entryPoints: [new URL('../src/worker.ts', import.meta.url).pathname],
   bundle: true,
   minify: true,
+  metafile: true,
   write: false,
   format: 'esm',
   platform: 'browser',
   target: 'es2022',
 });
+assert.ok(
+  !Object.keys(bundle.metafile.inputs).some((path) => path.includes('/zod/v4/classic/')),
+  'The Worker must retain the qualified lightweight schema dependency graph.',
+);
 const config = {
   version: 1,
   settings: { lookbackDays: 14 },
