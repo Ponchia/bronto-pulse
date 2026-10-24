@@ -62,3 +62,14 @@ local token and prints it once for interactive sign-in. Treat that terminal
 output as sensitive: for supervised or log-captured servers, supply
 `PULSE_API_TOKEN` instead. Configured tokens are never printed. An explicitly
 configured but invalid token fails closed rather than falling back to generation.
+
+## Development HTTP client patch
+
+The exact Miniflare 5.20261019.1-beta development dependency pins Undici
+7.29.1. A version-scoped override selects 7.30.1, fixing GHSA-4qv8-2p9j-2685,
+GHSA-f72v-6w45-q472 and GHSA-xjj6-f33q-929c. This override does not affect the
+deployed Worker dependency graph.
+
+Remove the override after upgrading to an upstream Miniflare release that
+includes the fixed HTTP client. Review the resolved lock and run the browser,
+D1 and Worker dry-run checks before changing or removing it.
