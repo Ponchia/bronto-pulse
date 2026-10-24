@@ -31,3 +31,10 @@ contributions where useful and include tests; model output is not evidence that
 behavior is correct. Do not submit confidential prompts, account data or material
 whose license does not permit contribution. Keep discussions respectful and
 technical; the maintainer may close abusive or off-topic contributions.
+
+## Optional operator backup helper
+
+The Unix operator backup helper and its synthetic archive regression require
+Python 3 with the standard-library SQLite module. Hosted Ubuntu verification
+includes this dependency. The collector and browser dashboard do not use Python.
+No timer, live export, credential or off-box destination is installed by tests.

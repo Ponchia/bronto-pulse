@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an explicit private D1 backup helper with bounded exports, verified SQLite
+  restore, private gzip archives, safe retention and no off-box custody claims.
+
 - Avoid duplicate catalog registration on cold scheduled collection and locale
   collation for fixed-format ISO report dates without changing data boundaries.
 - Classify documented GitHub quota HTTP 403 responses as rate limits, avoid

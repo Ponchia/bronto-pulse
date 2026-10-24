@@ -172,3 +172,32 @@ grant. Never change a repository's visibility or copy an operator's broad CLI
 token to repair collection. Use a dedicated selected-repository read-only grant.
 
 Reference: [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+## Explicit operator D1 backup job
+
+`scripts/operator-backup.py` is an opt-in Unix operator helper, not a public API
+or an enabled repository workflow. Supply absolute paths to the installed
+Wrangler executable and the ignored deployment configuration, the selected D1
+database name, and a private output directory. It uses the operator's existing
+Wrangler authentication; it never reads browser credentials.
+
+```sh
+python3 scripts/operator-backup.py \
+  --wrangler /absolute/node_modules/.bin/wrangler \
+  --config /private/wrangler.private.jsonc \
+  --database private-pulse \
+  --out /private/backups --retain 14
+```
+
+Each export is limited to 64 MiB and restored in memory with integrity and
+foreign-key checks before publication. Database attachments are forbidden. The
+compressed bytes are restored again, archives and manifests use mode 0600, and
+the directory uses mode 0700. Only matching verified archive/manifest pairs are
+eligible for count-based retention; failed exports never prune prior backups.
+A lock prevents overlapping jobs. Python 3 and a Unix host are required.
+
+Schedule this helper explicitly before the existing encrypted off-box backup.
+Its manifest always says `offBoxVerified:false`: copying to a local directory or
+matching a backup include rule does not prove remote custody. Verify the remote
+snapshot includes the new archive and restore it independently. D1 Time Travel
+is complementary provider recovery, not an independent backup destination.
