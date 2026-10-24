@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Avoid duplicate catalog registration on cold scheduled collection and locale
+  collation for fixed-format ISO report dates without changing data boundaries.
+- Classify documented GitHub quota HTTP 403 responses as rate limits, avoid
+  immediate quota retries and release response streams before long retry waits.
+
 - Collect approved Sense6 daily counters through an explicitly pinned native D1
   binding, using the existing fixed aggregate-only query and row budgets. This
   avoids an account API token for same-account installations.

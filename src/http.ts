@@ -81,16 +81,34 @@ export class HttpClient {
           'Provider redirect refused. Verify the provider endpoint.',
         );
       }
+      // GitHub also reports exhausted primary/secondary quotas as HTTP 403.
+      // Distinguish that documented case from a real missing permission. Do
+      // not retain response content or retry a known rate limit in this job.
+      if (
+        target.origin === 'https://api.github.com' &&
+        [403, 429].includes(response.status) &&
+        (response.headers.get('x-ratelimit-remaining') === '0' ||
+          Number(response.headers.get('retry-after')) > 0)
+      ) {
+        await response.body?.cancel();
+        throw new PulseError(
+          'RATE_LIMIT',
+          'GitHub quota is exhausted. Retry in a later collection run.',
+          true,
+        );
+      }
       if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
         const raw = response.headers.get('retry-after');
         const seconds = raw ? Number(raw) : NaN;
         // Long rate-limit waits must be retried by the scheduler, not occupy a worker.
-        if (Number.isFinite(seconds) && seconds > 10)
+        if (Number.isFinite(seconds) && seconds > 10) {
+          await response.body?.cancel();
           throw new PulseError(
             'RATE_LIMIT',
             'Provider rate limit requires a later collection run.',
             true,
           );
+        }
         await response.body?.cancel();
         await this.sleep(
           Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 200 * 2 ** attempt,

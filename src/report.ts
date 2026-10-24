@@ -117,12 +117,17 @@ function seriesDimensions(o: StoredObservation, b: Binding): Record<string, stri
   }
   return o.dimensions;
 }
+// ISO dates/timestamps have a fixed lexical order. Locale collation adds cold
+// ICU setup and does not change their ordering; keep user-facing text untouched.
+function compareIso(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
 function aggregate(rows: StoredObservation[], definition: MetricDefinition): number | null {
   if (!rows.length) return null;
   if (definition.aggregation === 'none') return null;
   if (definition.aggregation === 'latest')
     return rows.toSorted(
-      (a, b) => b.to.localeCompare(a.to) || b.collectedAt.localeCompare(a.collectedAt),
+      (a, b) => compareIso(b.to, a.to) || compareIso(b.collectedAt, a.collectedAt),
     )[0]!.value;
   if (definition.aggregation === 'sum') return rows.reduce((total, row) => total + row.value, 0);
   const denominator = rows.reduce((total, row) => total + (row.denominator ?? 0), 0);
@@ -156,7 +161,7 @@ function summarize(
     byDay.set(row.to, items);
   }
   const points = [...byDay]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => compareIso(a, b))
     .map(([date, values]) => ({
       date,
       value:
