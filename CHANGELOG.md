@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix native Cloudflare Workers fetch receiver: wrap global fetch in a bare call
+  rather than invoking its unbound reference as an HttpClient method. Add a
+  runtime regression using a receiver-sensitive fetch implementation.
+
 - Preserve bounded, secret-safe connection failure categories across retries so
   production Worker errors distinguish timeouts, runtime rejections and transport
   disconnections without persisting provider exception messages or URLs.

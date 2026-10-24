@@ -139,3 +139,15 @@ or tokens. A `type-error` describes a runtime rejection, not proof of a specific
 request-construction defect; compare with a real Worker execution before changing
 network settings. Existing older `NETWORK` records predate this diagnosis and have
 no inferred category. Diagnostics alone do not certify a provider's availability.
+
+### Workerd native fetch receiver
+
+A native `fetch` function reference may fail in Cloudflare Workers if saved as an
+object member and later called as `object.fetcher()`. Workerd reports `TypeError:
+Illegal invocation: function called with incorrect this reference`. Node's fetch
+may accept the same mistaken call, masking this failure in Node-only tests.
+Pulse's default client now wraps the native function in a direct `fetch(input,
+init)` call; injected test fetchers and the fixed origin allowlist are unchanged.
+The worker contract tests a receiver-sensitive fetch inside workerd. A failure
+recorded by an earlier release is retained as historical evidence rather than
+rewritten or interpreted as an upstream npm outage.

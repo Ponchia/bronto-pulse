@@ -23,7 +23,9 @@ function transportFailureCategory(error: unknown): string {
 export class HttpClient {
   requests = 0;
   constructor(
-    private readonly fetcher: Fetcher = fetch,
+    // Workerd requires native fetch to be called without an unrelated receiver.
+    // Calling a stored fetch as this.fetcher() otherwise throws "Illegal invocation".
+    private readonly fetcher: Fetcher = (input, init) => fetch(input, init),
     private readonly timeoutMs = 20000,
     private readonly sleep: (ms: number) => Promise<void> = (ms) =>
       new Promise((resolve) => setTimeout(resolve, ms)),
