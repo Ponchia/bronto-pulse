@@ -72,5 +72,10 @@
     "typescript": "7.0.2",
     "wrangler": "4.151.3"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "overrides": {
+    "miniflare@5.20261019.1-beta": {
+      "undici": "7.30.1"
+    }
+  }
 }
