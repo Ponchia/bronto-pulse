@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Avoid repeated ICU initialization for UTC report and provider dates; cache a
+  bounded set of non-UTC calendar formatters and enumerate date ranges once.
+
 - Add explicit owner-only Cloudflare Access authentication with signed JWT
   verification, issuer/audience/hostname pinning and a bounded cached key set.
 - Preserve token authentication by default; Access mode rejects spoofed identity

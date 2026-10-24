@@ -151,3 +151,12 @@ init)` call; injected test fetchers and the fixed origin allowlist are unchanged
 The worker contract tests a receiver-sensitive fetch inside workerd. A failure
 recorded by an earlier release is retained as historical evidence rather than
 rewritten or interpreted as an upstream npm outage.
+
+### CPU headroom on the Free plan
+
+The Free profile is a bounded workload, not a promise about measured CPU time.
+Monitor actual invocation CPU separately from wall time and deployment startup.
+UTC dates use the ISO calendar directly rather than constructing an ICU formatter
+on every call; non-UTC datasets retain IANA timezone behavior. Existing collected
+dates and comparison rules are unchanged. Sustained CPU-limit errors must be
+addressed by reducing work or optimizing code, never by silently upgrading billing.
