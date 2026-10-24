@@ -11,6 +11,7 @@ import { projectBrief, markdownBrief } from '../brief.js';
 import { csvReport } from '../report-export.js';
 import { markdownReport } from '../report.js';
 import { authorized, makeSession, validToken } from './auth.js';
+import type { AccessAuthorizer } from './access.js';
 export interface ApiData {
   config: Config;
   store: Store;
@@ -18,6 +19,8 @@ export interface ApiData {
 interface ApiAccessContext {
   secrets: Secrets;
   apiToken: string;
+  /** Explicit signed-identity mode; never trusts a plain proxy email header. */
+  access?: AccessAuthorizer;
   asset: (path: string) => Promise<Response>;
   now?: () => Date;
 }
@@ -97,7 +100,14 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
   const url = new URL(request.url);
   try {
     if (url.pathname === '/health') return secure(json({ ok: true, service: 'bronto-pulse' }));
-    if (ctx.apiToken.length < 24)
+    if (ctx.access && !(await ctx.access(request, now)))
+      return secure(
+        json(
+          { error: { code: 'AUTH', message: 'A valid Cloudflare Access identity is required.' } },
+          401,
+        ),
+      );
+    if (!ctx.access && ctx.apiToken.length < 24)
       return secure(
         json(
           {
@@ -109,6 +119,13 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           503,
         ),
       );
+    if (ctx.access && ['/login', '/login.html', '/login.js'].includes(url.pathname)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD')
+        return secure(
+          json({ error: { code: 'AUTH', message: 'Sign in through Cloudflare Access.' } }, 405),
+        );
+      return secure(new Response(null, { status: 303, headers: { Location: '/' } }));
+    }
     if (url.pathname === '/login' && request.method === 'POST') {
       if (!sameOriginWrite(request, url))
         return secure(
@@ -162,7 +179,7 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
         new Response(null, {
           status: 303,
           headers: {
-            Location: '/login',
+            Location: ctx.access ? '/cdn-cgi/access/logout' : '/login',
             'Set-Cookie': `pulse_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${url.protocol === 'https:' ? '; Secure' : ''}`,
           },
         }),
@@ -179,7 +196,7 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
       '/style.css',
       '/favicon.svg',
     ].includes(url.pathname);
-    if (!publicAsset && !(await authorized(request, ctx.apiToken, now.getTime()))) {
+    if (!ctx.access && !publicAsset && !(await authorized(request, ctx.apiToken, now.getTime()))) {
       if (url.pathname.startsWith('/api/'))
         return secure(
           json(

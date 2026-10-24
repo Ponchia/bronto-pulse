@@ -6,11 +6,12 @@ import { sync } from './sync.js';
 import { scheduleOptions } from './worker-schedule.js';
 import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
-export interface WorkerEnv {
+import { workerAccess, type AccessEnvironment } from './api/access.js';
+export interface WorkerEnv extends AccessEnvironment {
   DB: D1Like;
   ASSETS: { fetch(request: Request): Promise<Response> };
   PULSE_CONFIG: string;
-  PULSE_API_TOKEN: string;
+  PULSE_API_TOKEN?: string;
   GITHUB_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
   GOOGLE_ACCESS_TOKEN?: string;
@@ -72,6 +73,7 @@ export default {
         loadData: () => context(env),
         secrets: environmentSecrets(env),
         apiToken: env.PULSE_API_TOKEN ?? '',
+        access: workerAccess(env),
         asset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
       });
     } catch {

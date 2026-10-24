@@ -120,3 +120,30 @@ selection must be deliberately removed to move beyond an npm-only activation.
 Keep invocation logging enabled while validating CPU and outcomes; aggregate
 collector logs contain no provider URLs, payloads or credentials. Query limits
 and the account-wide Free allowances still apply.
+
+## Owner-only Cloudflare Access login
+
+Bearer-token login remains the default. A private Worker may explicitly opt into
+Cloudflare Access instead, without deploying a second dashboard password. Attach
+an owner-only Access policy to **all traffic** before enabling a route. Then set
+`PULSE_AUTH_MODE=access`, `PULSE_ACCESS_TEAM` (the exact team hostname ending in
+`.cloudflareaccess.com`), `PULSE_ACCESS_AUD` (this application's AUD tag),
+`PULSE_ACCESS_HOSTNAME` (one exact HTTPS dashboard hostname), and
+`PULSE_ACCESS_EMAILS` (a small comma-separated owner allowlist). These are public
+identity-validation settings, not bearer credentials.
+
+Pulse uses `jose` to verify the signed `Cf-Access-Jwt-Assertion` on every protected
+request: RS256 signature, pinned issuer and audience, expiry, issued-at time,
+application-token type, owner email and exact request hostname. Public signing
+keys are fetched only from the pinned team certificate endpoint, without following
+redirects, with a bounded response and a cached key set. Unverifiable identities
+fail closed before private storage is opened. Plain forwarded email headers do not
+authenticate, and bearer tokens cannot bypass a configured Access mode.
+
+Token-login routes redirect verified Access users to the dashboard. Logout uses
+Access's logout endpoint and retains same-origin CSRF checks. A missing setting or
+key-service failure never switches to anonymous or bearer access. Keep the default
+`workers_dev=false` until the complete protection is tested. Access account limits
+and the Workers Free CPU limits still require installation validation.
+
+Reference: [Cloudflare's JWT validation contract](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/).
