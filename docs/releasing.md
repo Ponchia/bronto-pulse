@@ -50,6 +50,12 @@ immutable commits; checkout credentials are not retained. Validation has
 `contents: read` only. CodeQL has the additional `security-events: write` permission
 needed to publish its analysis, but receives no provider secrets.
 
+Dependency Review checks every pull request for newly introduced high- and
+critical-severity advisories, including development dependencies. CodeQL analyzes
+source and workflow definitions on changes and weekly, so an idle repository is
+also checked against updated queries. These security checks do not execute
+project installation hooks or grant access to a live installation.
+
 Fork contributions use `pull_request`, never elevated `pull_request_target`.
 CI uses synthetic fixtures only and cannot read or synchronize a live installation.
 There are no recurring collection workflows or artifact-upload steps. Dependency
