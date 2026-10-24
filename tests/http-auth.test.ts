@@ -237,3 +237,61 @@ for (const scenario of [
     assert.equal(http.requests, 3);
   });
 }
+
+const quotaHeaders: Record<string, string>[] = [
+  { 'x-ratelimit-remaining': '0' },
+  { 'retry-after': '60' },
+];
+for (const headers of quotaHeaders) {
+  test(`GitHub quota 403 is not misreported as permission denial (${Object.keys(headers)[0]})`, async () => {
+    let calls = 0;
+    let canceled = false;
+    const h = new HttpClient(
+      async () => {
+        calls++;
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              canceled = true;
+            },
+          }),
+          { status: 403, headers },
+        );
+      },
+      1000,
+      async () => assert.fail('Known rate limits must not be retried immediately'),
+    );
+    await assert.rejects(
+      h.json('https://api.github.com/repos/example/project'),
+      (error: unknown) => safeError(error).code === 'RATE_LIMIT',
+    );
+    assert.equal(calls, 1);
+    assert.equal(canceled, true);
+  });
+}
+test('GitHub permission denial without quota evidence stays PERMISSION', async () => {
+  const h = new HttpClient(
+    async () =>
+      new Response('untrusted-provider-message', {
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '10' },
+      }),
+  );
+  await assert.rejects(
+    h.json('https://api.github.com/repos/example/private'),
+    (error: unknown) => safeError(error).code === 'PERMISSION',
+  );
+});
+test('GitHub quota header interpretation does not reclassify other provider denials', async () => {
+  const h = new HttpClient(
+    async () =>
+      new Response('untrusted-provider-message', {
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '0' },
+      }),
+  );
+  await assert.rejects(
+    h.json('https://api.cloudflare.com/client/v4/'),
+    (error: unknown) => safeError(error).code === 'PERMISSION',
+  );
+});

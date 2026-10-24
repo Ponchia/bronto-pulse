@@ -160,3 +160,15 @@ UTC dates use the ISO calendar directly rather than constructing an ICU formatte
 on every call; non-UTC datasets retain IANA timezone behavior. Existing collected
 dates and comparison rules are unchanged. Sustained CPU-limit errors must be
 addressed by reducing work or optimizing code, never by silently upgrading billing.
+
+### GitHub denied requests versus shared-IP quotas
+
+GitHub can return HTTP 403 when an anonymous source IP has exhausted its quota.
+Pulse classifies GitHub's explicit `x-ratelimit-remaining: 0` or positive
+`retry-after` evidence as `RATE_LIMIT` and does not retry immediately within that
+job. A 403 without quota evidence remains `PERMISSION`; a 404 does not prove a
+repository was deleted, because private repositories also need an authorized
+grant. Never change a repository's visibility or copy an operator's broad CLI
+token to repair collection. Use a dedicated selected-repository read-only grant.
+
+Reference: [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).

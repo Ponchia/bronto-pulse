@@ -30,7 +30,11 @@ let cached:
       db: D1Like;
       raw: string;
       profile: string | undefined;
-      ready: Promise<{ store: Store; config: ReturnType<typeof parseConfig> }>;
+      ready: Promise<{
+        store: Store;
+        config: ReturnType<typeof parseConfig>;
+        reporting?: Promise<void>;
+      }>;
     }
   | undefined;
 function environmentSecrets(env: WorkerEnv): Secrets {
@@ -64,8 +68,7 @@ async function context(env: WorkerEnv) {
           'Apply supported database migrations before enabling the Free profile.',
         );
     } else await store.migrate();
-    await store.register(config);
-    return { store, config };
+    return { store, config, reporting: undefined as Promise<void> | undefined };
   })();
   cached = { db: env.DB, raw: env.PULSE_CONFIG, profile: env.PULSE_EXECUTION_PROFILE, ready };
   try {
@@ -79,7 +82,20 @@ export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     try {
       return await handle(request, {
-        loadData: () => context(env),
+        loadData: async () => {
+          const data = await context(env);
+          // Reporting initializes its catalog lazily once, after authentication.
+          // Scheduled sync owns its own registration, avoiding duplicate parsing
+          // and D1 round trips on the same cold collection invocation.
+          const ready = (data.reporting ??= data.store.register(data.config));
+          try {
+            await ready;
+          } catch (error) {
+            if (data.reporting === ready) data.reporting = undefined;
+            throw error;
+          }
+          return data;
+        },
         secrets: environmentSecrets(env),
         apiToken: env.PULSE_API_TOKEN ?? '',
         access: workerAccess(env),
