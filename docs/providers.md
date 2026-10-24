@@ -139,3 +139,19 @@ is supported. Test/event pairs are constrained to the Sense6 allowlist. Extra
 fields are rejected. This is not a general SQL endpoint and never retrieves
 answers, scores, local journals, participant identities or exact event times.
 The product counter is not interchangeable with Cloudflare visits/pageviews.
+
+## Native Sense6 D1 binding
+
+For a same-account Cloudflare deployment, the operator can bind the existing
+Sense6 aggregate database as `PULSE_SENSE6_DB` and pin its public account/database
+IDs in `PULSE_SENSE6_ACCOUNT_ID` and `PULSE_SENSE6_DATABASE_ID`. These identities
+must match the configured Sense6 resource. Partial binding configuration fails
+closed; a mismatched binding is never queried for another resource.
+
+The native path executes exactly the same fixed, parameterized SELECT of
+`day,test,metric,count` from `daily_metrics`, with the same row/date/metric limits
+as the REST connector. It does not query participants, scores or events and never
+writes to the source database. The binding is an installation capability, not a
+SQL endpoint. The portable REST connector remains available when no matching
+native binding exists. Ready-only collection and private health reports recognize
+a matching native binding without requiring an account API token.

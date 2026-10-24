@@ -1,3 +1,4 @@
+import type { AggregateBindings } from './bindings.js';
 import type { Config, Resource } from '../config.js';
 import type { HttpClient } from '../http.js';
 import type { Credentials } from '../auth.js';
@@ -9,6 +10,7 @@ export interface CollectContext {
   credentials: Credentials;
   now: Date;
   window: DateRange;
+  bindings?: AggregateBindings;
 }
 export function groups(r: Resource): string[] {
   switch (r.provider) {

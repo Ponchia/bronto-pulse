@@ -1,3 +1,4 @@
+import { nativeSense6, type AggregateBindings } from './collectors/bindings.js';
 import { Credentials, credentialStatus, type Secrets } from './auth.js';
 import { collect, groups, probeCloudflare } from './collectors/index.js';
 import type { Config, Provider, Resource } from './config.js';
@@ -21,6 +22,7 @@ export interface SyncOptions {
   maximumRequests?: number;
   maximumBytes?: number;
   maximumRows?: number;
+  bindings?: AggregateBindings;
 }
 export interface SyncResult {
   resourceId: string;
@@ -44,8 +46,9 @@ export function readyResource(
   resource: Resource,
   group: string,
   secrets: Secrets,
+  bindings: AggregateBindings = {},
 ): Resource | undefined {
-  if (resource.provider === 'npm') return resource;
+  if (resource.provider === 'npm' || nativeSense6(resource, bindings)) return resource;
   const connection = config.connections.find((c) => c.id === resource.connection);
   if (credentialStatus(connection, secrets).available) return resource;
   if (resource.provider === 'github' && ['repository', 'releases'].includes(group))
@@ -67,7 +70,7 @@ export async function sync(
   let selected = selectCollectionJobs(config, options);
   if (options.readyOnly)
     selected = selected.flatMap(({ resource, group }) => {
-      const ready = readyResource(config, resource, group, secrets);
+      const ready = readyResource(config, resource, group, secrets, options.bindings);
       return ready ? [{ resource: ready, group }] : [];
     });
   if (
@@ -142,6 +145,7 @@ export async function sync(
         credentials,
         window,
         now,
+        bindings: options.bindings,
       });
       await store.publish(
         id,
@@ -184,7 +188,13 @@ export async function sync(
 export function expectedGroups(config: Config): Map<string, string[]> {
   return new Map(config.resources.map((r) => [r.id, groups(r)]));
 }
-export async function doctor(config: Config, store: Store, secrets: Secrets, now = new Date()) {
+export async function doctor(
+  config: Config,
+  store: Store,
+  secrets: Secrets,
+  now = new Date(),
+  bindings: AggregateBindings = {},
+) {
   const heads = await store.runHeads();
   const observed = await store.observedThrough();
   const states = config.resources
@@ -197,14 +207,15 @@ export async function doctor(config: Config, store: Store, secrets: Secrets, now
       const age = success
         ? (now.getTime() - Date.parse(success.finishedAt ?? success.startedAt)) / 3600000
         : null;
-      const credentials =
-        resource.provider === 'npm' ||
-        (resource.provider === 'github' &&
-          ['repository', 'releases'].includes(group) &&
-          !credentialStatus(
-            config.connections.find((c) => c.id === resource.connection),
-            secrets,
-          ).available)
+      const credentials = nativeSense6(resource, bindings)
+        ? { available: true, method: 'd1-binding', missing: [] }
+        : resource.provider === 'npm' ||
+            (resource.provider === 'github' &&
+              ['repository', 'releases'].includes(group) &&
+              !credentialStatus(
+                config.connections.find((c) => c.id === resource.connection),
+                secrets,
+              ).available)
           ? { available: true, method: 'public', missing: [] }
           : credentialStatus(
               config.connections.find((c) => c.id === resource.connection),

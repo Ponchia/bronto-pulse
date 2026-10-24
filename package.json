@@ -58,7 +58,7 @@
     "repo:check": "node scripts/quality-contract.mjs",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
     "publication:check": "node scripts/publication-check.mjs",
-    "test:worker": "npm run build && node scripts/worker-contract.mjs && node scripts/access-contract.mjs"
+    "test:worker": "npm run build && node scripts/worker-contract.mjs && node scripts/access-contract.mjs && node scripts/native-aggregate-contract.mjs"
   },
   "dependencies": {
     "jose": "6.2.13",
