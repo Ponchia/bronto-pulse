@@ -19,23 +19,36 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(day(to)) - Date.parse(day(from))) / 86400000) + 1;
 }
 export function range(from: string, to: string, maximum = 366): DateRange {
-  if (daysBetween(from, to) < 1 || daysBetween(from, to) > maximum)
+  const count = daysBetween(from, to);
+  if (count < 1 || count > maximum)
     throw new PulseError('CONFIG', `Date range must contain between 1 and ${maximum} days.`);
   return { from, to };
 }
 export function days(window: DateRange): string[] {
   range(window.from, window.to, 3660);
-  return Array.from({ length: daysBetween(window.from, window.to) }, (_, i) =>
-    addDays(window.from, i),
+  const from = Date.parse(window.from + 'T00:00:00Z');
+  const count = (Date.parse(window.to + 'T00:00:00Z') - from) / 86400000 + 1;
+  return Array.from({ length: count }, (_, i) =>
+    new Date(from + i * 86400000).toISOString().slice(0, 10),
   );
 }
+// UTC is the common provider/report path: ISO dates avoid expensive ICU setup
+// on every cold Worker invocation. Non-UTC calendars still use IANA rules.
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
 export function dateInZone(now: Date, zone = 'UTC'): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: zone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
+  if (zone === 'UTC') return now.toISOString().slice(0, 10);
+  let formatter = zoneFormatters.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    if (zoneFormatters.size >= 16) zoneFormatters.delete(zoneFormatters.keys().next().value!);
+    zoneFormatters.set(zone, formatter);
+  }
+  const parts = formatter.formatToParts(now);
   const get = (key: string) => parts.find((p) => p.type === key)?.value;
   return `${get('year')}-${get('month')}-${get('day')}`;
 }

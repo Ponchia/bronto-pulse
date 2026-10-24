@@ -7,6 +7,8 @@
   owner-verified Access authentication. Require the additive inspection migration
   before starting a Free-profile Worker; no provider grant or model traffic is
   created by the source changes.
+- Avoid repeated ICU initialization for UTC report and provider dates; cache a
+  bounded set of non-UTC calendar formatters and enumerate date ranges once.
 
 - Add explicit owner-only Cloudflare Access authentication with signed JWT
   verification, issuer/audience/hostname pinning and a bounded cached key set.
