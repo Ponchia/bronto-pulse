@@ -118,8 +118,13 @@ export class Store {
   }
   async register(input: Config, now = new Date()): Promise<void> {
     const config = parseConfig(input);
+    const raw = json(config);
+    // Avoid catalog rewrites on every collection; compare against persisted data,
+    // not an isolate-only cache, so a different operator configuration is detected.
+    const persisted = await this.getSetting('config');
+    if (persisted === raw) return;
     const commands: Statement[] = [];
-    const previous = await this.getConfig();
+    const previous = persisted ? parseConfig(JSON.parse(persisted)) : undefined;
     if (previous && previous.demo !== config.demo)
       throw new PulseError('CONFLICT', 'Synthetic and live data must use separate databases.');
     if (previous && (await this.driver.all({ sql: 'SELECT day FROM partitions LIMIT 1' })).length) {
@@ -166,8 +171,7 @@ export class Store {
         params: [r.id, r.provider, identity, json(r)],
       });
     }
-    const raw = json(config),
-      hash = await digest(raw);
+    const hash = await digest(raw);
     commands.push(
       {
         sql: 'INSERT OR IGNORE INTO config_versions(hash,created_at,config_json) VALUES(?,?,?)',
@@ -308,10 +312,10 @@ export class Store {
         sql: "UPDATE resources SET provider_identity=? WHERE id=? AND EXISTS(SELECT 1 FROM runs WHERE id=? AND status='success')",
         params: [data.identity, resource.id, id],
       });
-    for (const a of data.annotations ?? [])
+    if (data.annotations?.length)
       commands.push({
-        sql: "INSERT INTO annotations(id,resource_id,date,title,url,kind) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM runs WHERE id=? AND status='success') ON CONFLICT(id) DO UPDATE SET title=excluded.title,url=excluded.url,date=excluded.date",
-        params: [a.id, resource.id, a.date, a.title, a.url ?? null, a.kind, id],
+        sql: "INSERT INTO annotations(id,resource_id,date,title,url,kind) SELECT json_extract(value,'$.id'),json_extract(value,'$.resourceId'),json_extract(value,'$.date'),json_extract(value,'$.title'),json_extract(value,'$.url'),json_extract(value,'$.kind') FROM json_each(?) WHERE EXISTS(SELECT 1 FROM runs WHERE id=? AND status='success') ON CONFLICT(id) DO UPDATE SET title=excluded.title,url=excluded.url,date=excluded.date",
+        params: [json(data.annotations), id],
       });
     await this.driver.batch(commands);
     const state = (

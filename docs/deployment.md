@@ -95,3 +95,28 @@ invalid configuration returns a redacted HTTP 503 with private-cache and securit
 headers. `/health` is deliberately only process liveness, not a D1 readiness test.
 Use an authenticated reporting request for that check. Fixture tests establish
 these boundaries; no reduction in live-account billed usage is claimed.
+
+## Explicit Free-tier execution profile
+
+Set `PULSE_EXECUTION_PROFILE=free` and `PULSE_MAX_JOBS=1` after applying D1
+migrations. This mode checks the schema version instead of rerunning schema DDL
+on every cold start. It caps a collection at eight provider requests (including
+retries), 256 KiB per response and 250 observations. Incomplete or over-budget
+results cannot replace published history. These are engineering bounds, not a
+promise that arbitrary providers fit Cloudflare's CPU budget: measure real
+invocation CPU and D1 usage before expanding collection. Never upgrade a plan
+implicitly to make a failing collector pass.
+
+`PULSE_READY_ONLY=true` rotates only jobs whose grants are configured. Public
+GitHub repository snapshots and release metadata may run anonymously without
+copying an operator's broad CLI token into Cloudflare. Traffic remains explicitly
+`credentials_missing` in health, and an invalid configured grant is not silently
+replaced with anonymous access. The mode has its own rotation cursor. No ready
+jobs means no refresh, not evidence of a healthy installation.
+
+An installation can use one job every 15 minutes (96 invocations/day), provided
+its total job count gives every source sufficient refresh frequency. The provider
+selection must be deliberately removed to move beyond an npm-only activation.
+Keep invocation logging enabled while validating CPU and outcomes; aggregate
+collector logs contain no provider URLs, payloads or credentials. Query limits
+and the account-wide Free allowances still apply.

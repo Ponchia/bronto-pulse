@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit bounded Free execution profile and ready-only collection rotation.
+- Avoid rewriting unchanged catalogs, and publish release annotations in one
+  fenced SQL statement rather than one statement per release.
+- Keep missing private grants visible while public GitHub datasets refresh.
+
 - Fix native Cloudflare Workers fetch receiver: wrap global fetch in a bare call
   rather than invoking its unbound reference as an HttpClient method. Add a
   runtime regression using a receiver-sensitive fetch implementation.

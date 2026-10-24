@@ -19,11 +19,14 @@ export interface WorkerEnv {
   GOOGLE_REFRESH_TOKEN?: string;
   PULSE_MAX_JOBS?: string;
   PULSE_PROVIDER?: string;
+  PULSE_EXECUTION_PROFILE?: string;
+  PULSE_READY_ONLY?: string;
 }
 let cached:
   | {
       db: D1Like;
       raw: string;
+      profile: string | undefined;
       ready: Promise<{ store: Store; config: ReturnType<typeof parseConfig> }>;
     }
   | undefined;
@@ -34,15 +37,27 @@ function environmentSecrets(env: WorkerEnv): Secrets {
   );
 }
 async function context(env: WorkerEnv) {
-  if (cached?.db === env.DB && cached.raw === env.PULSE_CONFIG) return cached.ready;
+  if (
+    cached?.db === env.DB &&
+    cached.raw === env.PULSE_CONFIG &&
+    cached.profile === env.PULSE_EXECUTION_PROFILE
+  )
+    return cached.ready;
   const ready = (async () => {
     const config = parseConfig(JSON.parse(env.PULSE_CONFIG));
     const store = new Store(new D1Driver(env.DB));
-    await store.migrate();
+    if (env.PULSE_EXECUTION_PROFILE === 'free') {
+      // Provision schema once through migrations rather than on every cold start.
+      if ((await store.getSetting('schema_version')) !== '1')
+        throw new PulseError(
+          'SCHEMA',
+          'Apply supported database migrations before enabling the Free profile.',
+        );
+    } else await store.migrate();
     await store.register(config);
     return { store, config };
   })();
-  cached = { db: env.DB, raw: env.PULSE_CONFIG, ready };
+  cached = { db: env.DB, raw: env.PULSE_CONFIG, profile: env.PULSE_EXECUTION_PROFILE, ready };
   try {
     return await ready;
   } catch (error) {
@@ -94,6 +109,11 @@ export default {
           event: 'collection',
           succeeded: results.filter((x) => x.status === 'success').length,
           failed: results.filter((x) => x.status === 'failed').length,
+          skipped: results.filter((x) => x.status === 'skipped').length,
+          providerRequests: results.reduce((sum, x) => sum + x.requests, 0),
+          observations: results.reduce((sum, x) => sum + x.rows, 0),
+          profile: env.PULSE_EXECUTION_PROFILE ?? 'standard',
+          readyOnly: selection.readyOnly ?? false,
         }),
       );
       // sync records per-job failures instead of throwing, so propagate the outcome
