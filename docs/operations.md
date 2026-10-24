@@ -128,3 +128,14 @@ runtime and the local CLI before assigning a cause.
 `/health` is unauthenticated liveness only and must not be used as a collection
 success monitor. Cron failure reporting is not a notification delivery service;
 configure an owner-approved alert consumer separately.
+
+### Transport diagnostics
+
+`NETWORK` errors retain only a bounded sequence of fixed diagnostic categories
+for the three connection attempts (`timeout`, `aborted`, `connection-lost`,
+`type-error`, `range-error`, `other`, or `non-error`). The stored message never
+includes a provider URL, response body, exception text, headers, account identifiers
+or tokens. A `type-error` describes a runtime rejection, not proof of a specific
+request-construction defect; compare with a real Worker execution before changing
+network settings. Existing older `NETWORK` records predate this diagnosis and have
+no inferred category. Diagnostics alone do not certify a provider's availability.

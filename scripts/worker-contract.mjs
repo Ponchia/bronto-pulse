@@ -32,6 +32,7 @@ export default { async fetch(request, bindings) {
     requests++;
     const url = new URL(upstream.url);
     if (url.origin !== 'https://api.npmjs.org') throw Error('Unexpected provider origin');
+    if (mode === 'network') throw new TypeError('secret-private-network-exception');
     if (mode === 'redirect') return new Response('private-provider-value', {
       status: 302, headers: {Location:'https://untrusted.invalid/?token=private-provider-value'}
     });
@@ -99,6 +100,22 @@ try {
     (await db.prepare('SELECT COUNT(*) AS n FROM leases').first()).n,
     0,
     'scheduler and dataset leases must be released after failure',
+  );
+  const networkFailure = await run('network');
+  assert.equal(networkFailure.ok, false);
+  assert.equal(networkFailure.requests, 3);
+  assert.ok(!JSON.stringify(networkFailure).includes('secret-private-network-exception'));
+  const latestNetwork = await db
+    .prepare(
+      "SELECT error_code,error_message FROM runs WHERE status='failed' AND error_code='NETWORK' LIMIT 1",
+    )
+    .first();
+  assert.equal(latestNetwork.error_code, 'NETWORK');
+  assert.match(latestNetwork.error_message, /type-error, type-error, type-error/);
+  assert.ok(!JSON.stringify(latestNetwork).includes('secret-private-network-exception'));
+  assert.deepEqual(
+    (await db.prepare('SELECT * FROM partitions ORDER BY day').all()).results,
+    before.results,
   );
   assert.deepEqual(await run('recovery'), { ok: true, requests: 1 });
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM partitions').first()).n, 14);
