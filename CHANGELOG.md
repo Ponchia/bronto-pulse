@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add explicit owner-only Cloudflare Access authentication with signed JWT
+  verification, issuer/audience/hostname pinning and a bounded cached key set.
+- Preserve token authentication by default; Access mode rejects spoofed identity
+  headers and never falls back to bearer credentials or initializes private data
+  for an unverified identity.
+
 - Add an explicit bounded Free execution profile and ready-only collection rotation.
 - Avoid rewriting unchanged catalogs, and publish release annotations in one
   fenced SQL statement rather than one statement per release.

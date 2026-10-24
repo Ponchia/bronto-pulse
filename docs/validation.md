@@ -43,3 +43,8 @@ outcomes, preserved history, released leases and subsequent recovery.
 This test makes no live provider requests and does not prove account access,
 production CPU usage or successful future cron delivery. Those remain separate
 installation checks.
+
+The Worker test gate also verifies synthetic RS256 Access identities with native
+workerd WebCrypto. Its fixtures are generated test keys, not live Access sessions.
+A separate deployment acceptance must verify the real owner-only edge policy and
+login flow; no test result implies an account grant exists.
