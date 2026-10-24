@@ -26,6 +26,7 @@ export const inspectionSchema = z
         'PERMISSION',
         'RATE_LIMIT',
         'NETWORK',
+        'REDIRECT',
         'SCHEMA',
         'ROW_LIMIT',
         'UNAVAILABLE',

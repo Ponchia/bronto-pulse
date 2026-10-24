@@ -269,3 +269,53 @@ test('normalized attempts retain canonicals/crawl/sitemaps, unknowns and failure
     store.driver.close?.();
   }
 });
+test('redirected inspections retain a safe failure without following or replacing observed history', async () => {
+  const config = fixture('gsc');
+  const url = 'https://example.invalid/docs/a';
+  let calls = 0;
+  const http = new HttpClient(async (endpoint, init) => {
+    assert.equal(
+      String(endpoint),
+      'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
+    );
+    assert.equal(init?.redirect, 'manual');
+    calls++;
+    return calls === 1
+      ? new Response(
+          JSON.stringify({ inspectionResult: { indexStatusResult: { verdict: 'PASS' } } }),
+        )
+      : new Response('synthetic-private-redirect-body', {
+          status: 302,
+          headers: {
+            location: 'https://evil.invalid/synthetic-sensitive-location',
+          },
+        });
+  });
+  const options = { http, now: () => at };
+  const observed = await inspectUrls(config, 'source', [url], { TEST_TOKEN: 'synthetic' }, options);
+  const redirected = await inspectUrls(
+    config,
+    'source',
+    [url],
+    { TEST_TOKEN: 'synthetic' },
+    options,
+  );
+  assert.equal(calls, 2);
+  assert.equal(redirected[0]?.status, 'error');
+  assert.equal(redirected[0]?.errorCode, 'REDIRECT');
+  assert.equal(redirected[0]?.verdict, null);
+  assert.doesNotMatch(
+    JSON.stringify(redirected),
+    /evil\.invalid|synthetic-sensitive-location|synthetic-private-redirect-body/,
+  );
+  const store = await database(config);
+  try {
+    await store.addInspections([...observed, ...redirected]);
+    const rows = await store.inspections('source', { from: '2026-10-23', to: '2026-10-23' });
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find((row) => row.status === 'observed')?.verdict, 'PASS');
+    assert.equal(rows.find((row) => row.status === 'error')?.errorCode, 'REDIRECT');
+  } finally {
+    store.driver.close?.();
+  }
+});
