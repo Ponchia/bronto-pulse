@@ -27,7 +27,11 @@ export default { async fetch(request, bindings) {
   const mode = new URL(request.url).searchParams.get('mode');
   const original = globalThis.fetch;
   let requests = 0;
-  globalThis.fetch = async (input, init) => {
+  // Reject the wrong receiver exactly as native workerd fetch does. This
+  // catches a regression where HttpClient saves fetch then calls it as a method.
+  globalThis.fetch = async function (input, init) {
+    if (this !== undefined && this !== globalThis)
+      throw new TypeError('Illegal invocation: incorrect fetch receiver');
     const upstream = new Request(input, init);
     requests++;
     const url = new URL(upstream.url);
