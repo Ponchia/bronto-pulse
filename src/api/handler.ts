@@ -1,3 +1,4 @@
+import type { AggregateBindings } from '../collectors/bindings.js';
 import type { Config } from '../config.js';
 import type { Secrets } from '../auth.js';
 import { PulseError, safeError } from '../errors.js';
@@ -21,6 +22,7 @@ interface ApiAccessContext {
   apiToken: string;
   /** Explicit signed-identity mode; never trusts a plain proxy email header. */
   access?: AccessAuthorizer;
+  bindings?: AggregateBindings;
   asset: (path: string) => Promise<Response>;
   now?: () => Date;
 }
@@ -281,7 +283,7 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
     if (url.pathname === root + '/portfolio')
       return secure(json(await portfolio(data.config, data.store, windowFor(url, now), now)));
     if (url.pathname === root + '/health')
-      return secure(json(await doctor(data.config, data.store, ctx.secrets, now)));
+      return secure(json(await doctor(data.config, data.store, ctx.secrets, now, ctx.bindings)));
     if (url.pathname === root + '/runs')
       return secure(
         json({

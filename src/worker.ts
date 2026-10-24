@@ -1,3 +1,4 @@
+import { workerBindings, type AggregateEnvironment } from './collectors/bindings.js';
 import { parseConfig } from './config.js';
 import { D1Driver, type D1Like } from './storage/driver.js';
 import { Store } from './storage/store.js';
@@ -7,7 +8,7 @@ import { scheduleOptions } from './worker-schedule.js';
 import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
 import { workerAccess, type AccessEnvironment } from './api/access.js';
-export interface WorkerEnv extends AccessEnvironment {
+export interface WorkerEnv extends AccessEnvironment, AggregateEnvironment {
   DB: D1Like;
   ASSETS: { fetch(request: Request): Promise<Response> };
   PULSE_CONFIG: string;
@@ -82,6 +83,7 @@ export default {
         secrets: environmentSecrets(env),
         apiToken: env.PULSE_API_TOKEN ?? '',
         access: workerAccess(env),
+        bindings: workerBindings(env),
         asset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
       });
     } catch {
@@ -103,6 +105,7 @@ export default {
   async scheduled(_event: { scheduledTime: number }, env: WorkerEnv): Promise<void> {
     // Validate explicit scheduling controls before touching private storage.
     const selection = scheduleOptions(env);
+    const bindings = workerBindings(env);
     const { store, config } = await context(env);
     if (config.demo) return;
     const owner = crypto.randomUUID(),
@@ -111,6 +114,7 @@ export default {
     try {
       const results = await sync(config, store, environmentSecrets(env), {
         ...selection,
+        bindings,
         rotate: true,
       });
       // Only aggregate result codes. No URLs, credentials or provider payloads in logs.

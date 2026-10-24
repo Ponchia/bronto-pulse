@@ -1,3 +1,4 @@
+import { nativeSense6 } from './bindings.js';
 import type { Resource } from '../config.js';
 import { PulseError, invariant } from '../errors.js';
 import { contains, day } from '../time.js';
@@ -10,28 +11,38 @@ export async function collectSense6(
   r: Extract<Resource, { provider: 'sense6' }>,
   ctx: CollectContext,
 ) {
-  const data = object(
-    await ctx.http.json(
-      `https://api.cloudflare.com/client/v4/accounts/${r.accountId}/d1/database/${r.databaseId}/query`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${await token(r, ctx)}`,
-          'Content-Type': 'application/json',
+  const native = nativeSense6(r, ctx.bindings);
+  let rows: unknown[];
+  if (native) {
+    const result = await native
+      .prepare(SENSE6_QUERY)
+      .bind(ctx.window.from, ctx.window.to, ctx.config.settings.maxRows + 1)
+      .all<Record<string, unknown>>();
+    rows = array(result.results, 'D1 aggregate rows');
+  } else {
+    const data = object(
+      await ctx.http.json(
+        `https://api.cloudflare.com/client/v4/accounts/${r.accountId}/d1/database/${r.databaseId}/query`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await token(r, ctx)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sql: SENSE6_QUERY,
+            params: [ctx.window.from, ctx.window.to, ctx.config.settings.maxRows + 1],
+          }),
         },
-        body: JSON.stringify({
-          sql: SENSE6_QUERY,
-          params: [ctx.window.from, ctx.window.to, ctx.config.settings.maxRows + 1],
-        }),
-      },
-    ),
-  );
-  invariant(data.success === true, 'Cloudflare denied the aggregate D1 query.');
-  const result = array(data.result, 'D1 result sets');
-  invariant(result.length === 1, 'Unexpected D1 result set count.');
-  const resultSet = object(result[0]);
-  invariant(resultSet.success !== false, 'D1 query failed.');
-  const rows = array(resultSet.results, 'D1 aggregate rows');
+      ),
+    );
+    invariant(data.success === true, 'Cloudflare denied the aggregate D1 query.');
+    const result = array(data.result, 'D1 result sets');
+    invariant(result.length === 1, 'Unexpected D1 result set count.');
+    const resultSet = object(result[0]);
+    invariant(resultSet.success !== false, 'D1 query failed.');
+    rows = array(resultSet.results, 'D1 aggregate rows');
+  }
   if (rows.length > ctx.config.settings.maxRows)
     throw new PulseError('ROW_LIMIT', 'Sense6 aggregate query exceeded its row budget.');
   const metrics = [

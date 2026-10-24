@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Collect approved Sense6 daily counters through an explicitly pinned native D1
+  binding, using the existing fixed aggregate-only query and row budgets. This
+  avoids an account API token for same-account installations.
+
 - Integrate bounded read-only Search Console URL inspection, service-account
   support and offline visibility benchmarks with Free-profile execution and
   owner-verified Access authentication. Require the additive inspection migration
