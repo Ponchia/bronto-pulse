@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Keep per-group collection failures visible even after more than 100 subsequent
+  runs in other groups; read only latest warning evidence and report model fields.
+- Defer HTTP 429 in the Free execution profile after one request, preserving
+  existing history and the portable CLI retry policy.
+- Enforce the Free profile's 250 normalized-observation bound before staging,
+  including provider rows that expand into several metrics.
+
 - Use Zod's lightweight schema API for Worker configuration and normalized URL
   inspection validation while retaining identical generated configuration schema,
   defaults, strict object boundaries and semantic validation.

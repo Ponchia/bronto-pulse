@@ -32,6 +32,7 @@ export class HttpClient {
       new Promise((resolve) => setTimeout(resolve, ms)),
     private readonly maximumBytes = 8 * 1024 * 1024,
     private readonly maximumRequests = 120,
+    private readonly retryRateLimits = true,
   ) {}
   async json(url: string, init: RequestInit = {}): Promise<unknown> {
     const target = new URL(url);
@@ -96,6 +97,10 @@ export class HttpClient {
           'GitHub quota is exhausted. Retry in a later collection run.',
           true,
         );
+      }
+      if (response.status === 429 && !this.retryRateLimits) {
+        await response.body?.cancel();
+        throw new PulseError('RATE_LIMIT', 'Provider quota requires a later collection run.', true);
       }
       if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
         const raw = response.headers.get('retry-after');

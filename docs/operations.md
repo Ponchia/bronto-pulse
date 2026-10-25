@@ -201,3 +201,24 @@ Its manifest always says `offBoxVerified:false`: copying to a local directory or
 matching a backup include rule does not prove remote custody. Verify the remote
 snapshot includes the new archive and restore it independently. D1 Time Travel
 is complementary provider recovery, not an independent backup destination.
+
+## Bounded quota retries and report reads
+
+The Free execution profile defers HTTP 429 responses to the next scheduled
+collection instead of retrying them immediately. One denied provider request is
+recorded as `RATE_LIMIT`, its response body is canceled, and previous published
+history remains unchanged. This does not raise quotas or replace a missing
+provider grant. The portable CLI retains its existing bounded retry policy.
+
+The normalized observation limit is checked before staging or publication.
+An upstream row can produce several metrics, so the provider row limit alone is
+not sufficient. Free collection accepts up to 250 normalized observations and
+rejects larger results without publishing a partial dataset.
+
+Reports read one latest outcome per resource/group, including groups whose last
+run predates hundreds of runs in other groups. An active group therefore cannot
+hide an older failed group's warning. Reporting reads omit duplicated storage
+keys that are not part of the returned observation model. The original archive,
+run-history API, transaction snapshot, source windows and metric arithmetic are
+unchanged. These smaller reads reduce transferred data; they are not proof of
+sub-10-ms production CPU time. Measure the actual deployed invocation separately.

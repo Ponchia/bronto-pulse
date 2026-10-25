@@ -350,3 +350,97 @@ test('malformed portfolio snapshot results fail closed', async () => {
   const s = new Store({ all: async () => [], batch: async () => {}, readBatch: async () => [] });
   await assert.rejects(portfolio(c, s, window, now), /Incomplete portfolio snapshot/);
 });
+
+test('busy groups cannot hide an older failed group from project or portfolio warnings', async () => {
+  const config = fixture('github', { groups: ['views', 'repository'] });
+  const store = await database(config);
+  try {
+    await publish(store, config, [sample()]);
+    const failure = await store.begin(config.resources[0]!, 'views', window, now);
+    await store.fail(failure, 'NETWORK', 'Synthetic older group failure', 1, now);
+    for (let i = 0; i < 125; i++) {
+      const id = await store.begin(
+        config.resources[0]!,
+        'repository',
+        window,
+        new Date(now.getTime() + 1000 + i),
+      );
+      await store.driver.batch([
+        {
+          sql: "UPDATE runs SET status='success',finished_at=? WHERE id=?",
+          params: [now.toISOString(), id],
+        },
+      ]);
+    }
+    assert.equal(
+      (await store.runs(100, 'source')).some((r) => r.group === 'views'),
+      false,
+    );
+    const latest = await store.latestRuns('source');
+    assert.equal(latest.length, 2);
+    assert.deepEqual(
+      latest.find((r) => r.group === 'views'),
+      { group: 'views', status: 'failed', code: 'NETWORK' },
+    );
+    const direct = await projectReport(config, store, 'project', window, now);
+    assert.ok(
+      direct.warnings.some((x) => x.includes('source/views: latest refresh failed (NETWORK)')),
+    );
+    assert.deepEqual((await portfolio(config, store, window, now)).reports, [direct]);
+    // Ties must use insertion order just like the full run-history reader.
+    const recovery = await store.begin(config.resources[0]!, 'views', window, now);
+    await store.driver.batch([
+      {
+        sql: "UPDATE runs SET status='success',finished_at=? WHERE id=?",
+        params: [now.toISOString(), recovery],
+      },
+    ]);
+    assert.equal(
+      (await store.latestRuns('source')).find((r) => r.group === 'views')?.status,
+      'success',
+    );
+    assert.ok(
+      !(await projectReport(config, store, 'project', window, now)).warnings.some((x) =>
+        x.includes('source/views: latest refresh failed'),
+      ),
+    );
+  } finally {
+    store.driver.close?.();
+  }
+});
+
+test('report observation reads omit duplicated storage keys without losing model fields', async () => {
+  const config = fixture();
+  const store = await database(config);
+  try {
+    await publish(store, config, [sample('2026-10-12', 8), sample('2026-10-13', 0)]);
+    let selected = '';
+    let returnedRows: Record<string, unknown>[] = [];
+    const lean = new Store({
+      all: async <T extends Record<string, unknown>>(
+        q: import('../src/storage/driver.js').Statement,
+      ): Promise<T[]> => {
+        selected = q.sql;
+        const rows = await store.driver.all<T>(q);
+        returnedRows = rows;
+        return rows;
+      },
+      readBatch: async (q) => store.driver.readBatch(q),
+      batch: async () => assert.fail('read-only fixture'),
+    });
+    const actual = await lean.observations('source', window);
+    assert.equal(actual.length, 2);
+    assert.equal(actual[1]?.value, 0);
+    const projection = selected.slice(0, selected.indexOf(' FROM '));
+    assert.ok(!projection.includes('o.*'));
+    assert.ok(!projection.includes('item_key'));
+    assert.ok(!projection.includes('partition_day'));
+    assert.ok(projection.includes('run_id'));
+    const full = await store.driver.all({
+      sql: 'SELECT o.*,r.started_at FROM observations o JOIN runs r ON r.id=o.run_id ORDER BY o.partition_day',
+    });
+    assert.ok(JSON.stringify(returnedRows).length < JSON.stringify(full).length);
+  } finally {
+    store.driver.close?.();
+  }
+});

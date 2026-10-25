@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { Store } from '../src/storage/store.js';
 import { D1Driver } from '../src/storage/driver.js';
 import { fixture, publish, sample, window, now } from '../tests/helpers.js';
-import { projectReport } from '../src/report.js';
+import { projectReport, portfolio } from '../src/report.js';
 import { doctor } from '../src/sync.js';
 import { projectBrief } from '../src/brief.js';
 import { parseConfig } from '../src/config.js';
@@ -91,6 +91,11 @@ try {
   assert.equal(health.resources.find((r) => r.group === 'views')?.observedThrough, '2026-10-12');
   assert.ok(
     projectBrief(await projectReport(config, store, 'project', window, now)).findings.length > 0,
+  );
+  assert.deepEqual(
+    (await portfolio(config, store, window, now)).reports,
+    [await projectReport(config, store, 'project', window, now)],
+    'native D1 compact report projection and latest-group heads must preserve exact reports',
   );
   const exported = await store.export();
   const recovery = new Store(new D1Driver(await mf.getD1Database('RESTORE', 'pulse')));

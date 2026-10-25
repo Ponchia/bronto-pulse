@@ -42,6 +42,7 @@ export default { async fetch(request, bindings) {
     requests++;
     const url = new URL(upstream.url);
     if (url.origin !== 'https://api.npmjs.org') throw Error('Unexpected provider origin');
+    if (mode === 'quota') return new Response('private-quota-body', {status:429});
     if (mode === 'network') throw new TypeError('secret-private-network-exception');
     if (mode === 'redirect') return new Response('private-provider-value', {
       status: 302, headers: {Location:'https://untrusted.invalid/?token=private-provider-value'}
@@ -56,7 +57,7 @@ export default { async fetch(request, bindings) {
   };
   const env = {...bindings, PULSE_CONFIG:${JSON.stringify(JSON.stringify(config))},
     PULSE_API_TOKEN:'synthetic-worker-contract-token', PULSE_PROVIDER:'npm', PULSE_MAX_JOBS:'1',
-    PULSE_EXECUTION_PROFILE:mode === 'free' ? 'free' : undefined,
+    PULSE_EXECUTION_PROFILE:mode === 'free' || mode === 'quota' ? 'free' : undefined,
     ASSETS:{fetch:async()=>new Response('synthetic')}};
   try {
     await worker.scheduled({scheduledTime:Date.now()}, env);
@@ -150,6 +151,20 @@ try {
   assert.equal(missingInspection.code, 'SCHEMA');
   await db.prepare(inspectionSchema.sql).run();
   assert.deepEqual(await run('free'), { ok: true, requests: 1 });
+  const beforeQuota = await db.prepare('SELECT * FROM partitions ORDER BY day').all();
+  const quota = await run('quota');
+  assert.equal(quota.ok, false);
+  assert.equal(quota.requests, 1);
+  assert.deepEqual(
+    (await db.prepare('SELECT * FROM partitions ORDER BY day').all()).results,
+    beforeQuota.results,
+  );
+  assert.equal(
+    (await db.prepare("SELECT COUNT(*) AS n FROM runs WHERE error_code='RATE_LIMIT'").first()).n,
+    1,
+  );
+  assert.deepEqual(await run('free'), { ok: true, requests: 1 });
+
   console.log(
     'WORKER CONTRACT PASSED: native Request, provider parsing, scheduled failure, redirect refusal, private errors, D1 publication, preserved history, released leases and recovery.',
   );

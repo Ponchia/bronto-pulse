@@ -101,7 +101,8 @@ these boundaries; no reduction in live-account billed usage is claimed.
 Set `PULSE_EXECUTION_PROFILE=free` and `PULSE_MAX_JOBS=1` after applying D1
 migrations. This mode checks the schema version instead of rerunning schema DDL
 on every cold start. It caps a collection at eight provider requests (including
-retries), 256 KiB per response and 250 observations. Incomplete or over-budget
+retries), 256 KiB per response and 250 normalized observations before publication. HTTP 429 quota responses
+are deferred to the next invocation rather than immediately retried. Incomplete or over-budget
 results cannot replace published history. These are engineering bounds, not a
 promise that arbitrary providers fit Cloudflare's CPU budget: measure real
 invocation CPU and D1 usage before expanding collection. Never upgrade a plan
