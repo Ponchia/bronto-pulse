@@ -15,6 +15,7 @@ test('Free profile is explicit, one job, and rejects ambiguous or over-budget co
     maximumRequests: 8,
     maximumBytes: 262144,
     maximumRows: 250,
+    retryRateLimits: false,
   });
   assert.throws(() => scheduleOptions({ PULSE_EXECUTION_PROFILE: 'paid' }), /Invalid execution/);
   assert.throws(
@@ -164,5 +165,113 @@ test('release annotations publish in one bounded SQL statement without losing ex
     );
   } finally {
     driver.close();
+  }
+});
+
+test('Free profile does not retry throttled requests and preserves published history', async () => {
+  const config = fixture('npm');
+  const store = await database(config);
+  const now = new Date('2026-10-14T12:00:00Z');
+  const window = { from: '2026-10-12', to: '2026-10-13' };
+  const good = async () =>
+    Response.json({
+      package: '@example/package',
+      start: window.from,
+      end: window.to,
+      downloads: [
+        { day: window.from, downloads: 3 },
+        { day: window.to, downloads: 4 },
+      ],
+    });
+  const options = { ...scheduleOptions({ PULSE_EXECUTION_PROFILE: 'free' }), now, window };
+  try {
+    assert.equal(
+      (await sync(config, store, {}, { ...options, fetcher: good }))[0]?.status,
+      'success',
+    );
+    const before = await store.observations('source', window);
+    let calls = 0,
+      canceled = false;
+    const result = await sync(
+      config,
+      store,
+      {},
+      {
+        ...options,
+        fetcher: async () => {
+          calls++;
+          return new Response(
+            new ReadableStream({
+              cancel() {
+                canceled = true;
+              },
+            }),
+            { status: 429 },
+          );
+        },
+        sleep: async () => assert.fail('Free quota failures must defer to a later invocation'),
+      },
+    );
+    assert.equal(calls, 1);
+    assert.equal(canceled, true);
+    assert.equal(result[0]?.code, 'RATE_LIMIT');
+    assert.deepEqual(await store.observations('source', window), before);
+    assert.equal(
+      (await sync(config, store, {}, { ...options, fetcher: good }))[0]?.status,
+      'success',
+    );
+    assert.equal((await store.driver.all({ sql: 'SELECT COUNT(*) AS n FROM leases' }))[0]?.n, 0);
+  } finally {
+    store.driver.close?.();
+  }
+});
+
+test('Free profile caps normalized observations at 250 before publication', async () => {
+  const config = fixture('npm');
+  const store = await database(config);
+  const date = (i: number) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
+  const options = scheduleOptions({ PULSE_EXECUTION_PROFILE: 'free' });
+  const fetcher = async (input: RequestInfo | URL) => {
+    const match = new URL(String(input)).pathname.match(
+      /range\/(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\//,
+    )!;
+    const start = match[1]!,
+      end = match[2]!;
+    const n = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
+    return Response.json({
+      package: '@example/package',
+      start,
+      end,
+      downloads: Array.from({ length: n }, (_, i) => ({ day: date(i), downloads: i + 1 })),
+    });
+  };
+  const now = new Date('2026-10-14T12:00:00Z');
+  const baseline = { from: date(0), to: date(13) };
+  try {
+    assert.equal(
+      (await sync(config, store, {}, { ...options, now, window: baseline, fetcher }))[0]?.status,
+      'success',
+    );
+    const before = await store.observations('source', baseline);
+    const over = await sync(
+      config,
+      store,
+      {},
+      { ...options, now, window: { from: date(0), to: date(250) }, fetcher },
+    );
+    assert.equal(over[0]?.code, 'ROW_LIMIT');
+    assert.deepEqual(await store.observations('source', baseline), before);
+    const rawCount = await store.driver.all({ sql: 'SELECT COUNT(*) AS n FROM observations' });
+    assert.equal(rawCount[0]?.n, 14, 'over-budget records must not even enter staging');
+    const exact = await sync(
+      config,
+      store,
+      {},
+      { ...options, now, window: { from: date(0), to: date(249) }, fetcher },
+    );
+    assert.equal(exact[0]?.status, 'success');
+    assert.equal(exact[0]?.rows, 250);
+  } finally {
+    store.driver.close?.();
   }
 });

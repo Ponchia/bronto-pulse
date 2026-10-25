@@ -95,11 +95,14 @@ const OBS_FIELDS = [
   'quality',
   'methodology',
 ];
+const REPORT_OBS_FIELDS = OBS_FIELDS.filter(
+  (field) => field !== 'item_key' && field !== 'partition_day',
+);
 const RAW_OBS_SELECT = `SELECT o.* FROM observations o JOIN partitions p ON p.run_id=o.run_id AND p.resource_id=o.resource_id AND p.group_id=o.group_id AND p.day=o.partition_day JOIN runs r ON r.id=o.run_id AND r.status='success'`;
 const reportStatements = {
   observations(resourceId: string, window: DateRange, limit: number): Statement {
     return {
-      sql: `${RAW_OBS_SELECT.replace('SELECT o.*', 'SELECT o.*,r.started_at')} WHERE o.resource_id=? AND o.partition_day>=? AND o.partition_day<=? ORDER BY o.partition_day,o.metric,o.dimensions_json LIMIT ?`,
+      sql: `${RAW_OBS_SELECT.replace('SELECT o.*', `SELECT ${REPORT_OBS_FIELDS.map((field) => `o.${field}`).join(',')},r.started_at`)} WHERE o.resource_id=? AND o.partition_day>=? AND o.partition_day<=? ORDER BY o.partition_day,o.metric,o.dimensions_json LIMIT ?`,
       params: [resourceId, window.from, window.to, limit + 1],
     };
   },
@@ -107,6 +110,12 @@ const reportStatements = {
     return {
       sql: `SELECT * FROM runs ${resourceId ? 'WHERE resource_id=?' : ''} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
       params: resourceId ? [resourceId, limit] : [limit],
+    };
+  },
+  latestRuns(resourceId: string): Statement {
+    return {
+      sql: 'SELECT group_id,status,error_code FROM (SELECT group_id,status,error_code,ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY started_at DESC,rowid DESC) AS rank FROM runs WHERE resource_id=?) WHERE rank=1 ORDER BY group_id',
+      params: [resourceId],
     };
   },
   annotations(resourceIds: string[], window: DateRange): Statement {
@@ -377,6 +386,14 @@ export class Store {
   async runs(limit = 1000, resourceId?: string): Promise<Run[]> {
     return (await this.driver.all(reportStatements.runs(limit, resourceId))).map(run);
   }
+  /** Minimal warning evidence, one latest outcome per group regardless of run volume. */
+  async latestRuns(resourceId: string): Promise<Pick<Run, 'group' | 'status' | 'code'>[]> {
+    return (await this.driver.all(reportStatements.latestRuns(resourceId))).map((row) => ({
+      group: String(row.group_id),
+      status: row.status as Run['status'],
+      code: row.error_code as Run['code'],
+    }));
+  }
   /** Latest state per dataset, independent of total historical run volume. */
   async runHeads(): Promise<{ latest: Run[]; successful: Run[] }> {
     const query = (successful: boolean) => ({
@@ -499,7 +516,7 @@ export class Store {
       const ids = [...new Set(project.resources.map((binding) => binding.resource))];
       for (const id of ids) {
         add(reportStatements.observations(id, observationWindow, 100000));
-        add(reportStatements.runs(100, id));
+        add(reportStatements.latestRuns(id));
         if (config.resources.find((r) => r.id === id)?.provider === 'gsc')
           add(reportStatements.inspections(id, window));
       }

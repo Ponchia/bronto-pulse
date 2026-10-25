@@ -425,7 +425,7 @@ export async function projectReport(
         `${resource.id}: some values are provisional, sampled or provider-limited; these values are not exact complete-population totals.`,
       );
     }
-    const runs = await store.runs(100, resource.id);
+    const runs = await store.latestRuns(resource.id);
     for (const group of groups(resource)) {
       const latest = runs.find((x) => x.group === group);
       if (latest?.status === 'failed')

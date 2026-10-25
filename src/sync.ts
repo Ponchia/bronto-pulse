@@ -22,6 +22,7 @@ export interface SyncOptions {
   maximumRequests?: number;
   maximumBytes?: number;
   maximumRows?: number;
+  retryRateLimits?: boolean;
   bindings?: AggregateBindings;
 }
 export interface SyncResult {
@@ -82,6 +83,8 @@ export async function sync(
   for (const bound of [options.maximumRequests, options.maximumBytes, options.maximumRows])
     if (bound !== undefined && (!Number.isSafeInteger(bound) || bound < 1))
       throw new PulseError('CONFIG', 'Collection budgets must be positive integers.');
+  if (options.retryRateLimits !== undefined && typeof options.retryRateLimits !== 'boolean')
+    throw new PulseError('CONFIG', 'Invalid rate-limit retry policy.');
   await store.register(config, now);
   if (!selected.length) return [];
   const collectionConfig =
@@ -135,6 +138,7 @@ export async function sync(
       options.sleep,
       options.maximumBytes,
       options.maximumRequests,
+      options.retryRateLimits,
     );
     try {
       id = await store.begin(resource, group, window, now);
@@ -147,6 +151,13 @@ export async function sync(
         now,
         bindings: options.bindings,
       });
+      // Provider row counts may expand into several observations. The Free
+      // profile bounds the normalized output, not only the upstream row count.
+      if (options.maximumRows !== undefined && data.observations.length > options.maximumRows)
+        throw new PulseError(
+          'ROW_LIMIT',
+          'Normalized observation budget exceeded; no data published.',
+        );
       await store.publish(
         id,
         resource,

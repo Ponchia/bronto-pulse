@@ -12,7 +12,13 @@ export function scheduleOptions(env: {
   PULSE_READY_ONLY?: string;
 }): Pick<
   SyncOptions,
-  'maxJobs' | 'provider' | 'readyOnly' | 'maximumRequests' | 'maximumBytes' | 'maximumRows'
+  | 'maxJobs'
+  | 'provider'
+  | 'readyOnly'
+  | 'maximumRequests'
+  | 'maximumBytes'
+  | 'maximumRows'
+  | 'retryRateLimits'
 > {
   const profile = env.PULSE_EXECUTION_PROFILE;
   if (profile !== undefined && profile !== 'free')
@@ -28,7 +34,9 @@ export function scheduleOptions(env: {
       'The Free execution profile requires exactly one job per invocation.',
     );
   const budgets =
-    profile === 'free' ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250 } : {};
+    profile === 'free'
+      ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250, retryRateLimits: false }
+      : {};
   const readiness = env.PULSE_READY_ONLY === 'true' ? { readyOnly: true } : {};
   const provider = env.PULSE_PROVIDER;
   if (provider === undefined) return { maxJobs, ...budgets, ...readiness };
