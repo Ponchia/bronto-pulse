@@ -203,6 +203,22 @@ A failed run prints `ok:false` with one fixed `category`: `authentication`,
 so they are classified and discarded, never printed. `authentication` usually
 means the operator's Wrangler login needs a refresh (`wrangler login`).
 
+`--freshness --out /private/backups` judges collection health offline, from the
+newest verified archive, with no Wrangler call or credential. Collection ages are
+measured from the archive's capture. It prints one JSON line and exits 1 unless
+`category` is `healthy`. The other categories are:
+
+- `backup-missing`: no verified archive exists.
+- `backup-unreadable`: the newest archive cannot be read.
+- `backup-stale`: the newest verified archive is more than 30 hours old.
+- `collector-stalled`: the newest run started more than 2 hours before capture.
+- `groups-stale`: an enabled group's last success, or its first attempt if it
+  never succeeded, is more than 48 hours old (the default `staleAfterHours`).
+  `staleGroups` names each one as `resource/group`.
+
+Schedule it after the export so a silent cron, a provider that fails every time
+or a stopped backup reaches the operator.
+
 Schedule this helper explicitly before the existing encrypted off-box backup.
 Its manifest always says `offBoxVerified:false`: copying to a local directory or
 matching a backup include rule does not prove remote custody. Verify the remote

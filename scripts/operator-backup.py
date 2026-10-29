@@ -39,7 +39,8 @@ def classify_export_failure(stderr: bytes) -> str:
     return "export-failed"
 
 
-def verify_dump(raw: bytes) -> dict[str, int]:
+def restore(raw: bytes) -> sqlite3.Connection:
+    """Restore an export into memory, refusing attachments and extensions."""
     if not raw or len(raw) > MAXIMUM_BYTES:
         raise ValueError("Export is empty or exceeds the operator byte budget.")
     db = sqlite3.connect(":memory:")
@@ -56,6 +57,15 @@ def verify_dump(raw: bytes) -> dict[str, int]:
             raise ValueError("Restored database failed integrity validation.")
         if db.execute("PRAGMA foreign_key_check").fetchall():
             raise ValueError("Restored database has invalid references.")
+        return db
+    except BaseException:
+        db.close()
+        raise
+
+
+def verify_dump(raw: bytes) -> dict[str, int]:
+    db = restore(raw)
+    try:
         return {name: db.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in TABLES}
     finally:
         db.close()
@@ -98,6 +108,14 @@ def publish(raw: bytes, directory: Path, now: dt.datetime | None = None) -> dict
 def prune(directory: Path, retain: int) -> int:
     if retain < 2 or retain > 365:
         raise ValueError("Retained backup count must be between 2 and 365.")
+    removed = 0
+    for path in verified_archives(directory)[retain:]:
+        path.unlink(); path.with_name(path.name + ".json").unlink(); removed += 1
+    return removed
+
+
+def verified_archives(directory: Path) -> list[Path]:
+    """Owned archives whose manifest and checksum match, newest first."""
     verified: list[Path] = []
     for path in directory.iterdir():
         if not ARCHIVE.fullmatch(path.name) or path.is_symlink() or not path.is_file():
@@ -114,21 +132,79 @@ def prune(directory: Path, retain: int) -> int:
             verified.append(path)
         except (ValueError, OSError):
             continue
-    removed = 0
-    for path in sorted(verified, key=lambda p: p.name, reverse=True)[retain:]:
-        path.unlink(); path.with_name(path.name + ".json").unlink(); removed += 1
-    return removed
+    return sorted(verified, key=lambda p: p.name, reverse=True)
+
+
+def instant(value: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(dt.timezone.utc)
+
+
+def freshness(directory: Path, now: dt.datetime | None = None, stale_after_hours: float = 48,
+              stall_after_hours: float = 2, archive_after_hours: float = 30) -> dict[str, object]:
+    """Judge collection health from the newest verified archive, offline and without credentials.
+
+    The archive is the data as of its capture, so collection ages are measured from
+    its creation; only the archive's own age is measured from now. A group is stale
+    when its last success (or, never having succeeded, its first attempt) is older
+    than the Worker's default staleAfterHours.
+    """
+    now = now or dt.datetime.now(dt.timezone.utc)
+    archives = verified_archives(directory)
+    if not archives:
+        return {"ok": False, "category": "backup-missing", "staleGroups": []}
+    newest = archives[0]
+    captured = instant(json.loads(newest.with_name(newest.name + ".json").read_text())["createdAt"])
+    result: dict[str, object] = {
+        "archive": newest.name,
+        "archiveAgeHours": round((now - captured).total_seconds() / 3600, 1),
+    }
+    db = restore(gzip.decompress(newest.read_bytes()))
+    try:
+        disabled = {row[0] for row in db.execute("SELECT id, config_json FROM resources")
+                    if json.loads(row[1]).get("enabled") is False}
+        last = db.execute("SELECT MAX(started_at) FROM runs").fetchone()[0]
+        groups = db.execute(
+            "SELECT resource_id, group_id, MAX(CASE WHEN status='success' THEN COALESCE(finished_at, started_at) END),"
+            " MIN(started_at) FROM runs GROUP BY resource_id, group_id ORDER BY resource_id, group_id").fetchall()
+    finally:
+        db.close()
+    stale = [f"{resource}/{group}" for resource, group, success, first in groups
+             if resource not in disabled
+             and (captured - instant(success or first)).total_seconds() / 3600 > stale_after_hours]
+    result["lastRunAgeHours"] = round((captured - instant(last)).total_seconds() / 3600, 1) if last else None
+    result["staleGroups"] = stale
+    if result["archiveAgeHours"] > archive_after_hours:
+        result["category"] = "backup-stale"
+    elif last is None or result["lastRunAgeHours"] > stall_after_hours:
+        result["category"] = "collector-stalled"
+    elif stale:
+        result["category"] = "groups-stale"
+    else:
+        result["category"] = "healthy"
+    result["ok"] = result["category"] == "healthy"
+    return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--wrangler", required=True, type=Path)
-    parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--database", required=True)
+    parser.add_argument("--freshness", action="store_true",
+                        help="Judge collection health from the newest verified archive instead of exporting")
+    parser.add_argument("--wrangler", type=Path)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--database")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--retain", type=int, default=14)
     args = parser.parse_args()
+    if not args.freshness and not (args.wrangler and args.config and args.database):
+        parser.error("an export needs --wrangler, --config and --database")
     os.umask(0o077)
+    if args.freshness:
+        try:
+            result = freshness(private_directory(args.out))
+        except (OSError, EOFError, ValueError, KeyError, sqlite3.Error):
+            result = {"ok": False, "category": "backup-unreadable", "staleGroups": []}
+        print(json.dumps(result))
+        return 0 if result["ok"] else 1
     try:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", args.database) or not 2 <= args.retain <= 365:
             raise ValueError("Invalid database name or retention bound.")

@@ -75,3 +75,49 @@ print('Backup failure categories passed without leaking Wrangler diagnostics.')
     { stdio: 'pipe', timeout: 60000 },
   );
 });
+test('freshness judges collection health from the newest verified archive without credentials', () => {
+  execFileSync(
+    'python3',
+    [
+      '-c',
+      String.raw`
+import datetime as dt,importlib.util,json,subprocess,sys,tempfile
+from pathlib import Path
+sys.dont_write_bytecode=True
+spec=importlib.util.spec_from_file_location('pulse_backup',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+utc=dt.timezone.utc;captured=dt.datetime(2026,10,29,4,15,tzinfo=utc)
+def at(hours):return (captured-dt.timedelta(hours=hours)).isoformat().replace('+00:00','Z')
+def dump(runs,disabled=()):
+ sql=["CREATE TABLE resources(id TEXT PRIMARY KEY,config_json TEXT NOT NULL);","CREATE TABLE runs(id TEXT PRIMARY KEY,resource_id TEXT,group_id TEXT,status TEXT,started_at TEXT,finished_at TEXT);"]
+ sql+=['CREATE TABLE '+name+'(id TEXT);' for name in m.TABLES if name not in ('resources','runs')]
+ for rid in sorted({r[0] for r in runs}):sql.append("INSERT INTO resources VALUES('%s','%s');"%(rid,json.dumps({'id':rid,'enabled':rid not in disabled})))
+ for i,(rid,grp,status,hours) in enumerate(runs):sql.append("INSERT INTO runs VALUES('r%d','%s','%s','%s','%s','%s');"%(i,rid,grp,status,at(hours),at(hours)))
+ return ''.join(sql).encode()
+def judge(runs,now_hours=0.5,disabled=()):
+ with tempfile.TemporaryDirectory() as d:
+  out=Path(d)/'private';m.publish(dump(runs,disabled),out,captured)
+  return m.freshness(out,captured+dt.timedelta(hours=now_hours))
+fresh=[('ui','views','success',1),('ui','releases','success',0.2)]
+r=judge(fresh);assert r['ok'] and r['category']=='healthy' and r['staleGroups']==[] and r['lastRunAgeHours']==0.2,r
+r=judge(fresh+[('npm','downloads','success',50),('npm','downloads','failed',0.5)])
+assert r['category']=='groups-stale' and r['staleGroups']==['npm/downloads'],r
+# A group that never succeeded is stale once its first attempt is older than the window.
+r=judge(fresh+[('site','paths','failed',49),('site','paths','failed',0.4)]);assert r['staleGroups']==['site/paths'],r
+r=judge(fresh+[('old','views','success',90)],disabled=('old',));assert r['ok'],r
+r=judge([('ui','views','success',3)]);assert r['category']=='collector-stalled' and not r['ok'],r
+r=judge(fresh,now_hours=31);assert r['category']=='backup-stale',r
+with tempfile.TemporaryDirectory() as d:
+ out=Path(d)/'private';out.mkdir(mode=0o700)
+ assert m.freshness(out)['category']=='backup-missing'
+ m.publish(dump([('ui','views','success',3)]),out,captured)
+ run=subprocess.run([sys.executable,sys.argv[1],'--freshness','--out',str(out)],capture_output=True,timeout=30)
+ assert run.returncode==1 and json.loads(run.stdout)['ok'] is False,run
+ run=subprocess.run([sys.executable,sys.argv[1],'--out',str(out)],capture_output=True,timeout=30)
+ assert run.returncode==2 and b'--wrangler' in run.stderr,'an export without its inputs must be refused'
+print('Freshness categories passed.')
+`,
+      modulePath,
+    ],
+    { stdio: 'pipe', timeout: 60000 },
+  );
+});
