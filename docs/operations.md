@@ -196,6 +196,13 @@ the directory uses mode 0700. Only matching verified archive/manifest pairs are
 eligible for count-based retention; failed exports never prune prior backups.
 A lock prevents overlapping jobs. Python 3 and a Unix host are required.
 
+A failed run prints `ok:false` with one fixed `category`: `authentication`,
+`rate-limited`, `network`, `cloudflare-unavailable`, `export-failed`,
+`export-timeout`, `export-size`, `restore-verification`, `already-running` or
+`operator-setup`. Wrangler's own diagnostics can name the account and database,
+so they are classified and discarded, never printed. `authentication` usually
+means the operator's Wrangler login needs a refresh (`wrangler login`).
+
 Schedule this helper explicitly before the existing encrypted off-box backup.
 Its manifest always says `offBoxVerified:false`: copying to a local directory or
 matching a backup include rule does not prove remote custody. Verify the remote

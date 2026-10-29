@@ -18,6 +18,25 @@ import uuid
 MAXIMUM_BYTES = 64 * 1024 * 1024
 TABLES = ("resources", "runs", "observations", "partitions", "annotations")
 ARCHIVE = re.compile(r"^pulse-d1-\d{8}T\d{6}Z-[a-f0-9]{12}\.sql\.gz$")
+# Wrangler diagnostics can name accounts and databases, so a failure reports only one of
+# these fixed categories. The first matching pattern wins; anything else is "export-failed".
+EXPORT_FAILURES = (
+    ("authentication", re.compile(rb"not logged in|wrangler login|authenticat|invalid_grant|refresh token|oauth|\[code: 10000\]|unauthori[sz]ed|\b403\b", re.IGNORECASE)),
+    ("rate-limited", re.compile(rb"rate limit|too many requests|\b429\b", re.IGNORECASE)),
+    ("network", re.compile(rb"ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR|fetch failed|socket hang up|network", re.IGNORECASE)),
+    ("cloudflare-unavailable", re.compile(rb"\b50[0-4]\b|internal server error|service unavailable|bad gateway", re.IGNORECASE)),
+)
+
+
+class BackupFailure(Exception):
+    """A failure whose message is a fixed category, safe for journals and alerts."""
+
+
+def classify_export_failure(stderr: bytes) -> str:
+    for category, pattern in EXPORT_FAILURES:
+        if pattern.search(stderr):
+            return category
+    return "export-failed"
 
 
 def verify_dump(raw: bytes) -> dict[str, int]:
@@ -119,24 +138,38 @@ def main() -> int:
         out = private_directory(args.out)
         fd = os.open(out / ".pulse-backup.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as held:
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise BackupFailure("already-running") from None
             with tempfile.TemporaryDirectory(prefix=".pulse-export-", dir=out) as scratch:
                 export = Path(scratch) / "export.sql"
-                run = subprocess.run(
-                    [str(binary), "d1", "export", args.database, "--remote", "--config", str(config), "--output", str(export)],
-                    cwd=config.parent, env=dict(os.environ, WRANGLER_SEND_METRICS="false", CI="true"),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=180, check=False,
-                )
-                if run.returncode != 0 or not export.is_file() or export.stat().st_size > MAXIMUM_BYTES:
-                    raise ValueError("Private export failed; prior archives were preserved.")
-                result = publish(export.read_bytes(), out)
+                try:
+                    run = subprocess.run(
+                        [str(binary), "d1", "export", args.database, "--remote", "--config", str(config), "--output", str(export)],
+                        cwd=config.parent, env=dict(os.environ, WRANGLER_SEND_METRICS="false", CI="true"),
+                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                        timeout=180, check=False,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise BackupFailure("export-timeout") from None
+                if run.returncode != 0:
+                    raise BackupFailure(classify_export_failure(run.stderr))
+                if not export.is_file() or export.stat().st_size > MAXIMUM_BYTES:
+                    raise BackupFailure("export-size")
+                try:
+                    result = publish(export.read_bytes(), out)
+                except (ValueError, sqlite3.Error):
+                    raise BackupFailure("restore-verification") from None
                 result["oldOwnedArchivesRemoved"] = prune(out, args.retain)
                 print(json.dumps(result))
         return 0
+    except BackupFailure as failure:
+        category = str(failure)
     except (OSError, ValueError, sqlite3.Error, subprocess.SubprocessError):
-        print(json.dumps({"ok": False, "error": "Backup failed before verified completion. Inspect the private operator setup; prior verified archives remain."}))
-        return 1
+        category = "operator-setup"
+    print(json.dumps({"ok": False, "category": category, "error": "Backup failed before verified completion. Inspect the private operator setup; prior verified archives remain."}))
+    return 1
 
 if __name__ == "__main__":
     raise SystemExit(main())

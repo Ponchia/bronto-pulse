@@ -44,3 +44,34 @@ print('Private backup restore, corruption, attachment, permissions and retention
     { stdio: 'pipe', timeout: 30000 },
   );
 });
+test('operator backup failures report a fixed category and never echo Wrangler diagnostics', () => {
+  execFileSync(
+    'python3',
+    [
+      '-c',
+      String.raw`
+import json,os,stat,subprocess,sys,tempfile
+from pathlib import Path
+script=sys.argv[1]
+cases=[('echo "X [ERROR] Not logged in. Run wrangler login. account 0123abcd-secret-name" >&2; exit 1','authentication'),
+       ('echo "X [ERROR] fetch failed: ECONNRESET account 0123abcd-secret-name" >&2; exit 1','network'),
+       ('echo "X [ERROR] 429 Too Many Requests account 0123abcd-secret-name" >&2; exit 1','rate-limited'),
+       ('echo "X [ERROR] unexpected account 0123abcd-secret-name" >&2; exit 7','export-failed'),
+       ('exit 0','export-size')]
+with tempfile.TemporaryDirectory() as d:
+ d=Path(d);config=d/'wrangler.json';config.write_text('{}')
+ for body,expected in cases:
+  fake=d/'wrangler';fake.write_text('#!/bin/sh\n'+body+'\n');fake.chmod(0o700)
+  run=subprocess.run([sys.executable,script,'--wrangler',str(fake),'--config',str(config),'--database','pulse','--out',str(d/'out')],capture_output=True,timeout=30)
+  assert run.returncode==1,(expected,run.returncode)
+  result=json.loads(run.stdout)
+  assert result['ok'] is False and result['category']==expected,(expected,result)
+  assert b'0123abcd' not in run.stdout+run.stderr,expected
+ assert not [p for p in (d/'out').iterdir() if p.name.endswith('.gz')]
+print('Backup failure categories passed without leaking Wrangler diagnostics.')
+`,
+      modulePath,
+    ],
+    { stdio: 'pipe', timeout: 60000 },
+  );
+});
