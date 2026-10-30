@@ -89,6 +89,12 @@ unrecoverable dates, current-only snapshots and omitted jobs. Backfill refuses
 an over-budget plan before issuing any provider requests. It is not a resumable
 high-cardinality task queue; narrow failed jobs and rerun them explicitly.
 
+`pulse backfill` writes to the local database. A Worker installation instead
+declares `history` on a resource and a history trigger; each invocation collects
+one older chunk into D1. Progress is the earliest published day per dataset
+(`partitions`), so nothing else needs resetting. The Worker log reports
+`pendingDatasets`, which falls to 0 when every declared history is complete.
+
 `pulse probe` now tests each configured group, not merely the first group.
 Capability-discovery failure does not pretend a supported data query failed:
 both results remain visible. Capped probes report `omittedJobs` and return exit

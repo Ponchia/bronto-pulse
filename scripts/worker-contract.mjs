@@ -19,10 +19,20 @@ assert.ok(
   !Object.keys(bundle.metafile.inputs).some((path) => path.includes('/zod/v4/classic/')),
   'The Worker must retain the qualified lightweight schema dependency graph.',
 );
+const offset = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+const historyCron = '7-59/15 * * * *';
 const config = {
   version: 1,
   settings: { lookbackDays: 14 },
-  resources: [{ id: 'package', provider: 'npm', package: '@example/package' }],
+  // Eight days older than the regular 14-day window: one 5-day chunk, then a 3-day remainder.
+  resources: [
+    {
+      id: 'package',
+      provider: 'npm',
+      package: '@example/package',
+      history: { from: offset(-22), chunkDays: 5 },
+    },
+  ],
   projects: [{ id: 'project', label: 'Synthetic project', resources: [{ resource: 'package' }] }],
 };
 // Provider data is synthetic, but Request, Response, streams, the Worker handler
@@ -58,9 +68,11 @@ export default { async fetch(request, bindings) {
   const env = {...bindings, PULSE_CONFIG:${JSON.stringify(JSON.stringify(config))},
     PULSE_API_TOKEN:'synthetic-worker-contract-token', PULSE_PROVIDER:'npm', PULSE_MAX_JOBS:'1',
     PULSE_EXECUTION_PROFILE:mode === 'free' || mode === 'quota' ? 'free' : undefined,
+    PULSE_HISTORY_CRON:${JSON.stringify(historyCron)},
     ASSETS:{fetch:async()=>new Response('synthetic')}};
   try {
-    await worker.scheduled({scheduledTime:Date.now()}, env);
+    const cron = mode === 'history' ? ${JSON.stringify(historyCron)} : '*/15 * * * *';
+    await worker.scheduled({scheduledTime:Date.now(), cron}, env);
     return Response.json({ok:true,requests});
   } catch (error) {
     return Response.json({ok:false,requests,code:error.code,message:error.message});
@@ -165,8 +177,21 @@ try {
   );
   assert.deepEqual(await run('free'), { ok: true, requests: 1 });
 
+  // The history trigger extends published coverage backwards and then stops.
+  const earliest = async () =>
+    (await db.prepare('SELECT MIN(day) AS day FROM partitions').first()).day;
+  assert.equal(await earliest(), offset(-14));
+  assert.deepEqual(await run('history'), { ok: true, requests: 1 });
+  assert.equal(await earliest(), offset(-19));
+  assert.deepEqual(await run('history'), { ok: true, requests: 1 });
+  assert.equal(await earliest(), offset(-22));
+  assert.deepEqual(await run('history'), { ok: true, requests: 0 });
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM partitions').first()).n, 22);
+  assert.deepEqual(await run('free'), { ok: true, requests: 1 });
+  assert.equal(await earliest(), offset(-22), 'the regular rotation leaves history in place');
+
   console.log(
-    'WORKER CONTRACT PASSED: native Request, provider parsing, scheduled failure, redirect refusal, private errors, D1 publication, preserved history, released leases and recovery.',
+    'WORKER CONTRACT PASSED: native Request, provider parsing, scheduled failure, redirect refusal, private errors, D1 publication, preserved history, released leases, recovery and the history trigger.',
   );
 } finally {
   await mf.dispose();

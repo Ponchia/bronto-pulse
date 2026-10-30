@@ -34,6 +34,14 @@ const common = {
   connection: z.optional(id),
   enabled: z._default(z.boolean(), true),
 };
+// Older dates a history schedule may collect, one bounded chunk per invocation.
+// Only daily sources whose provider serves past dates on request accept it.
+const history = z.optional(
+  z.strictObject({
+    from: date,
+    chunkDays: z._default(z.int().check(z.gte(1), z.lte(366)), 7),
+  }),
+);
 const resource = z.discriminatedUnion('provider', [
   z.strictObject({
     ...common,
@@ -51,6 +59,7 @@ const resource = z.discriminatedUnion('provider', [
     ...common,
     provider: z.literal('npm'),
     package: z.string().check(z.maxLength(214), z.regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/)),
+    history,
   }),
   z.strictObject({
     ...common,
@@ -87,12 +96,14 @@ const resource = z.discriminatedUnion('provider', [
     ),
     collectPages: z._default(z.boolean(), true),
     collectQueries: z._default(z.boolean(), false),
+    history,
   }),
   z.strictObject({
     ...common,
     provider: z.literal('sense6'),
     accountId: hash,
     databaseId: z.uuid(),
+    history,
   }),
 ]);
 const scope = z.strictObject({
