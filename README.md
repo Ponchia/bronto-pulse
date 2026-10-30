@@ -10,11 +10,23 @@ silently double-counting each other's paths.
 
 **Status: public source preview.** The code is MIT-licensed; collected analytics,
 provider credentials and deployments remain **private** by default. This is not
-a hosted service or a production-readiness claim. The npm package is **not yet
-published**. Releases will be betas under `@ponchia/pulse@beta`
-([release process](docs/releasing.md#npm-beta-releases)); until the first one is
-on npm, use the source checkout. See the [validation matrix](docs/validation.md)
-for the difference between fixture tests and live account verification.
+a hosted service or a production-readiness claim. Betas are published to npm as
+[`@ponchia/pulse`](https://www.npmjs.com/package/@ponchia/pulse) under the `beta`
+dist-tag ([release process](docs/releasing.md#npm-beta-releases)). See the
+[validation matrix](docs/validation.md) for the difference between fixture tests
+and live account verification.
+
+## Install
+
+Requires Node.js 24.15 or newer. Install the CLI and library into a project:
+
+```sh
+npm install @ponchia/pulse@beta
+npx pulse --help
+```
+
+Use 0.2.0-beta.1 or later: the `pulse` command in 0.2.0-beta.0 exits without
+running. The demo below and the development checks use a source checkout.
 
 ## Run the complete demo
 
@@ -117,8 +129,8 @@ pulse export --out /private/backup/pulse.json
 pulse import --db /private/restored.db --input /private/backup/pulse.json
 ```
 
-`pulse` is available after linking/installing the package; from a checkout use
-`node dist/cli.js` or `npm run pulse --` instead. Exports contain private metrics
+`pulse` is available after installing the package (`npx pulse` in a project); from
+a checkout use `node dist/cli.js` or `npm run pulse --` instead. Exports contain private metrics
 and may include explicitly enabled query text. Never commit them to Git.
 
 ## Quality gates
