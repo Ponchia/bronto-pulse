@@ -4,6 +4,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The npm release reuses the complete verification unchanged.
+  workflow_call:
 env:
   WRANGLER_SEND_METRICS: 'false'
 permissions:
@@ -38,3 +40,33 @@ jobs:
       - name: Install the locked browser
         run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+
+  # npm releases publish only through the source-locked publisher. Every change
+  # proves it still prepares and passes its audit, so a new advisory fails here
+  # before a release tag. Read-only: no package source, install or credentials.
+  publisher:
+    name: Source-locked npm publisher audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out only the reviewed publisher tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/source-publisher.mjs
+            /scripts/extract-publisher-source.py
+            /scripts/audit-publishing-tooling.mjs
+            /tooling/publisher/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.15.0'
+          package-manager-cache: false
+      - name: Prepare and audit the source-locked publisher
+        env:
+          npm_config_cache: ${{ runner.temp }}/publisher-audit-cache
+        run: |
+          set -euo pipefail
+          node scripts/source-publisher.mjs prepare "$RUNNER_TEMP/pulse-publisher"
+          node scripts/source-publisher.mjs audit "$RUNNER_TEMP/pulse-publisher" "$RUNNER_TEMP/publisher-audit.json"

@@ -1,0 +1,233 @@
+# npm beta publication for @ponchia/pulse. A beta tag on reviewed main reuses
+# the full CI, packs one checked archive, and publishes exactly those bytes
+# under the `beta` dist-tag through npm OIDC trusted publishing. `latest` is
+# never moved here. The FIRST version is bootstrapped by an npm owner
+# (docs/releasing.md#first-npm-publication): npm only trusts OIDC for existing packages.
+name: Publish npm beta
+on:
+  push:
+    tags:
+      - 'v*-beta.*'
+permissions:
+  contents: read
+concurrency:
+  group: pulse-npm-publish
+  cancel-in-progress: false
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  preflight:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tarball: ${{ steps.meta.outputs.tarball }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.15.0'
+          package-manager-cache: false
+      - name: Validate the beta tag, ancestry and npm state
+        id: meta
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::Only explicitly tagged beta prereleases may publish'; exit 2
+          fi
+          version="${RELEASE_TAG#v}"
+          [[ "$(node -p 'require("./package.json").version')" == "$version" ]] || {
+            echo '::error::The tag and package version differ'; exit 2;
+          }
+          git fetch origin main:refs/remotes/origin/main --quiet
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo '::error::The tagged commit is not on reviewed main'; exit 2;
+          }
+          # The registry does not authorize first releases via OIDC.
+          if ! npm view @ponchia/pulse name --json --registry https://registry.npmjs.org > /dev/null 2> "$RUNNER_TEMP/npm-name.log"; then
+            echo '::error::@ponchia/pulse is not bootstrapped on npm or npm is unreachable. Follow docs/releasing.md#first-npm-publication.'
+            exit 2
+          fi
+          if npm view "@ponchia/pulse@$version" version --json --registry https://registry.npmjs.org > /dev/null 2> "$RUNNER_TEMP/npm-version.log"; then
+            echo '::error::This version already exists in npm; refusing a second publish'; exit 2
+          fi
+          grep -q 'E404' "$RUNNER_TEMP/npm-version.log" || {
+            echo '::error::npm lookup failed for a reason other than a missing version'; exit 2;
+          }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tarball=ponchia-pulse-$version.tgz" >> "$GITHUB_OUTPUT"
+      - name: Build, verify the package and pack one archive without lifecycle scripts
+        id: pack
+        shell: bash
+        env:
+          TARBALL: ${{ steps.meta.outputs.tarball }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run package:check
+          npm run publication:check
+          npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/npm-pack.json"
+          node - "$RUNNER_TEMP/npm-pack.json" "$VERSION" <<'NODE'
+          const fs = require('node:fs');
+          const [report, version] = process.argv.slice(2);
+          const item = JSON.parse(fs.readFileSync(report, 'utf8'))[0];
+          const files = new Set(item.files.map((x) => x.path));
+          const required = ['dist/cli.js', 'dist/index.js', 'README.md', 'LICENSE', 'SECURITY.md'];
+          const forbidden = item.files.filter((x) =>
+            /(^|\/)(\.env|\.git|\.pulse|node_modules|tests|scripts|tooling)(\/|$)|\.(pem|key|db|sqlite)$|pulse\.config\.json$/i.test(x.path));
+          if (item.name !== '@ponchia/pulse' || item.version !== version ||
+              item.filename !== `ponchia-pulse-${version}.tgz` ||
+              required.some((path) => !files.has(path)) || forbidden.length)
+            throw Error('Refusing unexpected package identity, missing build output or private files');
+          console.log(`Audited ${item.name}@${version}: ${item.files.length} files, ${item.size} bytes`);
+          NODE
+          (cd "$RUNNER_TEMP" && sha256sum "$TARBALL" > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          echo "sha256=$(cut -d' ' -f1 "$RUNNER_TEMP/SHA256SUMS.txt")" >> "$GITHUB_OUTPUT"
+      - name: Send only the checked archive to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package-preflight
+          path: |
+            ${{ runner.temp }}/${{ steps.meta.outputs.tarball }}
+            ${{ runner.temp }}/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  # The runner's npm never publishes: npm 11.21.1 and 12.2.1 bundle Undici
+  # 6.29.0 (Ponchia/bronto-ui#234). `verify` already ran CI's read-only audit of
+  # the unchanged npm source pinned in tooling/publisher/source.json with its
+  # separately locked dependencies; this job prepares and audits it again
+  # because it is the one that runs it.
+  publish-npm:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.15.0'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # Package source is never checked out here: only the publisher tooling,
+      # which is prepared and audited again because this job runs it.
+      - name: Check out only the reviewed publisher tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: publisher
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/source-publisher.mjs
+            /scripts/extract-publisher-source.py
+            /scripts/audit-publishing-tooling.mjs
+            /tooling/publisher/
+      - name: Prepare and audit the source-locked publisher
+        shell: bash
+        env:
+          npm_config_cache: ${{ runner.temp }}/publisher-audit-cache
+        run: |
+          set -euo pipefail
+          node publisher/scripts/source-publisher.mjs prepare "$RUNNER_TEMP/pulse-publisher"
+          node publisher/scripts/source-publisher.mjs audit "$RUNNER_TEMP/pulse-publisher" "$RUNNER_TEMP/publisher-audit.json"
+          version="$(node "$RUNNER_TEMP/pulse-publisher/source/bin/npm-cli.js" --version)"
+          echo "Source-locked npm $version"
+          node -e 'const v=process.argv[1].split(".").map(Number);if(v[0]<11||(v[0]===11&&(v[1]<5||(v[1]===5&&v[2]<1))))process.exit(1)' "$version"
+      - name: Download the checked archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package-preflight
+          path: ${{ runner.temp }}/checked-package
+      - name: Verify hash and package identity
+        shell: bash
+        env:
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TARBALL: ${{ needs.preflight.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/checked-package"
+          test "$(sha256sum "$TARBALL" | cut -d' ' -f1)" = "$SHA256"
+          sha256sum -c SHA256SUMS.txt
+          node - "$TARBALL" "$VERSION" <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const [path, version] = process.argv.slice(2);
+          const pkg = JSON.parse(execFileSync('tar', ['-xOf', path, 'package/package.json'], { encoding: 'utf8' }));
+          if (pkg.name !== '@ponchia/pulse' || pkg.version !== version || pkg.private ||
+              pkg.repository?.url !== 'git+https://github.com/Ponchia/bronto-pulse.git')
+            throw Error('Refusing wrong npm scope, version, upstream repository or a private package');
+          NODE
+      - name: Publish the checked archive under the beta dist-tag (npm OIDC)
+        shell: bash
+        env:
+          TARBALL: ${{ needs.preflight.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/checked-package"
+          # No package source, dependencies or lifecycle scripts in the OIDC job.
+          # Trusted publisher: Ponchia/bronto-pulse, release.yml, npm-publish.
+          node "$RUNNER_TEMP/pulse-publisher/source/bin/npm-cli.js" publish "./$TARBALL" --ignore-scripts --provenance --access public --tag beta --registry https://registry.npmjs.org
+          echo 'npm accepted publication. The read-only registry job must still pass; never publish again to recover it.' >> "$GITHUB_STEP_SUMMARY"
+
+  # No publishing authority here. Rerun this job alone after propagation errors.
+  verify-registry:
+    needs: [preflight, publish-npm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.15.0'
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package-preflight
+          path: ${{ runner.temp }}/checked-package
+      - name: Compare registry integrity, bytes, beta tag and provenance
+        shell: bash
+        env:
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TARBALL: ${{ needs.preflight.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum "$RUNNER_TEMP/checked-package/$TARBALL" | cut -d' ' -f1)" = "$SHA256"
+          mkdir -p "$RUNNER_TEMP/registry"
+          for attempt in 1 2 3 4 5 6; do
+            if npm view "@ponchia/pulse@$VERSION" --json --registry https://registry.npmjs.org > "$RUNNER_TEMP/registry/view.json" 2> /dev/null; then break; fi
+            [ "$attempt" -lt 6 ] || { echo '::error::The published version is not visible yet; rerun this job only.'; exit 1; }
+            sleep 20
+          done
+          (cd "$RUNNER_TEMP/registry" && npm pack "@ponchia/pulse@$VERSION" --ignore-scripts --registry https://registry.npmjs.org > /dev/null)
+          test "$(sha256sum "$RUNNER_TEMP/registry/$TARBALL" | cut -d' ' -f1)" = "$SHA256"
+          node - "$RUNNER_TEMP/registry/view.json" "$RUNNER_TEMP/checked-package/$TARBALL" "$VERSION" <<'NODE'
+          const fs = require('node:fs');
+          const { createHash } = require('node:crypto');
+          const [viewPath, archive, version] = process.argv.slice(2);
+          const view = JSON.parse(fs.readFileSync(viewPath, 'utf8'));
+          const integrity = `sha512-${createHash('sha512').update(fs.readFileSync(archive)).digest('base64')}`;
+          if (view.version !== version || view.dist?.integrity !== integrity) throw Error('Registry integrity differs from the checked archive');
+          if (view['dist-tags']?.beta !== version) throw Error('beta dist-tag does not point at this version');
+          if (!view.dist?.attestations?.provenance) throw Error('Registry metadata advertises no provenance attestation');
+          NODE
+          echo "Registry serves the checked archive ($SHA256) under beta with provenance." >> "$GITHUB_STEP_SUMMARY"
