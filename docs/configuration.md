@@ -69,6 +69,24 @@ bindings inside the same project are rejected.
 A mapping beginning partway through a comparison window does not establish an
 equal-duration growth baseline. The report retains its actual applicable dates.
 
+## Older history
+
+An npm, Search Console or Sense6 resource may declare
+`"history": { "from": "2026-05-15", "chunkDays": 7 }`. A Worker with a history
+trigger (see [deployment](deployment.md)) then collects one older chunk per
+invocation, ending the day before the dataset's earliest published day, until it
+reaches `from`. A dataset with no published day waits for the regular rotation.
+
+- `chunkDays` defaults to 7 and accepts 1–366. A budget failure (`ROW_LIMIT`)
+  halves that dataset's later chunks; nothing is published from the failed chunk.
+- Search Console history stops 480 days back, inside the provider's 16 months,
+  so unreachable dates are never published as empty days.
+- Set `from` no earlier than the package's first publication or the property's
+  verification. npm reports a day before a package existed as zero downloads.
+- GitHub traffic keeps 14 days and snapshots are current-only, so GitHub
+  resources reject `history`. Cloudflare RUM retention is account-specific and is
+  not backfilled.
+
 ## Bounds and lifecycle
 
 | Setting            | Default | Accepted range |
