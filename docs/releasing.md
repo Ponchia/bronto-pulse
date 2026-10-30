@@ -4,15 +4,16 @@ Lifecycle: current
 
 ## Current release boundary
 
-The GitHub repository is public and MIT-licensed as a **source preview**. The
-npm package remains unpublished and `private: true` deliberately prevents
-accidental registry publication. Public source, npm distribution and a hosted
-analytics deployment are three independent decisions.
+The GitHub repository is public and MIT-licensed as a **source preview**. Public
+source, npm distribution and a hosted analytics deployment are three independent
+decisions. The maintainer decided npm distribution on 30 October 2026: betas only,
+as `@ponchia/pulse` under the `beta` dist-tag, through the reviewed release
+workflow below. `latest` is never moved by automation.
 
 Collected analytics, credentials, backup archives and local deployment settings
 are never public release material. The checked-in Worker configuration disables
-public preview URLs and cron triggers. There is no automatic npm, website or
-collector-deployment workflow.
+public preview URLs and cron triggers. There is no website or collector-deployment
+workflow.
 
 ## Review gates
 
@@ -58,7 +59,8 @@ project installation hooks or grant access to a live installation.
 
 Fork contributions use `pull_request`, never elevated `pull_request_target`.
 CI uses synthetic fixtures only and cannot read or synchronize a live installation.
-There are no recurring collection workflows or artifact-upload steps. Dependency
+There are no recurring collection workflows. The release workflow's one artifact
+is the checked package archive handed to its publish job. Dependency
 caching uses the normal bounded GitHub cache; do not opt into paid cache capacity
 or larger runners without an explicit maintainer decision.
 
@@ -68,21 +70,85 @@ and separate storage products have different billing rules. See
 Old private-repository jobs that never started are historical failures, not evidence
 of either a source defect or a passing check. Do not bypass a required check.
 
-## Review before a future package or hosted release
+## npm beta releases
 
-1. Review the public code, license, generated schemas and exact package contents.
-2. Resolve live-account and operational validation separately in issue #1.
-3. Update the changelog and version together, with documented migration paths.
-4. Obtain the maintainer's explicit decision before npm or deployment publication.
-5. Remove the npm publication guard only in that reviewed package-release change.
-6. Test the exact package bytes in a clean consumer, then verify the published
-   artifact independently when registry publication is authorized.
+A tag `v<version>-beta.<n>` on reviewed main, matching `package.json`, starts
+`release.yml`:
 
-An external contributor can reproduce source checks using Node, npm and the
-locked browser; maintainer-only workspace tools are optional.
+1. `verify` reruns the complete CI unchanged, including its read-only audit of
+   the source-locked npm publisher (which also runs on every push and pull request).
+2. `preflight` refuses an unbootstrapped package or an existing version, builds
+   with lifecycle scripts disabled, runs `package:check` and `publication:check`,
+   packs one archive, checks its identity and contents, and records its SHA-256.
+3. `publish-npm` runs in the protected `npm-publish` environment. It checks out
+   only the publisher files, prepares and audits them again, verifies the archive
+   hash and identity, and publishes those bytes with npm OIDC and provenance.
+4. `verify-registry` (read-only) compares the registry's integrity and downloaded
+   bytes with the archive and checks the `beta` tag and provenance. Rerun only
+   that job after propagation delays; never publish a version twice.
+
+The publisher is the one Bronto UI, Annotations, Layout and Visual Models use:
+the unchanged npm 11.21.1 source pinned in `tooling/publisher/source.json`, its
+dependencies from `tooling/publisher/package-lock.json` (overriding only `undici`
+and `ip-address`), and a complete audit. Registry npm 11.21.1 and 12.2.1 bundle
+Undici 6.29.0 with a high-severity advisory
+([Bronto UI issue 234](https://github.com/Ponchia/bronto-ui/issues/234)), so the
+runner's npm never publishes. `npm run publisher:readiness` runs the same
+preparation locally and packs this package with it.
+
+Before a release: update `package.json`, the lockfile and the changelog together,
+review the exact package contents, and keep live-account validation (issue #1)
+separate from package publication.
+
+### npm prerequisites (maintainer actions)
+
+1. Create the `npm-publish` GitHub environment with required reviewers and a
+   deployment policy limited to `v*-beta.*` tags.
+2. Bootstrap the first version (below). npm only trusts OIDC for an existing package.
+3. Configure the trusted publisher with normal interactive account authentication:
+
+| Setting           | Value          |
+| ----------------- | -------------- |
+| Provider          | GitHub Actions |
+| Organization/user | `Ponchia`      |
+| Repository        | `bronto-pulse` |
+| Workflow          | `release.yml`  |
+| Environment       | `npm-publish`  |
+
+### First npm publication
+
+Pack the first beta from reviewed main after `npm ci && npm run check`, then
+publish that exact archive with the source-locked publisher, never a locally
+installed npm. Keep its login in a throwaway config:
+
+```sh
+npm pack --ignore-scripts --pack-destination "$PWD/.release"
+VERSION=0.2.0-beta.0
+TARBALL="$PWD/.release/ponchia-pulse-$VERSION.tgz"
+sha256sum "$TARBALL"
+PUBLISHER="$(mktemp -d)"
+node scripts/source-publisher.mjs prepare "$PUBLISHER/npm"
+node scripts/source-publisher.mjs audit "$PUBLISHER/npm" "$PUBLISHER/audit.json"
+NPM_CLI="$PUBLISHER/npm/source/bin/npm-cli.js"
+export npm_config_userconfig="$PUBLISHER/npmrc"
+node "$NPM_CLI" login --auth-type=web --registry=https://registry.npmjs.org
+node "$NPM_CLI" whoami --registry=https://registry.npmjs.org
+node "$NPM_CLI" publish "$TARBALL" --ignore-scripts --access public --tag beta \
+  --provenance=false --registry=https://registry.npmjs.org
+node "$NPM_CLI" logout --registry=https://registry.npmjs.org
+rm -rf "$PUBLISHER"
+```
+
+Complete browser and 2FA challenges interactively; never paste a password or token
+into an issue, transcript or repository. A local bootstrap has no hosted
+provenance; do not claim it does. Verify the public archive's SHA-256 matches
+before announcing it.
 
 Do not describe a dry-run bundle or fixture-tested connector as an operational
 production installation. Security reports must follow [SECURITY.md](../SECURITY.md)
 and must never include real credentials in an issue template.
+
+An external contributor can reproduce source checks using Node, npm and the
+locked browser; maintainer-only workspace tools are optional.
 
 Primary guidance: [GitHub Actions security](https://docs.github.com/en/actions/reference/security/secure-use).

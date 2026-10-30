@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Prepare npm distribution as `@ponchia/pulse` 0.2.0-beta.0: betas only, under the
+  `beta` dist-tag, through a tag workflow that reruns CI, packs one checked
+  archive and publishes it with npm OIDC, provenance and the source-locked npm
+  publisher Bronto UI and Annotations use. CI audits that publisher on every push
+  and pull request. `pulse --version` now reads the package manifest. The first
+  registry version is bootstrapped by an owner.
 - Collect older npm, Search Console and Sense6 history from a Worker: a resource's
   `history` start and a dedicated `PULSE_HISTORY_CRON` trigger publish one older
   chunk per invocation through the regular leases, budgets and publication path,
