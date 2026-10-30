@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.2.0-beta.1 — 2026-10-30
+
+- Run the installed `pulse` command. npm links it as `node_modules/.bin/pulse`, and
+  the entry check compared that link's path with the module's real path, so in
+  0.2.0-beta.0 the command exited successfully without doing anything. On
+  0.2.0-beta.0, run `node node_modules/@ponchia/pulse/dist/cli.js` instead. The
+  package check now runs the installed bin.
+
+## 0.2.0-beta.0 — 2026-10-30
+
+First npm prerelease. The maintainer bootstrapped it without provenance, because
+npm trusts OIDC only for existing packages. It contains everything since 0.1.0.
+
+### npm, Worker and collection
+
 - Prepare npm distribution as `@ponchia/pulse` 0.2.0-beta.0: betas only, under the
   `beta` dist-tag, through a tag workflow that reruns CI, packs one checked
   archive and publishes it with npm OIDC, provenance and the source-locked npm
@@ -76,8 +91,6 @@
   and liveness independently, retaining fail-closed private data access.
 - Preserve redacted configuration failures and HEAD/security headers; keep failed
   initialization from clearing a newer cached context.
-
-## Unreleased
 
 ### Public source preview
 

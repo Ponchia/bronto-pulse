@@ -5,6 +5,7 @@ Lifecycle: current
 Bronto Pulse is published as MIT-licensed source so contributors can inspect,
 run and improve it without access to a maintainer's private infrastructure.
 Source publication is separate from npm distribution and live analytics hosting.
+Betas are on npm as `@ponchia/pulse`; see [releasing](releasing.md#npm-beta-releases).
 
 ## Publication boundaries
 
@@ -13,7 +14,7 @@ Source publication is separate from npm distribution and live analytics hosting.
 | Source, tests, synthetic demo, examples and metric definitions   | Provider tokens, OAuth grants, database contents and report exports         |
 | Contribution policy, security contact and development workflows  | Private deployment routes, real account/database IDs and recovery archives  |
 | Standard GitHub-hosted validation and CodeQL analysis            | Recurring collectors, production account activation and paid platform plans |
-| MIT license and Git history with GitHub no-reply author metadata | npm publication, which remains blocked by `private: true`                   |
+| MIT license and Git history with GitHub no-reply author metadata | Stable npm releases: automation publishes betas under `beta` only           |
 
 The three pre-publication commits were inspected for tracked artifacts and
 scanned with Gitleaks. Their source trees and parent relationships were retained;

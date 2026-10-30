@@ -75,10 +75,14 @@ try {
   const help = run(process.execPath, [join(installed, 'dist/cli.js'), '--help'], dir);
   for (const command of ['pulse plan', 'pulse brief', 'pulse backfill'])
     if (!help.includes(command)) throw Error('Installed CLI help is incomplete.');
+  // Users run the npm bin link, not dist/cli.js: it must execute, not exit silently.
+  const bin = run(join(dir, 'node_modules', '.bin', 'pulse'), ['--version'], dir).trim();
+  if (bin !== manifest.version)
+    throw Error(`Installed pulse bin printed ${JSON.stringify(bin)}, not ${manifest.version}.`);
   run(process.execPath, [join(installed, 'dist/cli.js'), 'init'], dir);
   run(process.execPath, [join(installed, 'dist/cli.js'), 'validate', '--json'], dir);
   console.log(
-    `Package verified: ${files.length} allowlisted files; clean offline consumer imports and CLI init/validate pass. No registry publication.`,
+    `Package verified: ${files.length} allowlisted files; clean offline consumer imports, the installed pulse bin and CLI init/validate pass. No registry publication.`,
   );
 } finally {
   await rm(dir, { recursive: true, force: true });

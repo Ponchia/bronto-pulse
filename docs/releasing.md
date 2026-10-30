@@ -117,6 +117,11 @@ separate from package publication.
 
 ### First npm publication
 
+Done on 30 October 2026: the maintainer bootstrapped 0.2.0-beta.0 this way, and
+npm also pointed `latest` at it because a new package needs one. Release
+automation never moves `latest`. Every later version uses the tag workflow
+above. The procedure stays here for a fork or a newly scoped package.
+
 Pack the first beta from reviewed main after `npm ci && npm run check`, then
 publish that exact archive with the source-locked publisher, never a locally
 installed npm. Keep its login in a throwaway config:

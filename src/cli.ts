@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -443,7 +443,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (!hold) store.driver.close?.();
   }
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// npm installs the CLI as a node_modules/.bin symlink, so compare real paths:
+// a resolved symlink path never equals this module and the CLI would exit silently.
+const invokedDirectly = (argv1: string | undefined): boolean => {
+  if (!argv1) return false;
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+};
+if (invokedDirectly(process.argv[1])) {
   main()
     .then((code) => {
       process.exitCode = code;
