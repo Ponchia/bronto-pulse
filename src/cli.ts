@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,11 @@ import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
 
-const HELP = `Bronto Pulse 0.1.0 — private project analytics, not a visitor tracker
+// The package manifest is the one version source for a checkout and the published archive.
+const VERSION: string = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
+const HELP = `Bronto Pulse ${VERSION} — private project analytics, not a visitor tracker
 
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
@@ -94,7 +99,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   });
   const command = positionals[0] ?? 'help';
   if (v.version) {
-    console.log('0.1.0');
+    console.log(VERSION);
     return 0;
   }
   if (v.help || command === 'help') {

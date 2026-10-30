@@ -11,7 +11,9 @@ silently double-counting each other's paths.
 **Status: public source preview.** The code is MIT-licensed; collected analytics,
 provider credentials and deployments remain **private** by default. This is not
 a hosted service or a production-readiness claim. The npm package is **not yet
-published**; use the source checkout. See the [validation matrix](docs/validation.md)
+published**. Releases will be betas under `@ponchia/pulse@beta`
+([release process](docs/releasing.md#npm-beta-releases)); until the first one is
+on npm, use the source checkout. See the [validation matrix](docs/validation.md)
 for the difference between fixture tests and live account verification.
 
 ## Run the complete demo
