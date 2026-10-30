@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Collect older npm, Search Console and Sense6 history from a Worker: a resource's
+  `history` start and a dedicated `PULSE_HISTORY_CRON` trigger publish one older
+  chunk per invocation through the regular leases, budgets and publication path,
+  without delaying the regular rotation.
 - Keep per-group collection failures visible even after more than 100 subsequent
   runs in other groups; read only latest warning evidence and report model fields.
 - Defer HTTP 429 in the Free execution profile after one request, preserving

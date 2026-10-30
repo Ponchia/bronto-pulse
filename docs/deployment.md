@@ -46,6 +46,14 @@ or publish your installation automatically.
    packages while other credentials are awaiting authorization. Unset it to rotate
    through all configured providers. Invalid values fail before database work;
    filtering never marks uncollected providers as healthy.
+   To collect [older history](configuration.md#older-history), add a second cron
+   expression and name it in `PULSE_HISTORY_CRON`, for example
+   `"crons": ["*/15 * * * *", "7-59/15 * * * *"]` with
+   `PULSE_HISTORY_CRON="7-59/15 * * * *"`. Invocations from that trigger run one
+   history job under the same budgets and never move the regular rotation cursor.
+   Never name the only trigger, or regular collection stops. A history run is a
+   normal run: until the next regular run, a failed chunk shows as the dataset's
+   latest failure, and a successful chunk counts as its latest success.
 6. Verify authenticated API access, failure isolation, actual dataset access,
    request/CPU usage and D1 storage. Back up and restore into a second installation.
 

@@ -3,7 +3,8 @@ import { parseConfig } from './config.js';
 import { D1Driver, type D1Like } from './storage/driver.js';
 import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
-import { sync } from './sync.js';
+import { sync, type SyncResult } from './sync.js';
+import { collectHistory } from './history.js';
 import { scheduleOptions } from './worker-schedule.js';
 import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
@@ -24,6 +25,8 @@ export interface WorkerEnv extends AccessEnvironment, AggregateEnvironment {
   PULSE_PROVIDER?: string;
   PULSE_EXECUTION_PROFILE?: string;
   PULSE_READY_ONLY?: string;
+  /** The one cron expression whose invocations collect older dates instead of rotating. */
+  PULSE_HISTORY_CRON?: string;
 }
 let cached:
   | {
@@ -118,25 +121,39 @@ export default {
       );
     }
   },
-  async scheduled(_event: { scheduledTime: number }, env: WorkerEnv): Promise<void> {
+  async scheduled(event: { scheduledTime: number; cron?: string }, env: WorkerEnv): Promise<void> {
     // Validate explicit scheduling controls before touching private storage.
     const selection = scheduleOptions(env);
     const bindings = workerBindings(env);
+    // History runs only on its own trigger, so it never delays the regular rotation.
+    const history =
+      env.PULSE_HISTORY_CRON !== undefined &&
+      event.cron !== undefined &&
+      event.cron === env.PULSE_HISTORY_CRON;
     const { store, config } = await context(env);
     if (config.demo) return;
     const owner = crypto.randomUUID(),
-      key = 'scheduler';
+      key = history ? 'history-scheduler' : 'scheduler';
     if (!(await store.acquire(key, owner))) return;
     try {
-      const results = await sync(config, store, environmentSecrets(env), {
-        ...selection,
-        bindings,
-        rotate: true,
-      });
+      let results: SyncResult[], pending: number | undefined;
+      if (history) {
+        const { maxJobs: _one, ...bounds } = selection;
+        ({ results, pending } = await collectHistory(config, store, environmentSecrets(env), {
+          ...bounds,
+          bindings,
+        }));
+      } else
+        results = await sync(config, store, environmentSecrets(env), {
+          ...selection,
+          bindings,
+          rotate: true,
+        });
       // Only aggregate result codes. No URLs, credentials or provider payloads in logs.
       console.log(
         JSON.stringify({
-          event: 'collection',
+          event: history ? 'history' : 'collection',
+          ...(history ? { pendingDatasets: pending } : {}),
           succeeded: results.filter((x) => x.status === 'success').length,
           failed: results.filter((x) => x.status === 'failed').length,
           skipped: results.filter((x) => x.status === 'skipped').length,

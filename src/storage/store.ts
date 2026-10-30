@@ -412,6 +412,23 @@ export class Store {
       date: String(r.day),
     }));
   }
+  /** Earliest published day of each named dataset; history extends coverage backwards from it.
+   * One primary-key lookup per dataset, so the cost does not grow with retained history. */
+  async earliestPublished(
+    datasets: { resourceId: string; group: string }[],
+  ): Promise<{ resourceId: string; group: string; date: string }[]> {
+    if (!datasets.length) return [];
+    const results = await this.driver.readBatch(
+      datasets.map((d) => ({
+        sql: 'SELECT MIN(day) AS day FROM partitions WHERE resource_id=? AND group_id=?',
+        params: [d.resourceId, d.group],
+      })),
+    );
+    return datasets.flatMap((d, i) => {
+      const day = results[i]?.[0]?.day;
+      return typeof day === 'string' ? [{ ...d, date: day }] : [];
+    });
+  }
   async coverage(
     resourceId: string,
     window: DateRange,
