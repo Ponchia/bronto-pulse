@@ -70,7 +70,13 @@ const m = (
 export const METRICS: Readonly<Record<string, MetricDefinition>> = Object.freeze(
   Object.fromEntries(
     [
-      m('github.views', 'Repository views', 'views', 'sum'),
+      m(
+        'github.views',
+        'Repository views',
+        'views',
+        'sum',
+        'Provider-reported views, not verified human interest. Referrers do not establish who or what made a request.',
+      ),
       m(
         'github.unique_viewers',
         'Unique viewers within each source day',

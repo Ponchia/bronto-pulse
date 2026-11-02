@@ -290,6 +290,19 @@ function renderProject(report) {
       '&format=markdown',
   });
   content.append(el('div', { class: 'report-actions' }, [back, csv, briefing]));
+  if (report.evidence) {
+    content.append(
+      heading(
+        'Interpretation',
+        'Independent adoption and the human/automation split are not measured',
+      ),
+    );
+    content.append(el('p', { class: 'notice', text: report.evidence.limitation }));
+    const signals = el('ul', { class: 'warnings' });
+    for (const signal of report.evidence.signals)
+      signals.append(el('li', { text: signal.message }));
+    if (report.evidence.signals.length) content.append(signals);
+  }
   const grid = el('section', { class: 'metric-grid', 'aria-label': 'Project metrics' });
   for (const c of sortedCards(report.cards).slice(0, 12)) grid.append(metric(c, report.window));
   content.append(
@@ -324,6 +337,7 @@ function renderProject(report) {
         el('div', {}, [
           el('strong', { text: c.label }),
           el('small', { text: c.resourceId + ' · ' + c.methodology }),
+          el('small', { text: 'Evidence: ' + (c.evidenceClass ?? 'unclassified') }),
         ]),
         cardValue(c),
         el('div', {}, [

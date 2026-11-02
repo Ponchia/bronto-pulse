@@ -1,3 +1,9 @@
+import {
+  assessEvidence,
+  metricEvidenceClass,
+  type EvidenceAssessment,
+  type EvidenceClass,
+} from './evidence.js';
 import { type Binding, type Config, type Resource, pathMatches } from './config.js';
 import { groups } from './collectors/index.js';
 import {
@@ -22,6 +28,7 @@ export interface MetricCard {
   resourceId: string;
   provider: string;
   metric: string;
+  evidenceClass: EvidenceClass;
   label: string;
   unit: string;
   aggregation: MetricDefinition['aggregation'];
@@ -70,6 +77,7 @@ export interface ProjectReport {
   annotations: Awaited<ReturnType<Store['annotations']>>;
   inspections: Awaited<ReturnType<Store['inspections']>>;
   warnings: string[];
+  evidence: EvidenceAssessment;
 }
 function allowed(o: StoredObservation, b: Binding): boolean {
   if ((b.effectiveFrom && o.from < b.effectiveFrom) || (b.effectiveTo && o.to > b.effectiveTo))
@@ -179,6 +187,7 @@ function summarize(
     resourceId: resource.id,
     provider: resource.provider,
     metric,
+    evidenceClass: metricEvidenceClass(metric),
     label: definition.label,
     unit: definition.unit,
     aggregation: definition.aggregation,
@@ -442,7 +451,7 @@ export async function projectReport(
       );
     duplicate.add(c.key);
   }
-  return {
+  const report: Omit<ProjectReport, 'evidence'> = {
     schemaVersion: 1,
     project: { id: project.id, label: project.label, description: project.description },
     window,
@@ -457,6 +466,7 @@ export async function projectReport(
     ),
     warnings: [...new Set(warnings)],
   };
+  return { ...report, evidence: assessEvidence(report) };
 }
 export async function portfolio(config: Config, store: Store, window: DateRange, now = new Date()) {
   const reports = [];
@@ -481,6 +491,11 @@ export function markdownReport(report: ProjectReport): string {
     `${report.window.from} → ${report.window.to}${report.demo ? ' · SYNTHETIC DEMO' : ''}`,
     '',
     report.project.description,
+    '',
+    '## Interpretation',
+    '',
+    report.evidence.limitation,
+    ...report.evidence.signals.map((signal) => `- ${signal.message}`),
     '',
     '| Metric | Resource | Value | Coverage |',
     '| --- | --- | ---: | --- |',

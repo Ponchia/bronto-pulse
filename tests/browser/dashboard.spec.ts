@@ -116,3 +116,20 @@ test('small-screen navigation retains definitions and an accessible sign-out con
   await expect(page.getByLabel('Access token')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open workspace' })).toBeVisible();
 });
+
+for (const width of [320, 1440])
+  test(`adoption interpretation is visible and fits at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole('button', { name: 'Bronto UI', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Interpretation', exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Independent adoption and the human/automation split are not measured', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText('Evidence: distribution', { exact: true }).first()).toBeAttached();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+      false,
+    );
+    await page.screenshot({ path: `artifacts/pulse-evidence-${width}.png`, fullPage: true });
+  });

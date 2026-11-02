@@ -33,6 +33,9 @@ const headings = [
   'absolute_change',
   'comparison_kind',
   'comparison_reason',
+  'evidence_class',
+  'independent_adoption',
+  'metric_caveat',
 ];
 export function csvReport(report: ProjectReport): string {
   const rows: (string | number | null)[][] = [headings];
@@ -60,6 +63,9 @@ export function csvReport(report: ProjectReport): string {
       c.comparison.absoluteChange,
       c.comparison.kind,
       c.comparison.reason,
+      c.evidenceClass,
+      report.evidence.independentAdoption,
+      c.caveat,
     ]);
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }
