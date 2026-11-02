@@ -30,3 +30,5 @@ export type { VisibilitySuite, VisibilityRuns, VisibilitySession } from './visib
 
 export { assessEvidence, metricEvidenceClass } from './evidence.js';
 export type { EvidenceAssessment, EvidenceSignal, EvidenceClass } from './evidence.js';
+export { auditCoverage } from './coverage.js';
+export type { CoverageInventory, CoverageEntry, CoverageAudit } from './coverage.js';
