@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Keep distribution, discovery, activity and interest distinct in reports,
+  briefings, CSV and the dashboard. Independent adoption, human audience and
+  automated share remain explicitly unmeasured. Add source-local concentration
+  and referrer-review signals without deleting counts or classifying requests.
+
 ## 0.2.0-beta.1 — 2026-10-30
 
 - Run the installed `pulse` command. npm links it as `node_modules/.bin/pulse`, and

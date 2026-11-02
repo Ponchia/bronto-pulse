@@ -1,7 +1,7 @@
 import type { ProjectReport } from './report.js';
 
 export interface Finding {
-  kind: 'coverage' | 'quality' | 'change' | 'baseline';
+  kind: 'coverage' | 'quality' | 'interpretation' | 'change' | 'baseline';
   resourceId: string;
   metric?: string;
   message: string;
@@ -18,6 +18,7 @@ export interface Brief {
   annotations: ProjectReport['annotations'];
   warnings: string[];
   limitation: string;
+  evidence: ProjectReport['evidence'];
 }
 const display = (n: number) => (Number.isInteger(n) ? String(n) : Number(n.toFixed(4)).toString());
 /** Deterministic evidence summaries. No LLM, identity attribution or causal claims. */
@@ -57,6 +58,14 @@ export function projectBrief(report: ProjectReport, maximum = 20): Brief {
         },
       });
   }
+  for (const signal of report.evidence.signals)
+    findings.push({
+      kind: 'interpretation',
+      resourceId: signal.resourceId,
+      metric: signal.metric,
+      message: signal.message,
+      evidence: { code: signal.code, ...signal.evidence },
+    });
   for (const card of [...report.cards].sort((a, b) => a.key.localeCompare(b.key))) {
     const change = card.comparison.absoluteChange;
     if (change === null || change === 0) continue;
@@ -104,8 +113,8 @@ export function projectBrief(report: ProjectReport, maximum = 20): Brief {
     omittedFindings: Math.max(0, findings.length - maximum),
     annotations: report.annotations,
     warnings: report.warnings,
-    limitation:
-      'Independent source observations, not people, conversions or causal effects. Release annotations provide context only.',
+    evidence: report.evidence,
+    limitation: report.evidence.limitation + ' Release annotations provide context only.',
   };
 }
 function prose(value: string): string {
@@ -119,6 +128,8 @@ export function markdownBrief(brief: Brief): string {
     `# ${prose(brief.project.label)} — project briefing`,
     '',
     `${brief.window.from} → ${brief.window.to}${brief.demo ? ' · SYNTHETIC DEMO' : ''}`,
+    '',
+    brief.limitation,
     '',
     ...brief.findings.map((f) => `- ${prose(f.message)}`),
     ...(brief.omittedFindings
@@ -141,8 +152,6 @@ export function markdownBrief(brief: Brief): string {
           ...brief.warnings.map((w) => `- ${prose(w)}`),
         ]
       : []),
-    '',
-    brief.limitation,
     '',
   ].join('\n');
 }

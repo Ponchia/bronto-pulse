@@ -27,3 +27,6 @@ export {
   targetUrlMatches,
 } from './visibility.js';
 export type { VisibilitySuite, VisibilityRuns, VisibilitySession } from './visibility.js';
+
+export { assessEvidence, metricEvidenceClass } from './evidence.js';
+export type { EvidenceAssessment, EvidenceSignal, EvidenceClass } from './evidence.js';

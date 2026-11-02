@@ -73,3 +73,17 @@ or requests. Snapshot writes and reads outside the prepared scope are refused.
 Larger portable installations keep the existing per-source read path rather than
 silently omitting sources. This reduces network round trips, not a guarantee of
 Workers Free CPU qualification; deployment CPU must still be observed.
+
+## Adoption quality
+
+Reports expose an additive `evidence` object and an `evidenceClass` on each metric
+card. Briefings keep the same evidence object even when their findings are capped.
+CSV includes `evidence_class`, `independent_adoption` and `metric_caveat`. The
+dashboard and Markdown reports show the interpretation boundary before counts.
+
+Distribution, discovery, activity, interest, maintenance and performance have
+different meanings. `humanAudience`, `independentAdoption` and `automatedShare`
+remain `not_measured`: neither high download counts nor a named referrer resolve
+those unknowns. No heuristic subtracts observations or relabels them as humans.
+See [adoption-quality review](adoption-quality.md) for the exact signal thresholds,
+external-evidence checks and the monthly scorecard procedure.
