@@ -19,6 +19,7 @@ import { projectBrief, markdownBrief } from './brief.js';
 import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
+import { auditCoverage } from './coverage.js';
 
 // The package manifest is the one version source for a checkout and the published archive.
 const VERSION: string = JSON.parse(
@@ -28,6 +29,7 @@ const HELP = `Bronto Pulse ${VERSION} — private project analytics, not a visit
 
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
+pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --dry-run previews
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
@@ -109,6 +111,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const known = new Set([
     'init',
     'validate',
+    'coverage',
     'plan',
     'sync',
     'backfill',
@@ -179,6 +182,22 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     );
   if (command === 'visibility') return visibilityCli(positionals[1], v);
   const configPath = resolve(v.config ?? 'pulse.config.json');
+  if (command === 'coverage') {
+    if (!v.input || positionals.length !== 1)
+      throw new PulseError('CONFIG', 'Use pulse coverage --input inventory.json.');
+    const config = await configFrom(configPath);
+    let input: unknown;
+    try {
+      const text = await readFile(resolve(v.input), 'utf8');
+      if (Buffer.byteLength(text) > 256 * 1024) throw new Error('Inventory too large');
+      input = JSON.parse(text);
+    } catch {
+      throw new PulseError('CONFIG', 'Cannot read a valid coverage inventory (maximum 256 KiB).');
+    }
+    const result = auditCoverage(config, input);
+    console.log(JSON.stringify(result, null, 2));
+    return result.configured ? 0 : 2;
+  }
   if (command === 'probe') {
     const config = await configFrom(configPath);
     const result = await probe(config, process.env, {

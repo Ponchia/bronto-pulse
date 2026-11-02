@@ -27,3 +27,6 @@ export {
   targetUrlMatches,
 } from './visibility.js';
 export type { VisibilitySuite, VisibilityRuns, VisibilitySession } from './visibility.js';
+
+export { auditCoverage } from './coverage.js';
+export type { CoverageInventory, CoverageEntry, CoverageAudit } from './coverage.js';
