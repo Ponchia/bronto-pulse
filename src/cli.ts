@@ -186,14 +186,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (!v.input || positionals.length !== 1)
       throw new PulseError('CONFIG', 'Use pulse coverage --input inventory.json.');
     const config = await configFrom(configPath);
-    let input: unknown;
-    try {
-      const text = await readFile(resolve(v.input), 'utf8');
-      if (Buffer.byteLength(text) > 256 * 1024) throw new Error('Inventory too large');
-      input = JSON.parse(text);
-    } catch {
-      throw new PulseError('CONFIG', 'Cannot read a valid coverage inventory (maximum 256 KiB).');
-    }
+    const input = await privateJson(resolve(v.input), 256 * 1024);
     const result = auditCoverage(config, input);
     console.log(JSON.stringify(result, null, 2));
     return result.configured ? 0 : 2;

@@ -22,7 +22,9 @@ coverage. An npm package is a separate resource from its source repository.
 Disabled or unbound resources are reported separately from missing resources.
 Repository matching is case-insensitive; package matching is exact. Duplicate
 identities and unsupported input fields are rejected. Inventories are bounded
-to 500 resources and CLI input to 256 KiB. Keep real inventories private.
+to 500 resources and CLI input to a bounded 256 KiB read. Keep real inventories
+private. Output is JSON on stdout; unsupported `--out` is explicitly rejected
+before reading configuration or printing identities.
 
 Exit 0 means every requested identity/group has an enabled, project-bound
 configuration. Exit 2 means configuration gaps; invalid input exits 1.

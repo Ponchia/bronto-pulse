@@ -135,3 +135,46 @@ test('coverage CLI reports gaps with exit 2 and never opens its database path', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('coverage CLI bounds input bytes and rejects unsupported private output without echo', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pulse-coverage-bounds-'));
+  try {
+    const config = join(dir, 'config.json');
+    const inventory = join(dir, 'inventory.json');
+    const db = join(dir, 'never-created.db');
+    const out = join(dir, 'never-written.json');
+    writeFileSync(config, JSON.stringify(base()));
+    const run = (extra: string[] = []) =>
+      spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'src/cli.ts',
+          'coverage',
+          '--config',
+          config,
+          '--input',
+          inventory,
+          '--db',
+          db,
+          ...extra,
+        ],
+        { encoding: 'utf8', timeout: 10000 },
+      );
+    writeFileSync(inventory, JSON.stringify(input) + ' '.repeat(256 * 1024));
+    const oversized = run();
+    assert.equal(oversized.status, 1);
+    assert.match(oversized.stderr, /byte budget/);
+    assert.equal(oversized.stdout, '');
+    writeFileSync(inventory, JSON.stringify(input));
+    const unsupported = run(['--out', out]);
+    assert.equal(unsupported.status, 1);
+    assert.match(unsupported.stderr, /--out applies/);
+    assert.equal(unsupported.stdout, '');
+    assert.equal(existsSync(out), false);
+    assert.equal(existsSync(db), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
