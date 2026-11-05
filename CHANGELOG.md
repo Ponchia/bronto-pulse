@@ -2,10 +2,20 @@
 
 ## Unreleased
 
+## 0.2.0-beta.2 — 2026-11-05
+
 - Keep distribution, discovery, activity and interest distinct in reports,
   briefings, CSV and the dashboard. Independent adoption, human audience and
   automated share remain explicitly unmeasured. Add source-local concentration
   and referrer-review signals without deleting counts or classifying requests.
+- Add `pulse coverage --input inventory.json`, an offline check of an explicit
+  GitHub and npm inventory against the selected configuration. It reports
+  missing, disabled, unbound and partially collected resources, naming the
+  requested GitHub groups that are not collected, without a database,
+  credentials or provider requests. Inventories are bounded to 500 resources
+  and a 256 KiB read. See [coverage](docs/coverage.md).
+- Update the runtime `jose` dependency to 6.2.14 and the development Wrangler
+  and Workers types, and refresh the pinned Node 24.22.1 container base image.
 
 ## 0.2.0-beta.1 — 2026-10-30
 
