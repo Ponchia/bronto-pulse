@@ -8,7 +8,8 @@ The GitHub repository is public and MIT-licensed as a **source preview**. Public
 source, npm distribution and a hosted analytics deployment are three independent
 decisions. The maintainer decided npm distribution on 30 October 2026: betas only,
 as `@ponchia/pulse` under the `beta` dist-tag, through the reviewed release
-workflow below. `latest` is never moved by automation.
+workflow below. Since 6 November 2026 the workflow also owns the dist-tags,
+including `latest` (see [dist-tags](#dist-tags)); nobody moves them by hand.
 
 Collected analytics, credentials, backup archives and local deployment settings
 are never public release material. The checked-in Worker configuration disables
@@ -86,6 +87,8 @@ A tag `v<version>-beta.<n>` on reviewed main, matching `package.json`, starts
 4. `verify-registry` (read-only) compares the registry's integrity and downloaded
    bytes with the archive and checks the `beta` tag and provenance. Rerun only
    that job after propagation delays; never publish a version twice.
+5. `sync-dist-tags` runs in the `npm-publish` environment after its own
+   approval and applies the [dist-tag policy](#dist-tags). It never publishes.
 
 The publisher is the one Bronto UI, Annotations, Layout and Visual Models use:
 the unchanged npm 11.21.1 source pinned in `tooling/publisher/source.json`, its
@@ -107,19 +110,38 @@ separate from package publication.
 2. Bootstrap the first version (below). npm only trusts OIDC for an existing package.
 3. Configure the trusted publisher with normal interactive account authentication:
 
-| Setting           | Value          |
-| ----------------- | -------------- |
-| Provider          | GitHub Actions |
-| Organization/user | `Ponchia`      |
-| Repository        | `bronto-pulse` |
-| Workflow          | `release.yml`  |
-| Environment       | `npm-publish`  |
+| Setting           | Value                                 |
+| ----------------- | ------------------------------------- |
+| Provider          | GitHub Actions                        |
+| Organization/user | `Ponchia`                             |
+| Repository        | `bronto-pulse`                        |
+| Workflow          | `release.yml`                         |
+| Environment       | `npm-publish`                         |
+| Allowed actions   | Allow npm publish, Allow npm dist-tag |
+
+### Dist-tags
+
+The maintainer decided on 6 November 2026 that the release workflow owns the
+dist-tags. After `verify-registry`, the `sync-dist-tags` job runs
+`scripts/sync-dist-tags.mjs` with the same audited publisher, authenticated by
+the trusted publisher's **Allow npm dist-tag** permission. It applies one policy:
+
+- While the package has no stable version, `latest` follows the newest beta, so
+  `npm install @ponchia/pulse` receives it.
+- `latest` never moves backwards, and never to a prerelease once a stable
+  version exists.
+- A prerelease channel tag (`next`, `beta`, `rc`, `alpha`, `canary`) that points
+  below `latest` is removed. Other tags are never touched.
+
+The job refuses a registry read that does not yet include the released version
+and confirms the resulting tags before it succeeds. Rerun it alone to reapply the
+policy; with nothing to change it is a no-op. `--dry-run` prints the plan without
+changing anything.
 
 ### First npm publication
 
 Done on 30 October 2026: the maintainer bootstrapped 0.2.0-beta.0 this way, and
-npm also pointed `latest` at it because a new package needs one. Release
-automation never moves `latest`. Every later version uses the tag workflow
+npm also pointed `latest` at it because a new package needs one. Every later version uses the tag workflow
 above. The procedure stays here for a fork or a newly scoped package.
 
 Pack the first beta from reviewed main after `npm ci && npm run check`, then

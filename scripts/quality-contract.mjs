@@ -27,6 +27,7 @@ for (const name of await readdir(new URL('../.github/workflows/', import.meta.ur
 const pkg = JSON.parse(await read('package.json'));
 // npm distribution was decided on 30 Oct 2026: betas only, through the reviewed
 // release workflow and the source-locked publisher, never a manual `latest`.
+// Since 6 Nov 2026 the workflow's sync-dist-tags job owns the dist-tags.
 if (pkg.private || pkg.publishConfig?.access !== 'public' || pkg.publishConfig?.tag !== 'beta')
   throw Error('Publish publicly under the beta dist-tag only, through the release workflow.');
 const release = await read('.github/workflows/release.yml');
@@ -36,6 +37,7 @@ for (const required of [
   'npm-cli.js" publish',
   '--provenance',
   '--tag beta',
+  'sync-dist-tags.mjs --package @ponchia/pulse',
 ])
   if (!release.includes(required)) throw Error('Release workflow lacks: ' + required);
 if (/^\s*npm publish\b|NODE_AUTH_TOKEN|NPM_TOKEN/m.test(release))
