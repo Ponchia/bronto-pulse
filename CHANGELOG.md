@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The release workflow now owns the npm dist-tags. A separately approved
+  `sync-dist-tags` job runs after registry verification, through the trusted
+  publisher's new "Allow npm dist-tag" permission and the same audited
+  publisher. While no stable version exists, `latest` follows the newest beta;
+  `latest` never moves backwards; a `next`, `beta`, `rc`, `alpha` or `canary` tag
+  below `latest` is removed. Rerunning the job reapplies the policy.
+
 ## 0.2.0-beta.2 — 2026-11-05
 
 - Keep distribution, discovery, activity and interest distinct in reports,

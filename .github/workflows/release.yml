@@ -1,7 +1,7 @@
 # npm beta publication for @ponchia/pulse. A beta tag on reviewed main reuses
 # the full CI, packs one checked archive, and publishes exactly those bytes
-# under the `beta` dist-tag through npm OIDC trusted publishing. `latest` is
-# never moved here. The FIRST version is bootstrapped by an npm owner
+# under the `beta` dist-tag through npm OIDC trusted publishing; sync-dist-tags
+# then owns `latest` (docs/releasing.md#dist-tags). The FIRST version is bootstrapped by an npm owner
 # (docs/releasing.md#first-npm-publication): npm only trusts OIDC for existing packages.
 name: Publish npm beta
 on:
@@ -231,3 +231,54 @@ jobs:
           if (!view.dist?.attestations?.provenance) throw Error('Registry metadata advertises no provenance attestation');
           NODE
           echo "Registry serves the checked archive ($SHA256) under beta with provenance." >> "$GITHUB_STEP_SUMMARY"
+
+  # Owns the dist-tags once the registry serves the checked archive: while no
+  # stable version exists, `latest` follows the newest beta, and a prerelease
+  # channel tag below `latest` is removed (scripts/sync-dist-tags.mjs). The
+  # trusted publisher allows npm dist-tag for release.yml and npm-publish. It
+  # is a separate approval so a tag failure never hides the publication; rerun
+  # this job alone to reapply the policy. It never publishes.
+  sync-dist-tags:
+    needs: [preflight, verify-registry]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.15.0'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Check out only the reviewed publisher tooling and tag policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: publisher
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/source-publisher.mjs
+            /scripts/extract-publisher-source.py
+            /scripts/audit-publishing-tooling.mjs
+            /tooling/publisher/
+            /scripts/sync-dist-tags.mjs
+      - name: Prepare and audit the source-locked publisher
+        shell: bash
+        env:
+          npm_config_cache: ${{ runner.temp }}/publisher-audit-cache
+        run: |
+          set -euo pipefail
+          node publisher/scripts/source-publisher.mjs prepare "$RUNNER_TEMP/pulse-publisher"
+          node publisher/scripts/source-publisher.mjs audit "$RUNNER_TEMP/pulse-publisher" "$RUNNER_TEMP/publisher-audit.json"
+      - name: Apply the dist-tag policy (npm OIDC)
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          npm_config_cache: ${{ runner.temp }}/dist-tag-cache
+        run: |
+          set -euo pipefail
+          node publisher/scripts/sync-dist-tags.mjs --package @ponchia/pulse --version "$VERSION" \
+            --npm-cli "$RUNNER_TEMP/pulse-publisher/source/bin/npm-cli.js" | tee "$RUNNER_TEMP/dist-tags.txt"
+          { echo '### npm dist-tags'; echo '```'; cat "$RUNNER_TEMP/dist-tags.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

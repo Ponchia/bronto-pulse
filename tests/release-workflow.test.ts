@@ -73,10 +73,40 @@ test('only the audited source-locked publisher reaches OIDC, never the runner np
     publish,
     /^\s*npm (?:publish|ci|install)\b|node scripts\/|if:|continue-on-error:/m,
   );
-  const verify = job('verify-registry');
+  const verify = job('verify-registry', 'sync-dist-tags');
   assert.doesNotMatch(verify, /id-token:|environment:|npm-cli\.js|npm publish/);
   assert.match(verify, /dist\?\.integrity !== integrity/);
   assert.match(verify, /dist\?\.attestations\?\.provenance/);
+});
+
+test('dist-tags follow the policy in a separately approved OIDC job that never publishes', () => {
+  const sync = job('sync-dist-tags');
+  assert.match(sync, /needs: \[preflight, verify-registry\]\n/);
+  assert.match(sync, /environment: npm-publish\n/);
+  assert.match(sync, /permissions:\n\s+contents: read\n\s+id-token: write\n/);
+  assert.deepEqual(
+    sparse(sync),
+    [[...publisherFiles, '/scripts/sync-dist-tags.mjs']],
+    'Publisher tooling and the tag policy only',
+  );
+  assert.equal(sync.match(/actions\/checkout@/g)?.length, 1);
+  assert.match(sync, /source-publisher\.mjs prepare "\$RUNNER_TEMP\/pulse-publisher"/);
+  assert.match(sync, /source-publisher\.mjs audit "\$RUNNER_TEMP\/pulse-publisher"/);
+  const audit = sync.indexOf('source-publisher.mjs audit');
+  assert.ok(
+    audit >= 0 && audit < sync.indexOf('sync-dist-tags.mjs --package'),
+    'audit before OIDC',
+  );
+  assert.match(
+    sync,
+    /node publisher\/scripts\/sync-dist-tags\.mjs --package @ponchia\/pulse --version "\$VERSION"/,
+  );
+  assert.match(sync, /--npm-cli "\$RUNNER_TEMP\/pulse-publisher\/source\/bin\/npm-cli\.js"/);
+  assert.doesNotMatch(
+    sync,
+    /npm-cli\.js" publish|\bnpm (?:publish|install|ci)\b|if:|continue-on-error:|contents: write/,
+  );
+  assert.match(docs, /Allow npm dist-tag/);
 });
 
 test('the package publishes publicly under beta, with one version source', () => {
