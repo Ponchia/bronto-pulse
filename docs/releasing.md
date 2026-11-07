@@ -92,8 +92,12 @@ A tag `v<version>-beta.<n>` on reviewed main, matching `package.json`, starts
 
 The publisher is the one Bronto UI, Annotations, Layout and Visual Models use:
 the unchanged npm 11.21.1 source pinned in `tooling/publisher/source.json`, its
-dependencies from `tooling/publisher/package-lock.json` (overriding only `undici`
-and `ip-address`), and a complete audit. Registry npm 11.21.1 and 12.2.1 bundle
+dependencies from `tooling/publisher/package-lock.json` (with pinned `undici`
+and `ip-address` fixes, plus reviewed `glob` 14.0.2 and `minimatch` 11.0.1
+security replacements for unchanged upstream direct dependencies), and a
+complete audit. `source.json` binds each major replacement to its original
+source range, patched exact version and GHSA. Complete installed-graph and
+source-file integrity checks remain mandatory. Registry npm 11.21.1 and 12.2.1 bundle
 Undici 6.29.0 with a high-severity advisory
 ([Bronto UI issue 234](https://github.com/Ponchia/bronto-ui/issues/234)), so the
 runner's npm never publishes. `npm run publisher:readiness` runs the same
