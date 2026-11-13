@@ -82,6 +82,32 @@ filesystems. WAL locking and 5-second busy timeouts are appropriate for the
 small single-host layout, not an HA database. Avoid placing the database on
 an ephemeral pod filesystem.
 
+## Repeatable local Compose + TLS acceptance (optional)
+
+From a Linux checkout with rootless Podman, podman-compose, Caddy, OpenSSL,
+curl and Node.js installed, run:
+
+```sh
+npm run test:compose:tls
+```
+
+This is a synthetic-only Compose stack using an ephemeral image, a
+temporary loopback port and a local HTTPS reverse proxy. The test generates
+a short-lived SAN certificate and tells curl to trust that exact certificate;
+it checks the real TLS handshake, Host/Origin validation, authenticated
+login and Secure session cookies through Caddy. It then restarts the
+Compose dashboard and confirms that the private SQLite state persisted.
+
+The command refuses an existing private `.env` or `.pulse-container`,
+generates no provider requests and removes its own temporary credentials,
+containers, network, image and data. The optional `PULSE_IMAGE` variable
+gives the synthetic test a unique image tag, avoiding the default
+`bronto-pulse:local` tag.
+
+This is stronger than unit tests, but does **not** qualify public
+DNS or ACME certificates, live provider grants, a production deployment,
+multi-node replication or a Kubernetes cutover.
+
 ## Repeatable OCI smoke test (optional)
 
 From the source checkout on a Linux host with rootless Podman, curl and

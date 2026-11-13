@@ -75,6 +75,9 @@ the collector is an opt-in sidecar with a durable SQLite rotation cursor.
 Cloudflare Workers/D1 remain an alternative, not a prerequisite.
 A synthetic rootless Podman acceptance test is available with
 `npm run test:oci` (opt-in, separate from the ordinary check).
+An additional `npm run test:compose:tls` runs a synthetic Compose deployment
+behind a temporary, certificate-verified local HTTPS proxy and tests restart
+persistence without using real provider credentials or changing production.
 
 ## Connector discovery and external analytics
 
