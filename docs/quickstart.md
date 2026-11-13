@@ -23,6 +23,22 @@ views all use the same contracts as the CLI. Date/project/view selections remain
 in the URL, not in browser storage. Tokens are never put in the URL. JSON,
 Markdown and CSV reports stay private and are not website publication features.
 
+## Explore cross-source evidence without credentials
+
+The optional [evidence-first demo](evidence-demo.md) reuses the same
+four synthetic projects and adds independent Cloudflare, Umami and
+Plausible website measurements to Sense6. The owner-declared website
+policy demonstrates a comparable discrepancy and a deliberately
+incompatible source timezone without adding provider counts together.
+
+```sh
+npm run demo -- --scenario evidence --serve
+```
+
+It uses its own ignored database and configuration; the default demo
+and live databases remain untouched. No external requests or account
+credentials are required.
+
 ## Configure a real installation
 
 Keep demo and live databases separate:
