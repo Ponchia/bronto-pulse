@@ -62,6 +62,11 @@ Keep repository credentials and backup decryption credentials recoverable
 independently of the collector host. A backup file that has never been restored
 is not evidence of recoverability.
 
+An opt-in [D1-to-SQLite recovery proof](d1-to-sqlite-recovery.md)
+validates a trusted D1 SQL archive, restores it transactionally, and compares
+the portable export/import reports in temporary private databases.
+It never changes production and is not an automatic cutover.
+
 ## Historical configuration changes
 
 A collected resource cannot be deleted from the catalog: keep it with

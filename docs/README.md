@@ -22,6 +22,7 @@ Lifecycle: current
 | [Scheduling](scheduling.md)                                       | Optional due-time selection, intervals and retry bounds       |
 | [Deployment](deployment.md)                                       | Local, container and Cloudflare Workers/D1                    |
 | [API](api.md)                                                     | Read-only endpoint and agent interface                        |
+| [D1 to SQLite recovery](d1-to-sqlite-recovery.md)                 | Offline private D1 archive restore and report-parity drill    |
 | [Operations](operations.md)                                       | Repair, backup, restore, retention, rollback                  |
 | [Validation](validation.md)                                       | Evidence levels, tests and account checks                     |
 | [ADR 0001](adr/0001-private-source-aware-history.md)              | Durable product boundary                                      |
