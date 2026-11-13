@@ -97,6 +97,11 @@ Run offline `pulse validate` and `pulse plan`; then account-specific
 Do not share private configuration files, runtime secrets, source responses,
 or query text in public issues/CI.
 
+The proposed [self-hosted analytics connector](self-hosted-provider-adapters.md)
+and [egress threat model](adr/0004-self-hosted-connector-egress.md)
+cover the distinct provider API variants, TLS and transport acceptance
+needed before self-hosted origins are enabled.
+
 **Initial limit:** only the hosted Plausible and Umami Cloud fixed origins.
 Self-hosted API origins require a future security design and acceptance
 tests, not a casual substitution of a configurable URL. No live account

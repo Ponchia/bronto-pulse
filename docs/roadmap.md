@@ -43,9 +43,10 @@ production deployment. That validation remains an explicit follow-up.
 - Introduce explicit project/site/package/deployment relationships and a
   primary-source declaration for comparisons; never add duplicate measurements
   from analytics systems tracking the same site.
-- Consider PostgreSQL + multi-worker queue only after a real HA pilot; add
-  versioned external connector protocol and self-hosted source URLs only after
-  network egress and credential threat modeling.
+- Consider PostgreSQL + multi-worker queue only after a real HA pilot.
+  [ADR 0004](adr/0004-self-hosted-connector-egress.md) specifies the
+  threat model and test gates for future self-hosted analytics endpoints.
+  No arbitrary URL transport or external plugin execution is shipped yet.
 - Pilot with non-maintainer OSS teams and measure whether an evidence-backed
   finding is useful beyond an existing provider dashboard.
 
