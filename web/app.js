@@ -453,6 +453,44 @@ function websitePolicyPanel(report) {
         'website-policy-sources',
       ),
     );
+    if (site.comparisons?.length) {
+      article.append(
+        el('p', {
+          class: 'website-policy-comparison-label',
+          text: 'Compared with the preferred source · descriptive pageview differences only',
+        }),
+      );
+      article.append(
+        table(
+          ['Alternative source', 'Compatibility', 'Secondary minus preferred'],
+          site.comparisons.map((comparison) => {
+            const difference = comparison.difference;
+            const number =
+              comparison.status === 'side_by_side' && difference !== null
+                ? (difference.absolute >= 0 ? '+' : '') +
+                  fmt(difference.absolute, 'pageviews') +
+                  (difference.percentOfPrimary === null
+                    ? ' · percentage withheld for a small baseline'
+                    : ' · ' +
+                      (difference.percentOfPrimary >= 0 ? '+' : '') +
+                      (difference.percentOfPrimary * 100).toFixed(1) +
+                      '% of preferred')
+                : 'No comparable difference';
+            return [
+              comparison.source,
+              el('div', {}, [
+                comparison.status.replaceAll('_', ' '),
+                ...comparison.reasons.map((reason) =>
+                  el('small', { class: 'website-policy-reason', text: reason }),
+                ),
+              ]),
+              number,
+            ];
+          }),
+          'website-policy-comparisons',
+        ),
+      );
+    }
     article.append(el('p', { class: 'small muted website-policy-limit', text: site.limitation }));
     list.append(article);
   }

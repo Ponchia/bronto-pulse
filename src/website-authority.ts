@@ -1,6 +1,7 @@
 import type { WebsitePolicy } from './config.js';
 import type { MetricCard } from './report.js';
 import { days, type DateRange } from './time.js';
+import { compareWebsiteSources, type WebsiteSourceComparison } from './source-comparison.js';
 
 /**
  * Explicit website identity and metric authority, never automatic source
@@ -25,6 +26,15 @@ export interface WebsiteAuthority {
   }[];
   reason: string;
   limitation: string;
+  /** Strict same-site, operator-declared descriptive comparisons to the preferred source.
+   * No difference is calculated when coverage, scope, calendars or quality disagree.
+   */
+  comparisons: {
+    source: string;
+    status: WebsiteSourceComparison['status'];
+    difference: WebsiteSourceComparison['difference'];
+    reasons: string[];
+  }[];
 }
 
 const PAGEVIEWS = new Set(['cloudflare.pageviews', 'plausible.pageviews', 'umami.pageviews']);
@@ -99,6 +109,28 @@ export function websiteAuthorities(
       alternatives,
       reason,
       limitation: LIMITATION,
+      comparisons:
+        status === 'ready' && source !== null
+          ? site.sources
+              .filter((candidate) => candidate !== source)
+              .map((candidate) => {
+                // The website policy itself is the explicit same-site owner
+                // assertion. The standalone comparison API still requires
+                // an independent confirmation from its caller.
+                const comparison = compareWebsiteSources(
+                  { window, cards: [...cards] },
+                  source,
+                  candidate,
+                  true,
+                );
+                return {
+                  source: candidate,
+                  status: comparison.status,
+                  difference: comparison.difference,
+                  reasons: comparison.reasons,
+                };
+              })
+          : [],
     });
     const selections = site.pageviewsAuthority ?? [];
     const active = selections.filter((item) => item.effectiveFrom <= window.from).at(-1);
