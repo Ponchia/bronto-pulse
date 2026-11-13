@@ -1,5 +1,6 @@
 import type { Config, Provider, Resource } from './config.js';
 import { groups } from './collectors/index.js';
+import { hasConnector } from './collectors/registry.js';
 import { PulseError } from './errors.js';
 import { addDays, dateInZone, defaultRange, range, type DateRange } from './time.js';
 
@@ -31,10 +32,7 @@ export function selectCollectionJobs(
   config: Config,
   options: Selection = {},
 ): { resource: Resource; group: string }[] {
-  if (
-    options.provider &&
-    !['github', 'npm', 'cloudflare', 'gsc', 'sense6'].includes(options.provider)
-  )
+  if (options.provider && !hasConnector(options.provider))
     throw new PulseError('CONFIG', 'Unknown provider.');
   if (options.resourceId && !config.resources.some((r) => r.id === options.resourceId))
     throw new PulseError('CONFIG', 'Unknown resource selection.');
@@ -106,7 +104,12 @@ export function planCollection(
       });
   };
   for (const { resource, group } of selectCollectionJobs(config, options)) {
-    const timezone = resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC';
+    const timezone =
+      resource.provider === 'gsc'
+        ? 'America/Los_Angeles'
+        : resource.provider === 'plausible'
+          ? resource.timezone
+          : 'UTC';
     const today = dateInZone(now, timezone);
     const requested = options.window ?? defaultRange(now, config.settings.lookbackDays, timezone);
     if (

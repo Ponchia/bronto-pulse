@@ -98,6 +98,9 @@ function primaryGroups(r: Resource, b: Binding): string[] {
       return b.scope ? ['pages'] : ['totals', 'performance', 'vitals'];
     case 'gsc':
       return b.scope ? ['pages'] : ['totals'];
+    case 'plausible':
+    case 'umami':
+      return ['traffic'];
     case 'sense6':
       return ['activity'];
   }
@@ -107,6 +110,8 @@ const groupMetrics: Record<string, string[]> = {
   'github:views': ['github.views', 'github.unique_viewers'],
   'github:clones': ['github.clones', 'github.unique_cloners'],
   'npm:downloads': ['npm.downloads'],
+  'plausible:traffic': ['plausible.pageviews', 'plausible.visitors_daily'],
+  'umami:traffic': ['umami.pageviews', 'umami.sessions_daily'],
   'cloudflare:totals': ['cloudflare.pageviews', 'cloudflare.visits'],
   'cloudflare:pages': ['cloudflare.pageviews'],
   'cloudflare:performance': ['cloudflare.load_p75'],

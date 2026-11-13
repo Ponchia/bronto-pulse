@@ -25,6 +25,9 @@ export function groups(r: Resource): string[] {
         ...(r.collectPages ? ['pages'] : []),
         ...(r.collectQueries ? ['queries'] : []),
       ];
+    case 'plausible':
+    case 'umami':
+      return ['traffic'];
     case 'sense6':
       return ['activity'];
   }

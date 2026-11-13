@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { parseConfig, type Config, type Provider } from './config.js';
+import { connectorCatalog } from './collectors/registry.js';
 import { PulseError, safeError } from './errors.js';
 import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
@@ -30,6 +31,7 @@ const HELP = `Bronto Pulse ${VERSION} — private project analytics, not a visit
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
 pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
+pulse connectors                     Offline built-in source capabilities; no credentials needed
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --dry-run previews
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
@@ -115,6 +117,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     'init',
     'validate',
     'coverage',
+    'connectors',
     'plan',
     'sync',
     'backfill',
@@ -184,6 +187,23 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       '--out applies to report, brief, export, inspect or visibility.',
     );
   if (command === 'visibility') return visibilityCli(positionals[1], v);
+  if (command === 'connectors') {
+    if (
+      positionals.length !== 1 ||
+      v.config ||
+      v.db ||
+      v.input ||
+      v.provider ||
+      v.resource ||
+      v.group
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Connector discovery accepts no installation or source selection.',
+      );
+    console.log(JSON.stringify({ schemaVersion: 1, connectors: connectorCatalog() }, null, 2));
+    return 0;
+  }
   const configPath = resolve(v.config ?? 'pulse.config.json');
   if (command === 'coverage') {
     if (!v.input || positionals.length !== 1)

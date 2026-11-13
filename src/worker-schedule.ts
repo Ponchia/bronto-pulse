@@ -1,8 +1,7 @@
 import type { Provider } from './config.js';
 import { PulseError } from './errors.js';
 import type { SyncOptions } from './sync.js';
-
-const providers = ['github', 'npm', 'cloudflare', 'gsc', 'sense6'] as const;
+import { hasConnector } from './collectors/registry.js';
 
 /** Explicit installation controls; credentials and source data never belong here. */
 export function scheduleOptions(env: {
@@ -40,7 +39,7 @@ export function scheduleOptions(env: {
   const readiness = env.PULSE_READY_ONLY === 'true' ? { readyOnly: true } : {};
   const provider = env.PULSE_PROVIDER;
   if (provider === undefined) return { maxJobs, ...budgets, ...readiness };
-  if (!(providers as readonly string[]).includes(provider))
+  if (!hasConnector(provider))
     throw new PulseError('CONFIG', 'Invalid scheduled provider selection.');
   return { maxJobs, provider: provider as Provider, ...budgets, ...readiness };
 }

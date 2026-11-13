@@ -8,6 +8,8 @@ const ORIGINS = new Set([
   'https://www.googleapis.com',
   'https://oauth2.googleapis.com',
   'https://searchconsole.googleapis.com',
+  'https://plausible.io',
+  'https://api.umami.is',
 ]);
 /** Report only fixed, operator-actionable transport categories. Never persist upstream
  * exception messages: runtime exceptions may contain URLs or credentials. */
@@ -46,6 +48,27 @@ export class HttpClient {
         init.method !== 'POST')
     )
       throw new PulseError('CONFIG', 'Only the read-only URL inspection endpoint is permitted.');
+    if (
+      target.origin === 'https://plausible.io' &&
+      (target.pathname !== '/api/v2/query' ||
+        target.search ||
+        target.hash ||
+        init.method !== 'POST')
+    )
+      throw new PulseError('CONFIG', 'Only the read-only Plausible statistics query is permitted.');
+    if (
+      target.origin === 'https://api.umami.is' &&
+      (!/^\/v1\/websites\/[A-Za-z0-9_-]+\/pageviews$/.test(target.pathname) ||
+        target.hash ||
+        (init.method !== undefined && init.method !== 'GET') ||
+        [...target.searchParams.keys()].some(
+          (key) => !['startAt', 'endAt', 'timezone', 'unit'].includes(key),
+        ))
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Only the read-only Umami website pageviews endpoint is permitted.',
+      );
     const failures: string[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
       if (++this.requests > this.maximumRequests)

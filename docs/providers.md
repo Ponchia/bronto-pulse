@@ -131,6 +131,33 @@ The only added endpoint is the exact read-only
 It reports Google's indexed view, not a live-page test, and submits nothing
 for indexing. See [Google's inspection reference](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect).
 
+## Plausible Stats API v2 (hosted, reference adapter)
+
+A selected team-scoped Stats API key is required; hosted availability can
+depend on the Business plan. Pulse accepts only the exact
+`https://plausible.io/api/v2/query` POST request, with the site ID and
+configured IANA reporting timezone. It reads daily pageviews and visitors
+and **explicitly excludes imported data**. No arbitrary provider URL, custom
+event, conversion or identity dataset is queried. Provider-reported daily
+visitors are non-additive, and empty dates are unknown.
+
+Reference: [Plausible Stats API](https://plausible.io/docs/stats-api).
+
+## Umami Cloud v3 (hosted, reference adapter)
+
+Use a Cloud API key for a selected website. Pulse calls only the
+read-only pageviews series under `https://api.umami.is/v1`, reporting
+separate daily pageviews and sessions in UTC. Umami sessions are
+provider-specific and do not identify verified independent people. It
+does not read person-level events or create tracking endpoints.
+
+References: [Umami Cloud API](https://docs.umami.is/docs/cloud/api-key),
+[Umami pageviews series](https://docs.umami.is/docs/api-reference/get-website-pageviews).
+
+Both adapters were synthetic-contract tested, not yet verified with a live
+third-party account. See [Connectors](connectors.md) for configuration and
+fixed-origin self-hosting limitations.
+
 ## Sense6 optional counters
 
 Configure its Cloudflare account and D1 database ID with an appropriate private

@@ -74,6 +74,17 @@ dashboard binds only to a loopback host port behind your chosen TLS proxy;
 the collector is an opt-in sidecar with a durable SQLite rotation cursor.
 Cloudflare Workers/D1 remain an alternative, not a prerequisite.
 
+## Connector discovery and external analytics
+
+Run `pulse connectors --json` to inspect the curated built-in source catalog.
+The reference Plausible Stats v2 and Umami Cloud v3 adapters retrieve
+provider-native daily aggregate measurements without adding visitor tracking.
+They are opt-in, and still require real account credentials and provider
+validation. Source-specific visitor/session values are never summed into
+monthly unique people or combined with Cloudflare counts. See the
+[connector guide](docs/connectors.md) and the
+[product direction](docs/product-strategy.md).
+
 ## Operator workflow
 
 Preview a bounded sync before making provider requests, then read an evidence-based
