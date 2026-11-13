@@ -994,3 +994,39 @@ code {
     display: block;
   }
 }
+
+/* Opt-in read-only website source comparison. Distinct source totals are never summed. */
+.source-comparison {
+  margin-block: 2rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--line, #d5d8df);
+  border-radius: 0.75rem;
+}
+.compare-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-block: 0.8rem;
+}
+.compare-controls select {
+  max-width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem;
+}
+.compare-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-block: 0.8rem;
+}
+.compare-confirm input {
+  margin-top: 0.25rem;
+  flex: 0 0 auto;
+}
+.compare-result {
+  margin-top: 0.9rem;
+}
+.compare-difference {
+  font-weight: 650;
+}

@@ -266,6 +266,140 @@ function renderPortfolio(data) {
     ]),
   );
 }
+function sourceComparisonPanel(report) {
+  // Only explicit pair selection can initiate a comparison. Project membership
+  // alone is not evidence that two resources measure one website.
+  const sourceIds = [
+    ...new Set(
+      report.cards
+        .filter((card) =>
+          ['cloudflare.pageviews', 'plausible.pageviews', 'umami.pageviews'].includes(card.metric),
+        )
+        .map((card) => card.resourceId),
+    ),
+  ];
+  if (sourceIds.length < 2) return null;
+  const panel = el('section', { class: 'source-comparison' });
+  panel.append(
+    heading('Compare website sources', 'A difference is not a corrected visitor count'),
+    el('p', {
+      class: 'muted small',
+      text: 'Select two independent analytics resources. The comparison runs only for complete, observed daily data with matching calendars and scopes.',
+    }),
+  );
+  const options = (select) => {
+    for (const id of sourceIds) select.append(el('option', { value: id, text: id }));
+  };
+  const primary = el('select', { 'aria-label': 'Primary website analytics resource' }),
+    secondary = el('select', { 'aria-label': 'Secondary website analytics resource' });
+  options(primary);
+  options(secondary);
+  secondary.value = sourceIds[1];
+  const confirm = el('input', { type: 'checkbox' });
+  const consent = el('label', { class: 'compare-confirm' }, [
+    confirm,
+    'I confirm both resources represent the same website and intended pageview scope.',
+  ]);
+  const submit = el('button', {
+    type: 'button',
+    class: 'button secondary',
+    text: 'Compare source observations',
+  });
+  submit.disabled = true;
+  const result = el('div', { class: 'compare-result', 'aria-live': 'polite' });
+  let selectionRevision = 0;
+  const reset = () => {
+    selectionRevision++;
+    confirm.checked = false;
+    submit.disabled = true;
+    result.replaceChildren();
+  };
+  primary.addEventListener('change', reset);
+  secondary.addEventListener('change', reset);
+  confirm.addEventListener('change', () => {
+    selectionRevision++;
+    submit.disabled = !confirm.checked || primary.value === secondary.value;
+    if (!confirm.checked) result.replaceChildren();
+  });
+  submit.addEventListener('click', async () => {
+    if (!confirm.checked || primary.value === secondary.value) return;
+    const generation = state.loading;
+    const requestedSelection = selectionRevision;
+    submit.disabled = true;
+    result.replaceChildren(el('p', { class: 'muted', text: 'Checking source compatibility…' }));
+    try {
+      const q = new URLSearchParams({
+        from: report.window.from,
+        to: report.window.to,
+        primary: primary.value,
+        secondary: secondary.value,
+        same_site: 'confirmed',
+      });
+      const data = await api(
+        '/projects/' + encodeURIComponent(report.project.id) + '/source-comparison?' + q,
+      );
+      if (generation !== state.loading || requestedSelection !== selectionRevision) return;
+      const intro =
+        data.status === 'side_by_side'
+          ? 'Side-by-side source observations'
+          : 'Not comparable for the selected period';
+      result.replaceChildren(el('h3', { text: intro }));
+      for (const reason of data.reasons)
+        result.append(el('p', { class: 'small muted', text: reason }));
+      result.append(
+        table(
+          ['Source', 'Provider', 'Reported pageviews', 'Calendar', 'Coverage'],
+          data.sources.map((source) => [
+            source.resourceId,
+            source.provider ?? 'Unavailable',
+            fmt(source.value, 'pageviews'),
+            source.timezone ?? 'Unknown',
+            source.observedDays === null
+              ? 'Unavailable'
+              : String(source.observedDays) + '/' + source.expectedDays + ' observed dates',
+          ]),
+        ),
+      );
+      if (data.difference !== null) {
+        const signed = data.difference.absolute >= 0 ? '+' : '';
+        result.append(
+          el('p', {
+            class: 'compare-difference',
+            text:
+              'Secondary minus primary: ' +
+              signed +
+              fmt(data.difference.absolute, 'pageviews') +
+              (data.difference.percentOfPrimary === null
+                ? ' · percentage withheld for a small baseline'
+                : ' · ' +
+                  (data.difference.percentOfPrimary >= 0 ? '+' : '') +
+                  (data.difference.percentOfPrimary * 100).toFixed(1) +
+                  '% of primary'),
+          }),
+        );
+      }
+      result.append(el('p', { class: 'small muted', text: data.limitation }));
+    } catch (error) {
+      if (generation === state.loading && requestedSelection === selectionRevision)
+        result.replaceChildren(
+          el('p', {
+            class: 'notice',
+            text: error instanceof Error ? error.message : 'Source comparison is unavailable.',
+          }),
+        );
+    } finally {
+      if (generation === state.loading && requestedSelection === selectionRevision)
+        submit.disabled = !confirm.checked || primary.value === secondary.value;
+    }
+  });
+  panel.append(
+    el('div', { class: 'compare-controls' }, [primary, secondary, submit]),
+    consent,
+    result,
+  );
+  return panel;
+}
+
 function renderProject(report) {
   const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
   back.addEventListener('click', () => selectView('portfolio'));
@@ -310,6 +444,8 @@ function renderProject(report) {
       ? grid
       : empty('No metrics are available for this project. Check collection health.'),
   );
+  const comparisonPanel = sourceComparisonPanel(report);
+  if (comparisonPanel) content.append(comparisonPanel);
   if (report.warnings.length) {
     content.append(heading('Read this data carefully'));
     const list = el('ul', { class: 'warnings' });

@@ -79,6 +79,11 @@ Cloudflare Workers/D1 remain an alternative, not a prerequisite.
 Run `pulse connectors --json` to inspect the curated built-in source catalog.
 The reference Plausible Stats v2 and Umami Cloud v3 adapters retrieve
 provider-native daily aggregate measurements without adding visitor tracking.
+A project with two website analytics sources can compare their pageview
+observations in the private dashboard after explicitly confirming same-site
+scope. Differently timed, sampled or incomplete series remain incomparable;
+Pulse never produces a combined audience total. See the
+[source comparison contract](docs/source-comparison.md).
 They are opt-in, and still require real account credentials and provider
 validation. Source-specific visitor/session values are never summed into
 monthly unique people or combined with Cloudflare counts. See the
