@@ -16,6 +16,7 @@ import {
 import { PulseError } from './errors.js';
 import { days, previous, range, daysBetween, type DateRange } from './time.js';
 import { Store } from './storage/store.js';
+import { websiteAuthorities, type WebsiteAuthority } from './website-authority.js';
 export interface Point {
   date: string;
   value: number;
@@ -78,6 +79,8 @@ export interface ProjectReport {
   inspections: Awaited<ReturnType<Store['inspections']>>;
   warnings: string[];
   evidence: EvidenceAssessment;
+  /** Present only when an owner declared explicit website identities and policies. */
+  websites?: WebsiteAuthority[];
 }
 function allowed(o: StoredObservation, b: Binding): boolean {
   if ((b.effectiveFrom && o.from < b.effectiveFrom) || (b.effectiveTo && o.to > b.effectiveTo))
@@ -477,7 +480,13 @@ export async function projectReport(
     ),
     warnings: [...new Set(warnings)],
   };
-  return { ...report, evidence: assessEvidence(report) };
+  return {
+    ...report,
+    ...(project.websites?.length
+      ? { websites: websiteAuthorities(project.websites, report.cards, window) }
+      : {}),
+    evidence: assessEvidence(report),
+  };
 }
 export async function portfolio(config: Config, store: Store, window: DateRange, now = new Date()) {
   const reports = [];
@@ -521,6 +530,27 @@ export function markdownReport(report: ProjectReport): string {
     lines.push(
       `| ${c.label.replaceAll('|', '/')} | ${c.resourceId} | ${value} | ${c.coverage.observedDays}/${c.coverage.expectedDays} dates; ${c.coverage.status} |`,
     );
+  }
+  if (report.websites?.length) {
+    lines.push(
+      '',
+      '## Declared website source preferences',
+      '',
+      'These are owner-declared identities and source preferences, not verified unique visitors. Different providers are never summed.',
+    );
+    for (const site of report.websites)
+      lines.push(
+        '- ' +
+          site.hostname +
+          ': ' +
+          site.status +
+          '; preferred ' +
+          (site.source ?? 'none') +
+          '; source-specific pageviews: ' +
+          (site.value ?? 'unavailable') +
+          '. ' +
+          site.reason,
+      );
   }
   if (report.warnings.length)
     lines.push('', '## Data quality', ...report.warnings.map((x) => `- ${x}`));

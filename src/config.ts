@@ -144,6 +144,29 @@ const binding = z.strictObject({
   effectiveTo: z.optional(date),
   allowShared: z._default(z.boolean(), false),
 });
+// Explicit operator assertions about website identity are kept separate
+// from provider-native analytics, and do not create combined visitor counts.
+const websiteHost = z
+  .string()
+  .check(
+    z.maxLength(253),
+    z.regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/),
+  );
+const websitePolicy = z.strictObject({
+  id,
+  hostname: websiteHost,
+  sources: z.array(id).check(z.minLength(1), z.maxLength(12)),
+  pageviewsAuthority: z.optional(
+    z
+      .array(
+        z.strictObject({
+          resource: id,
+          effectiveFrom: date,
+        }),
+      )
+      .check(z.minLength(1), z.maxLength(32)),
+  ),
+});
 export const configSchema = z.strictObject({
   version: z.literal(1),
   name: z._default(z.string().check(z.maxLength(120)), 'Project portfolio'),
@@ -157,6 +180,7 @@ export const configSchema = z.strictObject({
         label: z.string().check(z.minLength(1), z.maxLength(120)),
         description: z._default(z.string().check(z.maxLength(500)), ''),
         resources: z.array(binding).check(z.minLength(1), z.maxLength(50)),
+        websites: z.optional(z.array(websitePolicy).check(z.maxLength(24))),
       }),
     )
     .check(z.minLength(1), z.maxLength(200)),
@@ -175,6 +199,7 @@ export type Resource = Config['resources'][number];
 export type Connection = Config['connections'][number];
 export type Project = Config['projects'][number];
 export type Binding = Project['resources'][number];
+export type WebsitePolicy = NonNullable<Project['websites']>[number];
 export type Provider = Resource['provider'];
 /** Linear trimming also protects direct library callers outside config size limits. */
 function stripTrailingSlashes(value: string): string {
@@ -252,6 +277,79 @@ export function parseConfig(input: unknown): Config {
   }
   const bindings: { project: string; b: Binding }[] = [];
   for (const p of c.projects) {
+    const siteIds = new Set<string>();
+    const siteHostnames = new Set<string>();
+    const assignedSources = new Set<string>();
+    for (const website of p.websites ?? []) {
+      if (siteIds.has(website.id) || siteHostnames.has(website.hostname))
+        throw new PulseError(
+          'CONFIG',
+          'Website IDs and hostnames must be distinct within each project.',
+        );
+      siteIds.add(website.id);
+      siteHostnames.add(website.hostname);
+      if (new Set(website.sources).size !== website.sources.length)
+        throw new PulseError('CONFIG', 'Duplicate source within a website declaration.');
+      for (const id of website.sources) {
+        if (assignedSources.has(id))
+          throw new PulseError(
+            'CONFIG',
+            'A website analytics resource cannot claim multiple website identities.',
+          );
+        assignedSources.add(id);
+        const resource = c.resources.find((r) => r.id === id);
+        if (!resource || !['cloudflare', 'plausible', 'umami'].includes(resource.provider))
+          throw new PulseError(
+            'CONFIG',
+            'Website source must be a configured website analytics provider.',
+          );
+        const matching = p.resources.filter((b) => b.resource === id);
+        if (!matching.length)
+          throw new PulseError('CONFIG', 'Website sources must be bound to their parent project.');
+        if (matching.some((b) => b.scope?.pathPrefix))
+          throw new PulseError('CONFIG', 'Whole-site authority cannot use a path-scoped source.');
+        if (matching.some((b) => b.scope?.hostname && b.scope.hostname !== website.hostname))
+          throw new PulseError('CONFIG', 'Website source binding has a different hostname.');
+        if (resource.provider === 'plausible' && resource.siteId !== website.hostname)
+          throw new PulseError(
+            'CONFIG',
+            'Plausible site domain does not match the declared website identity.',
+          );
+        if (resource.provider === 'cloudflare') {
+          // A scoped Cloudflare project binding uses page attribution rather
+          // than whole-site totals; it cannot establish an authoritative site
+          // total even when the hostname happens to match.
+          if (resource.hostname !== website.hostname || matching.some((b) => b.scope))
+            throw new PulseError(
+              'CONFIG',
+              'Cloudflare whole-site authority requires a pinned hostname and an unscoped binding.',
+            );
+          if (!resource.groups.includes('totals'))
+            throw new PulseError(
+              'CONFIG',
+              'Website authority requires Cloudflare whole-site totals.',
+            );
+        }
+      }
+      let previousStart = '';
+      let previousResource = '';
+      for (const selection of website.pageviewsAuthority ?? []) {
+        if (!website.sources.includes(selection.resource))
+          throw new PulseError('CONFIG', 'Website authority must select one declared source.');
+        if (previousStart && selection.effectiveFrom <= previousStart)
+          throw new PulseError(
+            'CONFIG',
+            'Website authority changes require increasing effective dates.',
+          );
+        if (previousResource === selection.resource)
+          throw new PulseError(
+            'CONFIG',
+            'Consecutive website authority entries must represent a source change.',
+          );
+        previousStart = selection.effectiveFrom;
+        previousResource = selection.resource;
+      }
+    }
     for (const b of p.resources) {
       const r = c.resources.find((x) => x.id === b.resource);
       if (!r) throw new PulseError('CONFIG', 'Project references an unknown resource.');
@@ -319,6 +417,47 @@ export function assertHistoricalMappings(previous: Config, next: Config, changeD
         'CONFLICT',
         `Project ${project.id} owns historical mappings; retain its stable ID.`,
       );
+    // A newly asserted site may group existing providers, but it cannot
+    // retroactively choose a source of truth for past published observations.
+    for (const website of replacement.websites ?? []) {
+      const existed = project.websites?.some((old) => old.id === website.id);
+      if (!existed && website.pageviewsAuthority?.some((entry) => entry.effectiveFrom < changeDate))
+        throw new PulseError(
+          'CONFLICT',
+          'New website pageview authority must begin on or after the configuration change date.',
+        );
+    }
+    for (const website of project.websites ?? []) {
+      const updated = replacement.websites?.find((item) => item.id === website.id);
+      if (!updated || updated.hostname !== website.hostname)
+        throw new PulseError(
+          'CONFLICT',
+          'Previously declared website identity must remain stable.',
+        );
+      if (website.sources.some((source) => !updated.sources.includes(source)))
+        throw new PulseError(
+          'CONFLICT',
+          'Historical website source membership must remain available.',
+        );
+      const authorityAt = (item: WebsitePolicy, at: string): string | null =>
+        item.pageviewsAuthority?.filter((x) => x.effectiveFrom <= at).at(-1)?.resource ?? null;
+      const cuts = new Set(['0001-01-01']);
+      for (const selected of [
+        ...(website.pageviewsAuthority ?? []),
+        ...(updated.pageviewsAuthority ?? []),
+      ]) {
+        if (selected.effectiveFrom < changeDate) cuts.add(selected.effectiveFrom);
+      }
+      if (
+        [...cuts].some(
+          (at) => at < changeDate && authorityAt(website, at) !== authorityAt(updated, at),
+        )
+      )
+        throw new PulseError(
+          'CONFLICT',
+          'Website pageview authority must not be changed retroactively; add an effective date.',
+        );
+    }
     for (const resourceId of new Set(project.resources.map((b) => b.resource))) {
       const before = project.resources.filter((b) => b.resource === resourceId),
         after = replacement.resources.filter((b) => b.resource === resourceId);
