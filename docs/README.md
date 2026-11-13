@@ -15,6 +15,8 @@ Lifecycle: current
 | [Architecture](architecture.md)                                   | Data flow, transaction model, portable boundaries             |
 | [Metric contracts](metrics.md)                                    | Aggregation semantics, attribution, coverage                  |
 | [Connectors](connectors.md)                                       | Curated source catalog and Plausible/Umami reference adapters |
+| [Self-hosted provider design](self-hosted-provider-adapters.md)   | Proposed API variants and operator acceptance criteria        |
+| [ADR 0004](adr/0004-self-hosted-connector-egress.md)              | SSRF, DNS/TLS pinning, private-network trust boundaries       |
 | [Product direction](product-strategy.md)                          | Competitive niche and staged roadmap (proposal)               |
 | [ADR 0002](adr/0002-curated-connectors-and-provider-semantics.md) | Fixed egress and source-native metrics                        |
 | [Providers](providers.md)                                         | API permissions, configuration and limitations                |
