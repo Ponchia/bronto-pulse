@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compareWebsiteSources } from '../src/source-comparison.js';
-import type { MetricCard } from '../src/report.js';
+import { projectReport, type MetricCard } from '../src/report.js';
 import { parseConfig } from '../src/config.js';
 import { database, now } from './helpers.js';
 import { collected } from '../src/collectors/context.js';
@@ -278,6 +278,33 @@ test('API comparison is authenticated, bounded, read-only and preserves source r
       200,
     );
     assert.equal((await store.runs()).length, 2, 'comparisons never trigger collections');
+  } finally {
+    store.driver.close?.();
+  }
+});
+
+test('an unavailable Plausible series retains the declared source timezone, not a fabricated UTC calendar', async () => {
+  const config = parseConfig({
+    version: 1,
+    resources: [
+      {
+        id: 'pl',
+        provider: 'plausible',
+        siteId: 'example.test',
+        timezone: 'Europe/Madrid',
+        connection: 'p',
+      },
+    ],
+    connections: [{ id: 'p', provider: 'plausible', tokenEnv: 'P_TOKEN' }],
+    projects: [{ id: 'project', label: 'Project', resources: [{ resource: 'pl' }] }],
+  });
+  const store = await database(config);
+  try {
+    const result = await projectReport(config, store, 'project', window, now);
+    const source = result.cards.find((x) => x.metric === 'plausible.pageviews')!;
+    assert.equal(source.coverage.status, 'unavailable');
+    assert.equal(source.timezone, 'Europe/Madrid');
+    assert.equal(source.value, null);
   } finally {
     store.driver.close?.();
   }
