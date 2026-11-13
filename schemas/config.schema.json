@@ -101,6 +101,11 @@
                 "default": true,
                 "type": "boolean"
               },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
+              },
               "provider": {
                 "type": "string",
                 "const": "github"
@@ -167,6 +172,11 @@
                 "default": true,
                 "type": "boolean"
               },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
+              },
               "provider": {
                 "type": "string",
                 "const": "npm"
@@ -223,6 +233,11 @@
               "enabled": {
                 "default": true,
                 "type": "boolean"
+              },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
               },
               "provider": {
                 "type": "string",
@@ -297,6 +312,11 @@
               "enabled": {
                 "default": true,
                 "type": "boolean"
+              },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
               },
               "provider": {
                 "type": "string",
@@ -377,6 +397,11 @@
                 "default": true,
                 "type": "boolean"
               },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
+              },
               "provider": {
                 "type": "string",
                 "const": "plausible"
@@ -420,6 +445,11 @@
                 "default": true,
                 "type": "boolean"
               },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
+              },
               "provider": {
                 "type": "string",
                 "const": "umami"
@@ -457,6 +487,11 @@
               "enabled": {
                 "default": true,
                 "type": "boolean"
+              },
+              "refreshHours": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720
               },
               "provider": {
                 "type": "string",

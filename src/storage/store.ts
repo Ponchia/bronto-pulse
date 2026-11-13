@@ -402,6 +402,24 @@ export class Store {
     const [latest, successful] = await this.driver.readBatch([query(false), query(true)]);
     return { latest: (latest ?? []).map(run), successful: (successful ?? []).map(run) };
   }
+  /**
+   * Due-time only: distinguish scheduled current-day fetches from older
+   * historical backfills by their source end date at execution time.
+   * This preserves refresh intervals longer than one day, including across
+   * midnight. Existing runHeads() and health semantics are unchanged.
+   */
+  async regularRunHeads(): Promise<{ latest: Run[]; successful: Run[] }> {
+    const query = (successOnly: boolean): Statement => ({
+      sql:
+        'SELECT * FROM (SELECT r.*,ROW_NUMBER() OVER (PARTITION BY r.resource_id,r.group_id ORDER BY r.started_at DESC,r.rowid DESC) AS rank ' +
+        'FROM runs r JOIN resources z ON z.id=r.resource_id ' +
+        "WHERE r.to_day>=date(substr(r.started_at,1,10),CASE WHEN z.provider IN ('gsc','plausible') THEN '-2 day' ELSE '-1 day' END)" +
+        (successOnly ? " AND r.status='success'" : '') +
+        ') WHERE rank=1',
+    });
+    const [latest, successful] = await this.driver.readBatch([query(false), query(true)]);
+    return { latest: (latest ?? []).map(run), successful: (successful ?? []).map(run) };
+  }
   async observedThrough(): Promise<{ resourceId: string; group: string; date: string }[]> {
     const rows = await this.driver.all({
       sql: `SELECT o.resource_id,o.group_id,MAX(o.partition_day) AS day FROM observations o JOIN partitions p ON p.run_id=o.run_id AND p.resource_id=o.resource_id AND p.group_id=o.group_id AND p.day=o.partition_day JOIN runs r ON r.id=o.run_id AND r.status='success' GROUP BY o.resource_id,o.group_id`,

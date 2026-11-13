@@ -25,6 +25,8 @@ export interface WorkerEnv extends AccessEnvironment, AggregateEnvironment {
   PULSE_PROVIDER?: string;
   PULSE_EXECUTION_PROFILE?: string;
   PULSE_READY_ONLY?: string;
+  /** Explicit optional freshness-driven selection; production default stays rotating. */
+  PULSE_DUE_ONLY?: string;
   /** The one cron expression whose invocations collect older dates instead of rotating. */
   PULSE_HISTORY_CRON?: string;
 }
@@ -138,7 +140,7 @@ export default {
     try {
       let results: SyncResult[], pending: number | undefined;
       if (history) {
-        const { maxJobs: _one, ...bounds } = selection;
+        const { maxJobs: _one, dueOnly: _notHistory, ...bounds } = selection;
         ({ results, pending } = await collectHistory(config, store, environmentSecrets(env), {
           ...bounds,
           bindings,
@@ -147,7 +149,7 @@ export default {
         results = await sync(config, store, environmentSecrets(env), {
           ...selection,
           bindings,
-          rotate: true,
+          rotate: !selection.dueOnly,
         });
       // Only aggregate result codes. No URLs, credentials or provider payloads in logs.
       console.log(
