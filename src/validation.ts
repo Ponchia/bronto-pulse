@@ -56,6 +56,23 @@ export function safeUrl(value: unknown): string {
   u.hash = '';
   return u.toString();
 }
+const acceptedAnalyticsTimeZones = new Map<string, boolean>();
+function validAnalyticsTimeZone(zone: string): boolean {
+  if (zone.length > 64) return false;
+  const cached = acceptedAnalyticsTimeZones.get(zone);
+  if (cached !== undefined) return cached;
+  let valid = false;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+    valid = true;
+  } catch {
+    valid = false;
+  }
+  if (acceptedAnalyticsTimeZones.size >= 16)
+    acceptedAnalyticsTimeZones.delete(acceptedAnalyticsTimeZones.keys().next().value!);
+  acceptedAnalyticsTimeZones.set(zone, valid);
+  return valid;
+}
 export function validateCollected(c: Collected, provider: string, maxRows: number): void {
   range(c.range.from, c.range.to, 3660);
   invariant(c.observations.length <= maxRows * 8, 'Observation budget exceeded.');
@@ -82,7 +99,13 @@ export function validateCollected(c: Collected, provider: string, maxRows: numbe
       ['observed', 'provisional', 'sampled', 'provider_limited', 'top_n'].includes(o.quality),
       'Invalid observation quality.',
     );
-    invariant(['UTC', 'America/Los_Angeles'].includes(o.timezone), 'Unsupported source timezone.');
+    // Existing sources are pinned to UTC/Pacific. Plausible reports each site's
+    // IANA timezone explicitly, validated at configuration admission.
+    invariant(
+      ['UTC', 'America/Los_Angeles'].includes(o.timezone) ||
+        (provider === 'plausible' && validAnalyticsTimeZone(o.timezone)),
+      'Unsupported source timezone.',
+    );
     text(o.methodology, 'methodology', 128);
     invariant(Object.keys(o.dimensions).length <= 8, 'Too many dimensions.');
     for (const [key, value] of Object.entries(o.dimensions)) {

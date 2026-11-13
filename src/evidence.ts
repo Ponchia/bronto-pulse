@@ -34,6 +34,10 @@ export function metricEvidenceClass(metric: string): EvidenceClass {
       'github.path_views',
       'cloudflare.pageviews',
       'cloudflare.visits',
+      'plausible.pageviews',
+      'plausible.visitors_daily',
+      'umami.pageviews',
+      'umami.sessions_daily',
     ].includes(metric)
   )
     return 'discovery';

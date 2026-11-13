@@ -114,7 +114,11 @@ export async function sync(
       defaultRange(
         now,
         config.settings.lookbackDays,
-        resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC',
+        resource.provider === 'gsc'
+          ? 'America/Los_Angeles'
+          : resource.provider === 'plausible'
+            ? resource.timezone
+            : 'UTC',
       );
     range(window.from, window.to);
     const key = `${resource.id}:${group}`,
@@ -236,7 +240,11 @@ export async function doctor(
         observed.find((o) => o.resourceId === resource.id && o.group === group)?.date ?? null;
       const sourceToday = dateInZone(
         now,
-        resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC',
+        resource.provider === 'gsc'
+          ? 'America/Los_Angeles'
+          : resource.provider === 'plausible'
+            ? resource.timezone
+            : 'UTC',
       );
       const lagDays = latestDate ? Math.max(0, daysBetween(latestDate, sourceToday) - 1) : null;
       const runAge = latest ? (now.getTime() - Date.parse(latest.startedAt)) / 3600000 : null;
@@ -370,7 +378,15 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
       http,
       credentials,
       now,
-      window: defaultRange(now, 1, resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC'),
+      window: defaultRange(
+        now,
+        1,
+        resource.provider === 'gsc'
+          ? 'America/Los_Angeles'
+          : resource.provider === 'plausible'
+            ? resource.timezone
+            : 'UTC',
+      ),
     };
     if (resource.provider === 'cloudflare' && !capabilities.has(resource.id)) {
       try {

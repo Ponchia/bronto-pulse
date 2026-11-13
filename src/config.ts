@@ -18,7 +18,7 @@ const hash = z.string().check(z.regex(/^[a-f0-9]{32}$/i));
 const host = z.string().check(z.regex(/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/));
 const connection = z.strictObject({
   id,
-  provider: z.enum(['github', 'cloudflare', 'gsc']),
+  provider: z.enum(['github', 'cloudflare', 'gsc', 'plausible', 'umami']),
   tokenEnv: z.optional(envName),
   clientIdEnv: z.optional(envName),
   clientSecretEnv: z.optional(envName),
@@ -41,6 +41,20 @@ const history = z.optional(
     from: date,
     chunkDays: z._default(z.int().check(z.gte(1), z.lte(366)), 7),
   }),
+);
+const siteDomain = z
+  .string()
+  .check(z.maxLength(253), z.regex(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/));
+const analyticsZone = z.string().check(
+  z.maxLength(64),
+  z.refine((value) => {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Invalid IANA timezone'),
 );
 const resource = z.discriminatedUnion('provider', [
   z.strictObject({
@@ -97,6 +111,18 @@ const resource = z.discriminatedUnion('provider', [
     collectPages: z._default(z.boolean(), true),
     collectQueries: z._default(z.boolean(), false),
     history,
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('plausible'),
+    siteId: siteDomain,
+    // Query buckets use the site's reporting timezone; never assume UTC.
+    timezone: analyticsZone,
+  }),
+  z.strictObject({
+    ...common,
+    provider: z.literal('umami'),
+    websiteId: z.string().check(z.maxLength(128), z.regex(/^[A-Za-z0-9_-]+$/)),
   }),
   z.strictObject({
     ...common,
@@ -183,6 +209,11 @@ export function parseConfig(input: unknown): Config {
     );
   const c = result.data;
   for (const conn of c.connections) {
+    if (['plausible', 'umami'].includes(conn.provider) && !conn.tokenEnv)
+      throw new PulseError(
+        'AUTH',
+        'Website provider credentials require a token environment variable.',
+      );
     if (conn.serviceAccountJsonEnv && conn.provider !== 'gsc')
       throw new PulseError('CONFIG', 'Service-account JSON authentication requires GSC.');
     if (
@@ -202,6 +233,11 @@ export function parseConfig(input: unknown): Config {
   for (const r of c.resources) {
     if (r.provider === 'npm' && r.connection)
       throw new PulseError('CONFIG', 'npm downloads must not receive private credentials.');
+    if (['plausible', 'umami'].includes(r.provider) && !r.connection)
+      throw new PulseError(
+        'AUTH',
+        'Website analytics sources require a selected token connection.',
+      );
     if (r.connection) {
       const conn = c.connections.find((x) => x.id === r.connection);
       if (!conn || conn.provider !== (r.provider === 'sense6' ? 'cloudflare' : r.provider))
@@ -249,6 +285,10 @@ export function resourceIdentity(r: Resource): string {
       return `cloudflare:${r.accountId}:${r.siteTag}`;
     case 'gsc':
       return `gsc:${r.siteUrl}:${r.searchType}`;
+    case 'plausible':
+      return `plausible:${r.siteId.toLowerCase()}:${r.timezone}`;
+    case 'umami':
+      return `umami:${r.websiteId}`;
     case 'sense6':
       return `sense6:${r.accountId}:${r.databaseId}`;
   }

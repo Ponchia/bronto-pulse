@@ -6,6 +6,8 @@ import { collectNpm } from './npm.js';
 import { collectCloudflare } from './cloudflare.js';
 import { collectGsc } from './gsc.js';
 import { collectSense6 } from './sense6.js';
+import { collectPlausible } from './plausible.js';
+import { collectUmami } from './umami.js';
 export { groups } from './context.js';
 export { probeCloudflare } from './cloudflare.js';
 export function collect(r: Resource, group: string, ctx: CollectContext): Promise<Collected> {
@@ -20,5 +22,9 @@ export function collect(r: Resource, group: string, ctx: CollectContext): Promis
       return collectGsc(r, group, ctx);
     case 'sense6':
       return collectSense6(r, ctx);
+    case 'plausible':
+      return collectPlausible(r, group, ctx);
+    case 'umami':
+      return collectUmami(r, group, ctx);
   }
 }

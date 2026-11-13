@@ -25,3 +25,24 @@ question needs them, preserving metric semantics and privacy boundaries.
 
 The public source preview does not depend on completing a maintainer-specific
 production deployment. That validation remains an explicit follow-up.
+
+## Portable evidence-platform milestones (proposal)
+
+- Validate Docker Compose on an independent host and run an encrypted restore
+  drill before treating it as an operationally supported self-hosted release.
+- Test Plausible/Umami against consented actual accounts, explicitly checking
+  timezones, missing days, imports, permissions and rate limits. The fixed
+  hosted endpoints in the first adapters are not a self-hosted-provider
+  integration.
+- Add due-time scheduling by dataset and provider, with bounded execution
+  budgets and retry backoff. Current regular Worker rotation remains unchanged.
+- Introduce explicit project/site/package/deployment relationships and a
+  primary-source declaration for comparisons; never add duplicate measurements
+  from analytics systems tracking the same site.
+- Consider PostgreSQL + multi-worker queue only after a real HA pilot; add
+  versioned external connector protocol and self-hosted source URLs only after
+  network egress and credential threat modeling.
+- Pilot with non-maintainer OSS teams and measure whether an evidence-backed
+  finding is useful beyond an existing provider dashboard.
+
+See [product direction](product-strategy.md) and [ADR 0002](adr/0002-curated-connectors-and-provider-semantics.md).

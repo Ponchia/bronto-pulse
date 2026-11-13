@@ -3,6 +3,7 @@ import type { Config } from '../config.js';
 import type { Secrets } from '../auth.js';
 import { PulseError, safeError } from '../errors.js';
 import { METRICS } from '../model.js';
+import { connectorCatalog } from '../collectors/registry.js';
 import { projectReport, portfolio } from '../report.js';
 import { Store } from '../storage/store.js';
 import { doctor } from '../sync.js';
@@ -236,6 +237,8 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
       );
     }
     const root = '/api/v1';
+    if (url.pathname === root + '/connectors')
+      return secure(json({ schemaVersion: 1, connectors: connectorCatalog() }));
     if (url.pathname === root + '/projects')
       return secure(
         json({
