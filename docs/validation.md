@@ -26,6 +26,13 @@ metric definitions and narrow-screen overflow. The UI includes no external
 scripts, fonts, telemetry or provider requests. Screenshots are disposable
 review artifacts and are excluded from the repository.
 
+The opt-in `npm run test:compose:tls` acceptance test runs a synthetic
+rootless Podman Compose dashboard through a temporary Caddy HTTPS reverse
+proxy. It validates certificate trust, signed owner access, Host/Origin
+checks and persistent SQLite data across a Compose stop/start. This does
+not verify public DNS/ACME, real provider credentials, production
+operations, HA or long-term scheduler reliability.
+
 Real account tokens and retrieved private metrics must live outside tracked
 files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
