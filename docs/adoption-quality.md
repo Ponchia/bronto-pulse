@@ -47,6 +47,25 @@ Small counts and absent flags do not certify authentic adoption. Review signals
 are inspectable in JSON and in the human-readable briefing; findings limits cannot
 remove the top-level unmeasured-adoption boundary.
 
+## Site referrer evidence
+
+For Cloudflare RUM, reports now expose the number of pageviews lacking a
+referrer **among the returned daily referrer rows** when those rows are
+non-duplicated, finite and marked observed. The numerator and denominator
+cannot be substituted for full-site visits or unique people. If any row
+is sampled or malformed, the signal remains an unquantified attribution
+warning. A named referrer accounting for at least 10 of at least 10
+reported pageviews and 80% of the returned row total triggers
+`concentrated_site_referrers`. That is an invitation to investigate
+sources, not a bot verdict or a corrected total. In particular, a
+referrer header is client-controlled, not proof that a user clicked
+from that site. Independent [2026 reports of forged aocr.org referrals](https://tin.computer/blog/aocr-org-referrer-bot)
+illustrate this risk; a name alone does not reproduce that investigation.
+
+These checks use only existing published referrer breakdowns. No
+request-level identifiers, fingerprints, addresses, new sensors or
+automatic block rules are added.
+
 ## Check independent usage separately
 
 Keep a private, dated evidence log with the search scope, exact query, result

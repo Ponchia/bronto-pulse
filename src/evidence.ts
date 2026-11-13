@@ -41,7 +41,11 @@ export function metricEvidenceClass(metric: string): EvidenceClass {
 }
 
 export interface EvidenceSignal {
-  code: 'concentrated_activity' | 'concentrated_referrers' | 'unattributed_referrer';
+  code:
+    | 'concentrated_activity'
+    | 'concentrated_referrers'
+    | 'concentrated_site_referrers'
+    | 'unattributed_referrer';
   resourceId: string;
   metric: string;
   message: string;
@@ -146,18 +150,80 @@ export function assessEvidence(
         b.period.to >= report.window.from &&
         b.period.to <= report.window.to,
     );
-    if (
-      rows.some(
-        (b) => b.metric === 'cloudflare.pageviews' && b.dimensions.referrer === '' && b.value > 0,
-      )
-    )
+    // RUM referrer rows are daily pageviews, not independent visits. Only
+    // compare the referrers *returned* in this bounded report; a missing
+    // date, absent referrer or sampled row cannot identify a human or a bot.
+    const website = rows.filter((b) => b.metric === 'cloudflare.pageviews');
+    const validWebsite =
+      website.length > 0 &&
+      website.every(
+        (b) =>
+          b.quality === 'observed' &&
+          b.period.from === b.period.to &&
+          typeof b.dimensions.referrer === 'string' &&
+          Number.isFinite(b.value) &&
+          b.value >= 0,
+      ) &&
+      new Set(website.map((b) => JSON.stringify([b.period.from, b.dimensions.referrer]))).size ===
+        website.length;
+    const reportedTotal = validWebsite ? website.reduce((sum, b) => sum + b.value, 0) : null;
+    const listedTotal =
+      reportedTotal !== null && Number.isFinite(reportedTotal) ? reportedTotal : null;
+    const missingReferrer = website.some((b) => b.dimensions.referrer === '' && b.value > 0);
+    if (missingReferrer) {
+      const missingCount =
+        listedTotal !== null
+          ? website.filter((b) => b.dimensions.referrer === '').reduce((sum, b) => sum + b.value, 0)
+          : null;
       signals.push({
         code: 'unattributed_referrer',
         resourceId,
         metric: 'cloudflare.pageviews',
-        message: `${resourceId}: some reported pageviews have no referrer. An absent referrer is unknown attribution, not proof of direct human visits.`,
-        evidence: { requestedFrom: report.window.from, requestedTo: report.window.to },
+        message:
+          missingCount === null
+            ? `${resourceId}: some reported pageviews have no referrer. Sampled, duplicate or invalid breakdown rows prevent a reliable subtotal; absent attribution is not proof of direct human visits.`
+            : `${resourceId}: ${missingCount} of ${listedTotal} returned referrer-row pageviews have no referrer. This is a share of the returned rows, not all site traffic or a count of direct human visits.`,
+        evidence: {
+          requestedFrom: report.window.from,
+          requestedTo: report.window.to,
+          unattributedPageviews: missingCount,
+          listedPageviews: listedTotal,
+          listedShare:
+            listedTotal !== null && listedTotal > 0 && missingCount !== null
+              ? missingCount / listedTotal
+              : null,
+          scope: 'returned_daily_referrer_rows_only',
+        },
       });
+    }
+    if (listedTotal !== null && listedTotal >= 10) {
+      const named = website.filter((b) => b.dimensions.referrer !== '');
+      const totals = new Map<string, number>();
+      for (const b of named) {
+        const referrer = b.dimensions.referrer!;
+        totals.set(referrer, (totals.get(referrer) ?? 0) + b.value);
+      }
+      const largest = [...totals].sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))[0];
+      if (largest && largest[1] >= 10 && largest[1] / listedTotal >= 0.8)
+        signals.push({
+          code: 'concentrated_site_referrers',
+          resourceId,
+          metric: 'cloudflare.pageviews',
+          message: `${resourceId}: ${largest[1]} of ${listedTotal} pageviews in the returned RUM referrer rows name one referrer. This is a limited attribution signal, not proof of genuine referrals or automation; underlying site totals are unchanged.`,
+          evidence: {
+            referrer: largest[0],
+            referrerPageviews: largest[1],
+            listedPageviews: listedTotal,
+            listedShare: largest[1] / listedTotal,
+            requestedFrom: report.window.from,
+            requestedTo: report.window.to,
+            scope: 'returned_daily_referrer_rows_only',
+            minimumListedPageviews: 10,
+            minimumNamedPageviews: 10,
+            shareThreshold: 0.8,
+          },
+        });
+    }
     // GitHub supplies overlapping rolling top-ten snapshots. Never add snapshots,
     // or divide this subtotal by daily repository traffic from a different period.
     const rolling = rows.filter((b) => b.metric === 'github.referral_views');
