@@ -202,6 +202,71 @@ test('blank website referrers stay unknown and do not become direct human visits
   assert.equal(result.signals[0]!.code, 'unattributed_referrer');
   assert.match(result.signals[0]!.message, /not proof of direct human visits/);
 });
+test('observed website referrer rows show bounded attribution, never humans or site-wide totals', () => {
+  const website = (date: string, referrer: string, value: number) => ({
+    resourceId: 'site',
+    group: 'referrers',
+    metric: 'cloudflare.pageviews',
+    period: { from: date, to: date },
+    dimensions: { referrer },
+    value,
+    quality: 'observed' as const,
+  });
+  const input = report(
+    [],
+    [
+      website('2026-09-29', '', 18),
+      website('2026-09-30', '', 10),
+      website('2026-09-30', 'somewhere.example', 2),
+    ],
+  );
+  const before = structuredClone(input);
+  const e = assessEvidence(input);
+  assert.deepEqual(input, before);
+  const s = e.signals.find((signal) => signal.code === 'unattributed_referrer')!;
+  assert.equal(s.evidence.unattributedPageviews, 28);
+  assert.equal(s.evidence.listedPageviews, 30);
+  assert.equal(s.evidence.listedShare, 28 / 30);
+  assert.equal(s.evidence.scope, 'returned_daily_referrer_rows_only');
+  assert.match(s.message, /not all site traffic/);
+  assert.equal(e.humanAudience, 'not_measured');
+});
+
+test('website referral concentration is provider-limited and has no bot classifier', () => {
+  const row = (referrer: string, value: number, quality: 'observed' | 'sampled' = 'observed') => ({
+    resourceId: 'site',
+    group: 'referrers',
+    metric: 'cloudflare.pageviews',
+    period: { from: '2026-09-30', to: '2026-09-30' },
+    dimensions: { referrer },
+    value,
+    quality,
+  });
+  const result = assessEvidence(report([], [row('newspaper.example', 90), row('', 10)]));
+  assert.equal(
+    result.signals.some((x) => x.code === 'concentrated_site_referrers'),
+    true,
+  );
+  const s = result.signals.find((x) => x.code === 'concentrated_site_referrers')!;
+  assert.equal(s.evidence.referrer, 'newspaper.example');
+  assert.equal(s.evidence.listedShare, 0.9);
+  assert.match(s.message, /not proof of genuine referrals or automation/);
+  assert.equal(result.automatedShare, 'not_measured');
+  for (const breakdowns of [
+    [row('newspaper.example', 90, 'sampled'), row('', 10)],
+    [row('newspaper.example', 90), row('newspaper.example', 5)],
+    [row('newspaper.example', 90), row('', Number.POSITIVE_INFINITY)],
+    [row('newspaper.example', 90), row('', -2)],
+    [row('newspaper.example', 8), row('', 2)],
+  ])
+    assert.equal(
+      assessEvidence(report([], breakdowns)).signals.some(
+        (x) => x.code === 'concentrated_site_referrers',
+      ),
+      false,
+    );
+});
+
 test('reports, briefs and private CSV keep adoption limits even when findings are capped', async () => {
   const config = fixture('npm'),
     store = await database(config);
