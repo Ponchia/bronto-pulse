@@ -31,3 +31,4 @@ Archived implementation review: [operator workflow refinement](validation-operat
 Maintained documentation is checked by `npm run docs:check`. API capabilities
 come from code and tests, not marketing claims. Private deployment evidence
 belongs outside Git. Historical research is not a current operational contract.
+\n- [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.\n

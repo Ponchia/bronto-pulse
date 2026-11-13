@@ -5,6 +5,7 @@ import { PulseError, safeError } from '../errors.js';
 import { METRICS } from '../model.js';
 import { connectorCatalog } from '../collectors/registry.js';
 import { projectReport, portfolio } from '../report.js';
+import { compareWebsiteSources } from '../source-comparison.js';
 import { Store } from '../storage/store.js';
 import { doctor } from '../sync.js';
 import { reportRange, type DateRange } from '../time.js';
@@ -304,6 +305,26 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           },
         }),
       );
+    const comparison = /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/source-comparison$/.exec(
+      url.pathname,
+    );
+    if (comparison) {
+      const primary = url.searchParams.get('primary') ?? '';
+      const secondary = url.searchParams.get('secondary') ?? '';
+      const confirmation = url.searchParams.get('same_site');
+      if (confirmation !== null && confirmation !== 'confirmed')
+        throw new PulseError('CONFIG', 'Same-site confirmation must be explicit or omitted.');
+      const project = await projectReport(
+        data.config,
+        data.store,
+        comparison[1]!,
+        windowFor(url, now),
+        now,
+      );
+      return secure(
+        json(compareWebsiteSources(project, primary, secondary, confirmation === 'confirmed')),
+      );
+    }
     const match = /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/(report|brief)$/.exec(
       url.pathname,
     );

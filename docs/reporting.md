@@ -64,6 +64,16 @@ removes the old data from the export action; the UI never offers an old report a
 though the failed new request had succeeded. Collection plans in the browser are
 read-only previews. Actual collection remains an explicit CLI or scheduler action.
 
+## Opt-in website source comparison
+
+Projects with two web analytics pageview resources can use the dashboard's
+read-only **Compare website sources** control. It requires operator
+same-site confirmation and rejects mismatched dates, timezones, scopes,
+sampled/partial observations and ambiguous series before showing a
+descriptive difference. No pair can become a combined visitor count.
+See [Website-source comparison](source-comparison.md) for the API contract
+and limits.
+
 ## Portfolio read snapshots
 
 Portfolios requiring at most 40 distinct SQL reads use a single transactional

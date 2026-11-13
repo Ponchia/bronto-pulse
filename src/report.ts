@@ -197,7 +197,13 @@ function summarize(
     unit: definition.unit,
     aggregation: definition.aggregation,
     dimensions,
-    timezone: rows[0]?.timezone ?? (resource.provider === 'gsc' ? 'America/Los_Angeles' : 'UTC'),
+    timezone:
+      rows[0]?.timezone ??
+      (resource.provider === 'gsc'
+        ? 'America/Los_Angeles'
+        : resource.provider === 'plausible'
+          ? resource.timezone
+          : 'UTC'),
     methodology,
     scope: {
       ...binding.scope,
