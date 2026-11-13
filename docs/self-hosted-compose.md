@@ -78,6 +78,28 @@ filesystems. WAL locking and 5-second busy timeouts are appropriate for the
 small single-host layout, not an HA database. Avoid placing the database on
 an ephemeral pod filesystem.
 
+## Repeatable OCI smoke test (optional)
+
+From the source checkout on a Linux host with rootless Podman, curl and
+Node.js installed, run:
+
+```sh
+npm run test:oci
+```
+
+This builds a fresh image from the current checkout and launches only a
+**synthetic** Pulse installation, with an ephemeral localhost-bound port
+and SQLite volume. It verifies unauthorized requests, Host-header spoofing,
+same-origin login, a Secure session cookie, and surviving a container restart.
+It drops privileges, cleans the image, container and synthetic database
+even on failure, and never uses real provider credentials.
+
+This does **not** test your external HTTPS reverse proxy, Docker Compose
+orchestrator, real API permissions or an encrypted off-host restore. Verify
+those separately before production use. It is deliberately not part of the
+default npm check so contributors without Podman can run the ordinary
+offline unit tests.
+
 ## Verification and recovery
 
 ```sh

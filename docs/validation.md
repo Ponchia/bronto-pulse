@@ -31,6 +31,20 @@ files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
 requirements should be reported separately from code completion.
 
+## Portable OCI runtime smoke
+
+An explicit opt-in `npm run test:oci` builds the Dockerfile with rootless
+Podman and exercises the container image as its default non-root user,
+using synthetic configuration and a temporary SQLite volume. It tests
+host-scoped authentication, spoofed forwarded headers, session cookies and
+database persistence after restarting the container. The test is
+designed to clean up its generated resources.
+
+This proves local OCI functionality, not a real HTTPS proxy, Docker Compose
+orchestration, cloud migration, multi-replica storage, provider auth
+longevity or unattended backup recovery. Keep those as distinct
+operational acceptance gates.
+
 ## Worker runtime contract
 
 `npm run test:worker` bundles the actual scheduled handler and executes it inside
