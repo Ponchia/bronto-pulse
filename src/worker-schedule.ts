@@ -9,11 +9,13 @@ export function scheduleOptions(env: {
   PULSE_PROVIDER?: string;
   PULSE_EXECUTION_PROFILE?: string;
   PULSE_READY_ONLY?: string;
+  PULSE_DUE_ONLY?: string;
 }): Pick<
   SyncOptions,
   | 'maxJobs'
   | 'provider'
   | 'readyOnly'
+  | 'dueOnly'
   | 'maximumRequests'
   | 'maximumBytes'
   | 'maximumRows'
@@ -24,6 +26,8 @@ export function scheduleOptions(env: {
     throw new PulseError('CONFIG', 'Invalid execution profile.');
   if (env.PULSE_READY_ONLY !== undefined && !['true', 'false'].includes(env.PULSE_READY_ONLY))
     throw new PulseError('CONFIG', 'Invalid ready-only setting.');
+  if (env.PULSE_DUE_ONLY !== undefined && !['true', 'false'].includes(env.PULSE_DUE_ONLY))
+    throw new PulseError('CONFIG', 'Invalid due-time collection setting.');
   const maxJobs = Number(env.PULSE_MAX_JOBS ?? (profile === 'free' ? '1' : '8'));
   if (!Number.isInteger(maxJobs) || maxJobs < 1 || maxJobs > 32)
     throw new PulseError('CONFIG', 'Invalid scheduled job bound; expected 1 to 32.');
@@ -37,9 +41,10 @@ export function scheduleOptions(env: {
       ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250, retryRateLimits: false }
       : {};
   const readiness = env.PULSE_READY_ONLY === 'true' ? { readyOnly: true } : {};
+  const due = env.PULSE_DUE_ONLY === 'true' ? { dueOnly: true } : {};
   const provider = env.PULSE_PROVIDER;
-  if (provider === undefined) return { maxJobs, ...budgets, ...readiness };
+  if (provider === undefined) return { maxJobs, ...budgets, ...readiness, ...due };
   if (!hasConnector(provider))
     throw new PulseError('CONFIG', 'Invalid scheduled provider selection.');
-  return { maxJobs, provider: provider as Provider, ...budgets, ...readiness };
+  return { maxJobs, provider: provider as Provider, ...budgets, ...readiness, ...due };
 }

@@ -7,6 +7,7 @@ import { HttpClient, type Fetcher } from './http.js';
 import type { Run } from './model.js';
 import { Store } from './storage/store.js';
 import { selectCollectionJobs } from './plan.js';
+import { dueJobs } from './due-schedule.js';
 import { dateInZone, defaultRange, range, daysBetween, type DateRange } from './time.js';
 export interface SyncOptions {
   provider?: Provider;
@@ -15,6 +16,8 @@ export interface SyncOptions {
   window?: DateRange;
   maxJobs?: number;
   rotate?: boolean;
+  /** Opt-in durable source freshness scheduling; never combined with rotation. */
+  dueOnly?: boolean;
   now?: Date;
   fetcher?: Fetcher;
   sleep?: (ms: number) => Promise<void>;
@@ -85,8 +88,20 @@ export async function sync(
       throw new PulseError('CONFIG', 'Collection budgets must be positive integers.');
   if (options.retryRateLimits !== undefined && typeof options.retryRateLimits !== 'boolean')
     throw new PulseError('CONFIG', 'Invalid rate-limit retry policy.');
+  if (options.dueOnly && (options.rotate || options.window))
+    throw new PulseError(
+      'CONFIG',
+      'Due-time scheduling cannot combine with rotation or an explicit collection window.',
+    );
   await store.register(config, now);
   if (!selected.length) return [];
+  if (options.dueOnly) {
+    // Regular source-date-qualified heads keep old backfills from postponing
+    // fresh collection while honoring longer resource refresh intervals.
+    const heads = await store.regularRunHeads();
+    selected = dueJobs(selected, heads, now).map(({ resource, group }) => ({ resource, group }));
+    if (!selected.length) return [];
+  }
   const collectionConfig =
     options.maximumRows === undefined
       ? config

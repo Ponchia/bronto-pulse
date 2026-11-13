@@ -33,6 +33,7 @@ const common = {
   label: z.optional(z.string().check(z.minLength(1), z.maxLength(120))),
   connection: z.optional(id),
   enabled: z._default(z.boolean(), true),
+  refreshHours: z.optional(z.int().check(z.gte(1), z.lte(720))),
 };
 // Older dates a history schedule may collect, one bounded chunk per invocation.
 // Only daily sources whose provider serves past dates on request accept it.

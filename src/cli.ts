@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { parseConfig, type Config, type Provider } from './config.js';
-import { connectorCatalog } from './collectors/registry.js';
+import { connectorCatalog, hasConnector } from './collectors/registry.js';
 import { PulseError, safeError } from './errors.js';
 import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
@@ -33,7 +33,7 @@ pulse validate                       Validate project mappings and credential re
 pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
 pulse connectors                     Offline built-in source capabilities; no credentials needed
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
-pulse sync [--provider github]       Collect bounded source windows; --dry-run previews
+pulse sync [--provider github]       Collect bounded source windows; --due-only for due jobs
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
 pulse probe                          Read-only provider capability and permission checks
 pulse inspect --resource ID --input FILE  Inspect an explicit JSON list of 1–20 GSC URLs
@@ -87,6 +87,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       days: { type: 'string' },
       'max-jobs': { type: 'string' },
       rotate: { type: 'boolean' },
+      'due-only': { type: 'boolean' },
       'dry-run': { type: 'boolean' },
       'chunk-days': { type: 'string' },
       format: { type: 'string' },
@@ -147,6 +148,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     throw new PulseError(
       'CONFIG',
       'Brief supports json or markdown. Use report --format csv for metric rows.',
+    );
+  if (v['due-only'] && (command !== 'sync' || v.rotate || v.from || v.to || v['dry-run']))
+    throw new PulseError(
+      'CONFIG',
+      'Due-only selection requires sync without rotation, explicit dates or offline dry-run.',
     );
   if (v['dry-run'] && !['sync', 'backfill'].includes(command))
     throw new PulseError(
@@ -318,15 +324,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     const print = (value: unknown, text?: string) =>
       console.log(v.json || !text ? JSON.stringify(value, null, 2) : text);
     if (command === 'sync') {
-      if (v.provider && !['github', 'npm', 'cloudflare', 'gsc', 'sense6'].includes(v.provider))
+      if (v.provider && !hasConnector(v.provider))
         throw new PulseError('CONFIG', 'Unknown provider.');
       const results = await sync(config, store, process.env, {
         provider: v.provider as Provider | undefined,
         resourceId: v.resource,
         group: v.group,
         window: plannedOptions(config).window,
-        maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : undefined,
+        maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : v['due-only'] ? 1 : undefined,
         rotate: v.rotate,
+        dueOnly: v['due-only'],
       });
       print(
         results,

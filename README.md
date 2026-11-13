@@ -104,6 +104,11 @@ node dist/cli.js brief --days 30
 node dist/cli.js report pulse --format csv --out /private/pulse-report.csv
 ```
 
+For multiple source groups, an opt-in [due-time scheduler](docs/scheduling.md)
+selects only refreshes whose interval or bounded retry window has elapsed.
+The original rotation remains the default; neither mode invents missing
+observations or bypasses provider quotas.
+
 `plan` and `validate` never open the database or the network. Backfill supports
 explicit date chunks and budgets. Briefings keep coverage problems, limited
 measurements and missing baselines visible; snapshot changes are net changes,

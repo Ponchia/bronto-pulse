@@ -19,6 +19,7 @@ Lifecycle: current
 | [Providers](providers.md)                                         | API permissions, configuration and limitations                |
 | [AI visibility](visibility.md)                                    | Offline prompts and private evidence                          |
 | [Portable self-hosting](self-hosted-compose.md)                   | Docker Compose, SQLite, TLS proxy, recovery and limitations   |
+| [Scheduling](scheduling.md)                                       | Optional due-time selection, intervals and retry bounds       |
 | [Deployment](deployment.md)                                       | Local, container and Cloudflare Workers/D1                    |
 | [API](api.md)                                                     | Read-only endpoint and agent interface                        |
 | [D1 to SQLite recovery](d1-to-sqlite-recovery.md)                 | Offline private D1 archive restore and report-parity drill    |
@@ -32,4 +33,5 @@ Archived implementation review: [operator workflow refinement](validation-operat
 Maintained documentation is checked by `npm run docs:check`. API capabilities
 come from code and tests, not marketing claims. Private deployment evidence
 belongs outside Git. Historical research is not a current operational contract.
-\n- [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.\n
+
+- [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.

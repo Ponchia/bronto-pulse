@@ -61,7 +61,11 @@ docker compose logs --tail 20 collector
 The optional collector runs `pulse sync --rotate --max-jobs 1` on the same
 SQLite volume at a 900-second interval by default. Review your provider
 quotas, requested groups, API limits and collection delay before increasing
-`PULSE_COLLECT_MAX_JOBS` (maximum 32). Jobs rotate with a durable database
+`PULSE_COLLECT_MAX_JOBS` (maximum 32). For the opt-in
+[clock-and-history-aware alternative](scheduling.md), set
+`PULSE_COLLECT_DUE_ONLY=true` in the private `.env` file (leave unset to
+preserve rotation). Invalid due-time settings refuse collection.
+Jobs rotate with a durable database
 cursor. One job per quarter hour means 56 groups take roughly 14 hours
 to complete one rotation; this is **not** an independent hourly freshness
 guarantee.
