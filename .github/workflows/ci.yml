@@ -18,6 +18,10 @@ jobs:
     # Public source CI uses standard GitHub-hosted runners only.
     # Live provider credentials and analytics never enter this workflow.
     runs-on: ubuntu-24.04
+    # Use the preinstalled browsers and OS dependencies from an immutable
+    # Playwright image; avoid apt mirror DNS failures during npm PR verification.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,8 +41,19 @@ jobs:
       - run: npm run worker:check
       - run: npm run test:d1
       - run: npm run test:worker
-      - name: Install the locked browser
-        run: npx playwright install --with-deps chromium
+      - name: Verify pinned browser image matches the locked Playwright version
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { readFileSync } = require('node:fs');
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const version = lock.packages['node_modules/@playwright/test']?.version;
+          assert.match(version ?? '', /^\d+\.\d+\.\d+$/);
+          assert.equal(lock.packages['node_modules/playwright-core']?.version, version);
+          const image = JSON.parse(readFileSync('/ms-playwright/.docker-info', 'utf8'));
+          assert.equal(image.driverVersion, version, 'Update the pinned image and digest with Playwright');
+          assert.equal(image.dockerImageName, 'mcr.microsoft.com/playwright:v' + version + '-noble');
+          NODE
       - run: npm run test:browser
 
   # npm releases publish only through the source-locked publisher. Every change
