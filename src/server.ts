@@ -14,12 +14,35 @@ export async function startServer(
     port = 4177,
     host = '127.0.0.1',
     token = secrets.PULSE_API_TOKEN ?? '',
-  }: { port?: number; host?: string; token?: string } = {},
+    publicOrigin,
+  }: { port?: number; host?: string; token?: string; publicOrigin?: string } = {},
 ) {
-  if (!['127.0.0.1', '::1', 'localhost'].includes(host))
+  const local = ['127.0.0.1', '::1', 'localhost'].includes(host);
+  if (!local && !['0.0.0.0', '::'].includes(host))
+    throw new PulseError('CONFIG', 'Server bind host must be loopback or an explicit wildcard.');
+  let publicUrl: URL | undefined;
+  if (publicOrigin !== undefined) {
+    try {
+      publicUrl = new URL(publicOrigin);
+    } catch {
+      throw new PulseError('CONFIG', 'Invalid public origin.');
+    }
+    if (
+      publicUrl.protocol !== 'https:' ||
+      publicUrl.pathname !== '/' ||
+      publicUrl.search ||
+      publicUrl.hash ||
+      publicUrl.username ||
+      publicUrl.password ||
+      publicUrl.hostname === 'localhost' ||
+      ['127.0.0.1', '0.0.0.0', '[::1]'].includes(publicUrl.hostname)
+    )
+      throw new PulseError('CONFIG', 'Public origin must be an exact external HTTPS origin.');
+  }
+  if (!local && !publicUrl)
     throw new PulseError(
       'CONFIG',
-      'The local server only binds to loopback. Use the authenticated Worker or an explicit reverse proxy for remote access.',
+      'Non-loopback listening requires an exact HTTPS public origin and a reverse proxy.',
     );
   if (token.length < 24)
     throw new PulseError('AUTH', 'PULSE_API_TOKEN must contain at least 24 characters.');
@@ -46,10 +69,28 @@ export async function startServer(
   };
   const server = createServer(async (req, res) => {
     try {
-      const authority = req.headers.host ?? `localhost:${port}`;
-      const url = new URL(req.url ?? '/', `http://${authority}`);
-      if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
-        res.writeHead(403);
+      const authority = req.headers.host ?? (local ? `localhost:${port}` : '');
+      // Never trust X-Forwarded-* for scheme or authority. The operator pins
+      // one canonical HTTPS origin; the reverse proxy must preserve Host.
+      const base = publicUrl?.origin ?? `http://${authority}`;
+      const target = req.url ?? '/';
+      const url = new URL(target, base);
+      let hostAllowed = false;
+      try {
+        const hostUrl = new URL(`http://${authority}`);
+        hostAllowed = publicUrl
+          ? hostUrl.host === publicUrl.host
+          : ['localhost', '127.0.0.1', '[::1]'].includes(hostUrl.hostname);
+      } catch {
+        hostAllowed = false;
+      }
+      if (
+        !hostAllowed ||
+        !target.startsWith('/') ||
+        target.startsWith('//') ||
+        url.origin !== base
+      ) {
+        res.writeHead(403, { 'Cache-Control': 'no-store' });
         res.end('Invalid host');
         return;
       }

@@ -14,11 +14,14 @@ generates an ephemeral token and prints it once. It binds only to loopback and
 rejects Host headers outside loopback. Tunnel or reverse-proxy publication is
 an explicit operator step. Provider credentials remain server-side.
 
-The included Dockerfile exposes port 4177 inside the container but the local
-server still binds loopback by design. Prefer an authenticated Worker for
-remote access or run the container with a deliberate local network strategy.
-Do not change the bind address to public without an appropriate proxy/security
-review. The image also supports one-shot `sync`, `report`, `export` and `doctor`.
+The included Dockerfile supports an explicit, authenticated, reverse-proxy
+deployment using `--host 0.0.0.0 --public-origin https://pulse.example.org`.
+The default remains loopback-only. Docker Compose now provides an opt-in
+single-host SQLite dashboard and bounded collector without any Cloudflare
+account; it maps the host port only to `127.0.0.1`. See the
+[portable single-host deployment guide](self-hosted-compose.md) for TLS,
+volume permissions, limitations, verification and recovery. Direct public
+port publishing is forbidden by the documented configuration.
 
 ## Cloudflare Workers and D1
 

@@ -30,3 +30,6 @@ wrangler.local.*
 /tooling/publisher/source/
 /tooling/publisher/.source-*/
 /.release/
+
+# Local single-host deployment and private SQLite state
+.pulse-container/

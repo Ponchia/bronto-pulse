@@ -127,3 +127,33 @@ test('an explicitly configured invalid token fails without printing or generatin
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('non-loopback CLI refuses generated one-session tokens before listening', () => {
+  const dir = directory();
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        loader,
+        cli,
+        'serve',
+        '--host',
+        '0.0.0.0',
+        '--public-origin',
+        'https://pulse.example.test',
+      ],
+      {
+        cwd: dir,
+        env: { PATH: process.env.PATH, HOME: dir, TZ: 'UTC' },
+        encoding: 'utf8',
+        timeout: 10000,
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /AUTH.*Non-loopback serving requires/);
+    assert.equal(result.stdout.includes('One-session local access token'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

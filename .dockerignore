@@ -19,3 +19,5 @@ wrangler.local.*
 *.tgz
 *.age
 coverage
+
+.pulse-container
