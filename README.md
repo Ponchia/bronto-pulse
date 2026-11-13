@@ -44,6 +44,19 @@ Open the loopback address printed by the CLI and enter its one-session token.
 All demo values are **synthetic** and clearly labeled. The demo cannot be
 mixed into a live database and does not make provider API requests.
 
+### Demonstrate why source-aware analytics matters
+
+```sh
+npm run demo -- --scenario evidence --serve
+```
+
+The [optional evidence-first walkthrough](docs/evidence-demo.md) adds
+synthetic Cloudflare, Umami and Plausible pageviews to the Sense6
+example. The dashboard keeps those providers separate, shows an
+explicitly chosen pageview source, compares compatible dates and
+refuses a comparison when timezone conventions differ. It uses an
+independent local SQLite database with no network/API keys.
+
 ## Start a real private installation
 
 ```sh

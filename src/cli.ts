@@ -12,7 +12,7 @@ import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
 import { sync, doctor, probe } from './sync.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
-import { seedDemo } from './demo.js';
+import { seedDemo, type DemoScenario } from './demo.js';
 import { startServer } from './server.js';
 import { dateInZone, reportRange } from './time.js';
 import { planCollection, markdownPlan } from './plan.js';
@@ -47,7 +47,7 @@ pulse import --input private.json    Restore into an EMPTY database, transaction
 pulse annotate --resource ID --title TEXT [--date YYYY-MM-DD]
 pulse compact                        Remove old, unreachable staging rows only
 pulse serve [--port 4177]             Authenticated read-only UI/API (loopback default)
-pulse demo [--serve]                  Seed deterministic SYNTHETIC data in a separate database
+pulse demo [--serve --scenario evidence]  Seed isolated SYNTHETIC portfolio or cross-source evidence data
 
 Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --from YYYY-MM-DD --to YYYY-MM-DD, --resource ID, --group GROUP,
@@ -101,6 +101,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       title: { type: 'string' },
       date: { type: 'string' },
       serve: { type: 'boolean' },
+      scenario: { type: 'string' },
       help: { type: 'boolean' },
       version: { type: 'boolean' },
     },
@@ -149,6 +150,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       'CONFIG',
       'Brief supports json or markdown. Use report --format csv for metric rows.',
     );
+  if (v.scenario && command !== 'demo')
+    throw new PulseError('CONFIG', '--scenario applies only to the synthetic demo.');
+  if (command === 'demo' && v.scenario && !['portfolio', 'evidence'].includes(v.scenario))
+    throw new PulseError('CONFIG', 'Unknown demo scenario; use portfolio or evidence.');
   if (v['due-only'] && (command !== 'sync' || v.rotate || v.from || v.to || v['dry-run']))
     throw new PulseError(
       'CONFIG',
@@ -267,7 +272,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   const isDemo = command === 'demo';
-  const dbPath = resolve(v.db ?? (isDemo ? '.pulse/demo.db' : '.pulse/pulse.db'));
+  const scenario: DemoScenario = v.scenario === 'evidence' ? 'evidence' : 'portfolio';
+  const dbPath = resolve(
+    v.db ??
+      (isDemo
+        ? scenario === 'evidence'
+          ? '.pulse/demo-evidence.db'
+          : '.pulse/demo.db'
+        : '.pulse/pulse.db'),
+  );
   const store = new Store(new SqliteDriver(dbPath));
   await store.migrate();
   let hold = false;
@@ -284,8 +297,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     }
     let config: Config;
     if (isDemo) {
-      config = await seedDemo(store);
-      const path = resolve('.pulse/demo.config.json');
+      config = await seedDemo(store, now, scenario);
+      const path = resolve(
+        scenario === 'evidence' ? '.pulse/demo-evidence.config.json' : '.pulse/demo.config.json',
+      );
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       await writeFile(path, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
       console.log(`SYNTHETIC demo data seeded in ${dbPath}. No provider requests were made.`);

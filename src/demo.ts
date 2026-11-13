@@ -75,8 +75,77 @@ export function demoConfig(): Config {
     ],
   });
 }
-export async function seedDemo(store: Store, now = new Date()): Promise<Config> {
-  const config = demoConfig();
+/** Separate, credential-free walkthrough of source disagreement and uncertainty.
+ *  The original four-project demo remains untouched and uses its own database.
+ */
+export function evidenceDemoConfig(): Config {
+  const base = demoConfig();
+  const domain = 'sense6.example.org';
+  return parseConfig({
+    ...base,
+    name: 'Bronto / evidence-first portfolio · SYNTHETIC',
+    connections: [
+      ...base.connections,
+      { id: 'demo-plausible', provider: 'plausible', tokenEnv: 'DEMO_PLAUSIBLE_TOKEN' },
+      { id: 'demo-umami', provider: 'umami', tokenEnv: 'DEMO_UMAMI_KEY' },
+    ],
+    resources: [
+      ...base.resources,
+      {
+        id: 'sense6-rum',
+        provider: 'cloudflare',
+        accountId: '0'.repeat(32),
+        siteTag: '2'.repeat(32),
+        hostname: domain,
+        groups: ['totals'],
+      },
+      {
+        id: 'sense6-plausible',
+        provider: 'plausible',
+        siteId: domain,
+        timezone: 'Europe/Madrid',
+        connection: 'demo-plausible',
+      },
+      {
+        id: 'sense6-umami',
+        provider: 'umami',
+        websiteId: 'synthetic-sense6',
+        connection: 'demo-umami',
+      },
+    ],
+    projects: base.projects.map((project) =>
+      project.id === 'sense6'
+        ? {
+            ...project,
+            description:
+              'Two pageview collectors disagree, a third uses a different calendar; anonymous product events remain separate.',
+            resources: [
+              ...project.resources,
+              { resource: 'sense6-rum' },
+              { resource: 'sense6-plausible' },
+              { resource: 'sense6-umami' },
+            ],
+            websites: [
+              {
+                id: 'sense6-public',
+                hostname: domain,
+                sources: ['sense6-rum', 'sense6-plausible', 'sense6-umami'],
+                pageviewsAuthority: [{ resource: 'sense6-rum', effectiveFrom: '2026-01-01' }],
+              },
+            ],
+          }
+        : project,
+    ),
+  });
+}
+export type DemoScenario = 'portfolio' | 'evidence';
+
+export async function seedDemo(
+  store: Store,
+  now = new Date(),
+  scenario: DemoScenario = 'portfolio',
+): Promise<Config> {
+  const config = scenario === 'evidence' ? evidenceDemoConfig() : demoConfig();
   await store.register(config, now);
   const today = dateInZone(now),
     from = addDays(today, -60),
@@ -190,6 +259,68 @@ export async function seedDemo(store: Store, now = new Date()): Promise<Config> 
     ] as const)
       counters.push(entry(`sense6.${metric}`, addDays(from, i), n + (i % 7), { test: 'riflessi' }));
   await publish('sense6-counters', 'activity', counters);
+  if (scenario === 'evidence') {
+    const cloudflare: Observation[] = [];
+    const plausible: Observation[] = [];
+    const umami: Observation[] = [];
+    for (let i = 0; i < 60; i++) {
+      const date = addDays(from, i);
+      const pageviews = Math.round(52 + i * 0.6 + 6 * Math.sin(i * 0.38) + (i > 40 ? 12 : 0));
+      // These three fixtures observe overlapping traffic, not three audiences.
+      const umamiPageviews = Math.round(pageviews * 0.89);
+      const plausiblePageviews = Math.round(pageviews * 0.83);
+      cloudflare.push(
+        entry('cloudflare.pageviews', date, pageviews, {}, 'observed', 'cf-rum-pageload-count-v1'),
+        entry(
+          'cloudflare.visits',
+          date,
+          Math.round(pageviews * 0.61),
+          {},
+          'observed',
+          'cf-rum-pageload-count-v1',
+        ),
+      );
+      umami.push(
+        entry('umami.pageviews', date, umamiPageviews, {}, 'observed', 'umami-v3-utc-daily-v1'),
+        entry(
+          'umami.sessions_daily',
+          date,
+          Math.round(umamiPageviews * 0.62),
+          {},
+          'observed',
+          'umami-v3-utc-daily-v1',
+        ),
+      );
+      plausible.push(
+        {
+          ...entry(
+            'plausible.pageviews',
+            date,
+            plausiblePageviews,
+            {},
+            'observed',
+            'plausible-v2-native-daily-v1',
+          ),
+          timezone: 'Europe/Madrid',
+        },
+        {
+          ...entry(
+            'plausible.visitors_daily',
+            date,
+            Math.round(plausiblePageviews * 0.64),
+            {},
+            'observed',
+            'plausible-v2-native-daily-v1',
+          ),
+          timezone: 'Europe/Madrid',
+        },
+      );
+    }
+    await publish('sense6-rum', 'totals', cloudflare);
+    await publish('sense6-plausible', 'traffic', plausible);
+    await publish('sense6-umami', 'traffic', umami);
+  }
+
   const release = {
     id: 'demo-release-ui',
     resourceId: 'ui-repo',

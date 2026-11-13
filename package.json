@@ -61,7 +61,8 @@
     "publisher:readiness": "node scripts/source-publisher.mjs readiness",
     "test:worker": "npm run build && node scripts/worker-contract.mjs && node scripts/access-contract.mjs && node scripts/native-aggregate-contract.mjs",
     "test:oci": "bash scripts/oci-smoke.sh",
-    "test:compose:tls": "bash scripts/compose-tls-smoke.sh"
+    "test:compose:tls": "bash scripts/compose-tls-smoke.sh",
+    "test:browser:evidence": "playwright test --config playwright.evidence.config.ts"
   },
   "dependencies": {
     "jose": "6.2.15",

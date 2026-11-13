@@ -6,6 +6,7 @@ Lifecycle: current
 | ----------------------------------------------------------------- | ------------------------------------------------------------- |
 | [Public preview](public-preview.md)                               | Source publication, privacy boundaries and maturity           |
 | [Quickstart](quickstart.md)                                       | Demo, private setup, offline planning and first reports       |
+| [Evidence demo](evidence-demo.md)                                 | Credential-free cross-source website reconciliation scenario  |
 | [Configuration](configuration.md)                                 | Connections, resources, scopes and historical changes         |
 | [Coverage](coverage.md)                                           | Offline inventory gaps, permissions and collection boundaries |
 | [Reporting](reporting.md)                                         | Evidence briefings, quality rules and private exports         |
