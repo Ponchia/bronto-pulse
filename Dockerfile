@@ -16,6 +16,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/web ./web
 COPY --from=build --chown=node:node /app/examples ./examples
 COPY --chown=node:node package.json ./
+COPY --chown=node:node deploy ./deploy
 USER node
 VOLUME ["/app/.pulse"]
 ENTRYPOINT ["node", "dist/cli.js"]

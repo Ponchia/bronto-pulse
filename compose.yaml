@@ -1,0 +1,51 @@
+# Single-host, opt-in alternative to Cloudflare Workers/D1.
+# Start with: docker compose up -d --build
+# Both services share a single-host SQLite volume. Do not scale replicas.
+x-pulse: &pulse
+  build:
+    context: .
+  image: bronto-pulse:local
+  env_file:
+    - .env
+  volumes:
+    - ./.pulse-container/pulse.config.json:/run/pulse/config.json:ro
+    - ./.pulse-container/data:/app/.pulse
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
+services:
+  dashboard:
+    <<: *pulse
+    # Docker's host-side port stays on loopback. A separate TLS proxy must
+    # publish the external hostname and preserve the Host header.
+    ports:
+      - '127.0.0.1:${PULSE_LOCAL_PORT:-4177}:4177'
+    command:
+      - serve
+      - --host
+      - 0.0.0.0
+      - --public-origin
+      - ${PULSE_PUBLIC_ORIGIN:?Set the HTTPS public origin in .env}
+      - --port
+      - '4177'
+      - --config
+      - /run/pulse/config.json
+      - --db
+      - /app/.pulse/pulse.db
+
+  collector:
+    <<: *pulse
+    # Enable explicitly after provider grants are reviewed:
+    # docker compose --profile collect up -d
+    profiles:
+      - collect
+    depends_on:
+      - dashboard
+    entrypoint: ['/bin/sh', '/app/deploy/collect-loop.sh']
+    command: []

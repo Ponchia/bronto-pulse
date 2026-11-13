@@ -15,6 +15,7 @@ Lifecycle: current
 | [Metric contracts](metrics.md)                       | Aggregation semantics, attribution, coverage                  |
 | [Providers](providers.md)                            | API permissions, configuration and limitations                |
 | [AI visibility](visibility.md)                       | Offline prompts and private evidence                          |
+| [Portable self-hosting](self-hosted-compose.md)      | Docker Compose, SQLite, TLS proxy, recovery and limitations   |
 | [Deployment](deployment.md)                          | Local, container and Cloudflare Workers/D1                    |
 | [API](api.md)                                        | Read-only endpoint and agent interface                        |
 | [Operations](operations.md)                          | Repair, backup, restore, retention, rollback                  |

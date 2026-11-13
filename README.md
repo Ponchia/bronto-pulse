@@ -66,6 +66,14 @@ configuration with placeholder account identifiers. Substitute verified IDs
 before collection. Missing permissions become explicit health states, not
 zeroes. `probe` is read-only; `sync` saves history.
 
+## Deploy without Cloudflare
+
+Pulse can also run on your own server using Node.js, SQLite and the included
+[Docker Compose single-host profile](docs/self-hosted-compose.md). The
+dashboard binds only to a loopback host port behind your chosen TLS proxy;
+the collector is an opt-in sidecar with a durable SQLite rotation cursor.
+Cloudflare Workers/D1 remain an alternative, not a prerequisite.
+
 ## Operator workflow
 
 Preview a bounded sync before making provider requests, then read an evidence-based

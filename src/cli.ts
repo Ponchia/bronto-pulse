@@ -44,13 +44,14 @@ pulse export --out private.json      Portable private snapshot; refuses active c
 pulse import --input private.json    Restore into an EMPTY database, transactionally
 pulse annotate --resource ID --title TEXT [--date YYYY-MM-DD]
 pulse compact                        Remove old, unreachable staging rows only
-pulse serve [--port 4177]             Authenticated read-only UI/API on loopback
+pulse serve [--port 4177]             Authenticated read-only UI/API (loopback default)
 pulse demo [--serve]                  Seed deterministic SYNTHETIC data in a separate database
 
 Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --from YYYY-MM-DD --to YYYY-MM-DD, --resource ID, --group GROUP,
  --max-jobs N --chunk-days N --rotate --dry-run, --json, --format FORMAT,
  --out FILE (exclusive private output), --input FILE, --port N.
+ Serve only: --host 127.0.0.1|0.0.0.0 and --public-origin https://HOST for a trusted TLS reverse proxy.
 Credentials are read from environment variables named by connections.
 No command creates a visitor tracker or publishes your collected data.
 `;
@@ -92,6 +93,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       suite: { type: 'string' },
       session: { type: 'string' },
       port: { type: 'string' },
+      host: { type: 'string' },
+      'public-origin': { type: 'string' },
       title: { type: 'string' },
       date: { type: 'string' },
       serve: { type: 'boolean' },
@@ -427,6 +430,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     }
     if (command === 'serve' || (isDemo && v.serve)) {
       const configuredToken = process.env.PULSE_API_TOKEN;
+      const host = v.host ?? '127.0.0.1';
+      const publicOrigin = v['public-origin'];
+      if (!['127.0.0.1', '::1', 'localhost'].includes(host) && !configuredToken)
+        throw new PulseError(
+          'AUTH',
+          'Non-loopback serving requires an explicitly configured strong PULSE_API_TOKEN.',
+        );
       // Keep the displayable, newly generated local token separate from the
       // operator-provided secret. Never send configured credentials to output.
       const localToken =
@@ -434,12 +444,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       const token = configuredToken ?? localToken!;
       const server = await startServer(config, store, process.env, {
         port: numeric(v.port, 4177),
+        host,
+        publicOrigin,
         token,
       });
       hold = true;
       if (localToken !== undefined) console.log(`One-session local access token: ${localToken}`);
       console.log(
-        `Private ${config.demo ? 'SYNTHETIC demo' : 'project'} dashboard: http://127.0.0.1:${numeric(v.port, 4177)}`,
+        `Private ${config.demo ? 'SYNTHETIC demo' : 'project'} dashboard: ${publicOrigin ?? `http://${host}:${numeric(v.port, 4177)}`}`,
       );
       const stop = () =>
         server.close(() => {
