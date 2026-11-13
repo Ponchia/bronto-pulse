@@ -50,6 +50,7 @@
     "prepare": "npm run build",
     "schema:generate": "node scripts/generate-schema.mjs",
     "test:d1": "node --import tsx scripts/d1-contract.mts",
+    "test:d1:recovery": "bash scripts/d1-sqlite-recovery-proof.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "schema:check": "node scripts/schema-check.mjs",

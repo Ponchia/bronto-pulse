@@ -123,6 +123,11 @@ Use a real browser behind your proxy to verify token login, session cookie
 `Secure` flag, CSRF rejection and private report views before opening the
 service to users.
 
+For migration from an existing Cloudflare/D1 installation, the
+[offline D1-to-SQLite recovery proof](d1-to-sqlite-recovery.md)
+verifies both raw backup integrity and portable published-report parity
+before any production cutover.
+
 ## Runtime support matrix
 
 | Profile                      | State                                          | Storage                            | Scheduler                          | Network                                 |
