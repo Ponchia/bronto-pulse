@@ -193,3 +193,5 @@ not a public issue. Ordinary bugs and feature requests use the issue templates.
 The project is developed with substantial AI assistance; the maintainer remains
 responsible for review, tests and release decisions. See the contributor policy
 for how to report limitations and supply reproducible evidence.
+
+For explicit pageview authority by website, see [website identity](docs/website-authority.md).

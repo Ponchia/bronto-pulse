@@ -35,3 +35,5 @@ come from code and tests, not marketing claims. Private deployment evidence
 belongs outside Git. Historical research is not a current operational contract.
 
 - [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.
+
+- [Website identity and authority](website-authority.md) — explicit site relationships, effective-dated pageview preferences and no cross-source totals.

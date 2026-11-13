@@ -400,6 +400,66 @@ function sourceComparisonPanel(report) {
   return panel;
 }
 
+function websitePolicyPanel(report) {
+  if (!Array.isArray(report.websites) || !report.websites.length) return null;
+  const panel = el('section', {
+    class: 'website-policy-panel',
+    'aria-label': 'Website source policy',
+  });
+  panel.append(
+    heading(
+      'Website source policy',
+      'Owner-declared identity and preferences; source values are never added together',
+    ),
+  );
+  const list = el('div', { class: 'website-policy-list' });
+  for (const site of report.websites) {
+    const article = el('article', { class: 'website-policy-card' });
+    const title = el('div', { class: 'website-policy-title' }, [
+      el('h3', { text: site.hostname }),
+      status(
+        site.status === 'ready'
+          ? 'complete'
+          : site.status === 'unavailable'
+            ? 'unavailable'
+            : 'partial',
+      ),
+    ]);
+    const selection = site.source ?? 'No source selected for this period';
+    const value =
+      site.status === 'ready' && site.value !== null
+        ? fmt(site.value, 'pageviews') + ' provider-defined pageviews'
+        : 'No authoritative period total';
+    article.append(
+      title,
+      el('p', { class: 'website-policy-main', text: value }),
+      el('p', {
+        class: 'small muted',
+        text:
+          'Preferred source: ' +
+          selection +
+          (site.effectiveFrom ? ' · policy effective ' + site.effectiveFrom : ''),
+      }),
+      el('p', { class: 'small muted', text: site.reason }),
+    );
+    article.append(
+      table(
+        ['Website analytics resource', 'Reported pageviews', 'Coverage / calendar'],
+        site.alternatives.map((item) => [
+          (item.provider ?? 'Unknown provider') + ' · ' + item.source,
+          item.observedValue === null ? 'Unavailable' : fmt(item.observedValue, 'pageviews'),
+          item.coverage + ' · ' + (item.timezone ?? 'Unknown timezone'),
+        ]),
+        'website-policy-sources',
+      ),
+    );
+    article.append(el('p', { class: 'small muted website-policy-limit', text: site.limitation }));
+    list.append(article);
+  }
+  panel.append(list);
+  return panel;
+}
+
 function renderProject(report) {
   const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
   back.addEventListener('click', () => selectView('portfolio'));
@@ -437,6 +497,8 @@ function renderProject(report) {
       signals.append(el('li', { text: signal.message }));
     if (report.evidence.signals.length) content.append(signals);
   }
+  const websitePanel = websitePolicyPanel(report);
+  if (websitePanel) content.append(websitePanel);
   const grid = el('section', { class: 'metric-grid', 'aria-label': 'Project metrics' });
   for (const c of sortedCards(report.cards).slice(0, 12)) grid.append(metric(c, report.window));
   content.append(

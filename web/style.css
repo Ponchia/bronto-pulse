@@ -496,6 +496,46 @@ h2 {
   margin: 5px 0 0;
   color: #52665a;
 }
+.website-policy-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.website-policy-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  padding: 18px;
+}
+.website-policy-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.website-policy-title h3 {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.website-policy-main {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 15px 0 9px;
+}
+.website-policy-card .table-wrap {
+  margin-top: 14px;
+}
+.website-policy-sources td {
+  overflow-wrap: anywhere;
+}
+.website-policy-limit {
+  border-top: 1px solid var(--line);
+  margin: 16px 0 0;
+  padding-top: 10px;
+}
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -19,6 +19,7 @@ export interface Brief {
   warnings: string[];
   limitation: string;
   evidence: ProjectReport['evidence'];
+  websites?: ProjectReport['websites'];
 }
 const display = (n: number) => (Number.isInteger(n) ? String(n) : Number(n.toFixed(4)).toString());
 /** Deterministic evidence summaries. No LLM, identity attribution or causal claims. */
@@ -114,6 +115,7 @@ export function projectBrief(report: ProjectReport, maximum = 20): Brief {
     annotations: report.annotations,
     warnings: report.warnings,
     evidence: report.evidence,
+    ...(report.websites?.length ? { websites: report.websites } : {}),
     limitation: report.evidence.limitation + ' Release annotations provide context only.',
   };
 }
@@ -136,6 +138,26 @@ export function markdownBrief(brief: Brief): string {
       ? [
           '',
           `${brief.omittedFindings} additional findings omitted; inspect the full project report.`,
+        ]
+      : []),
+    ...(brief.websites?.length
+      ? [
+          '',
+          '## Declared website sources',
+          'These owner-declared primary source choices do not represent verified people; providers are never added together.',
+          ...brief.websites.map(
+            (site) =>
+              '- ' +
+              prose(site.hostname) +
+              ': status ' +
+              site.status +
+              '; preferred ' +
+              prose(site.source ?? 'none') +
+              '; pageviews ' +
+              (site.value === null ? 'unavailable' : String(site.value)) +
+              '. ' +
+              prose(site.reason),
+          ),
         ]
       : []),
     ...(brief.annotations.length
