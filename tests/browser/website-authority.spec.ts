@@ -43,6 +43,30 @@ for (const width of [320, 1440])
                 coverage: 'complete',
                 timezone: 'Europe/Madrid',
               },
+              {
+                source: 'um_web',
+                provider: 'umami',
+                metric: 'umami.pageviews',
+                observedValue: 170,
+                coverage: 'complete',
+                timezone: 'UTC',
+              },
+            ],
+            comparisons: [
+              {
+                source: 'pl_web',
+                status: 'incompatible',
+                difference: null,
+                reasons: ['The sources report different calendar timezones.'],
+              },
+              {
+                source: 'um_web',
+                status: 'side_by_side',
+                difference: { absolute: -30, percentOfPrimary: -0.15 },
+                reasons: [
+                  'Difference is descriptive rather than a corrected or universal audience count.',
+                ],
+              },
             ],
             reason: 'The declared preferred source has complete, observed daily pageview evidence.',
             limitation:
@@ -64,6 +88,12 @@ for (const width of [320, 1440])
       await expect(panel).toContainText('plausible · pl_web');
       await expect(panel).toContainText('180');
       await expect(panel).toContainText('never summed or silently substituted');
+      await expect(panel).toContainText('Compared with the preferred source');
+      await expect(panel).toContainText('The sources report different calendar timezones.');
+      await expect(panel).toContainText('No comparable difference');
+      await expect(panel).toContainText('Secondary minus preferred');
+      await expect(panel).toContainText('-30 · -15.0% of preferred');
+      await expect(panel).toContainText('rather than a corrected or universal audience count');
       await expect(panel).not.toContainText('380 provider-defined pageviews');
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
         false,

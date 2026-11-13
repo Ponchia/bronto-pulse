@@ -378,3 +378,99 @@ test('persisted history refuses a newly backdated website preference and retains
     store.driver.close?.();
   }
 });
+
+test('declared website source comparisons are descriptive and never combined into people', () => {
+  const sites = config().projects[0]!.websites!;
+  const cards = [sample('cf', 100), sample('pl', 90), sample('um', 85)];
+  const untouched = structuredClone(cards);
+  const site = websiteAuthorities(sites, cards, window)[0]!;
+  assert.equal(site.status, 'ready');
+  assert.equal(site.value, 200);
+  assert.deepEqual(
+    site.comparisons.map((item) => [item.source, item.status, item.difference]),
+    [
+      ['pl', 'side_by_side', { absolute: -20, percentOfPrimary: -0.1 }],
+      ['um', 'side_by_side', { absolute: -30, percentOfPrimary: -0.15 }],
+    ],
+  );
+  assert.match(site.comparisons[0]!.reasons.join(' '), /not provider identity verification/);
+  assert.deepEqual(cards, untouched);
+
+  const changed = websiteAuthorities(sites, cards, { from: '2026-10-14', to: '2026-10-16' })[0]!;
+  assert.equal(changed.status, 'changed_during_period');
+  assert.deepEqual(changed.comparisons, []);
+  const noPreference = websiteAuthorities(sites, cards, {
+    from: '2026-09-15',
+    to: '2026-09-16',
+  })[0]!;
+  assert.deepEqual(noPreference.comparisons, []);
+});
+
+test('source disagreements are withheld for unmatched calendars, incomplete data and failed preferred sources', () => {
+  const sites = config().projects[0]!.websites!;
+  const result = websiteAuthorities(
+    sites,
+    [sample('cf', 100), sample('pl', 90, { timezone: 'Europe/Madrid' }), sample('um', 85)],
+    window,
+  )[0]!;
+  assert.equal(result.status, 'ready');
+  assert.equal(result.comparisons[0]?.source, 'pl');
+  assert.equal(result.comparisons[0]?.status, 'incompatible');
+  assert.equal(result.comparisons[0]?.difference, null);
+  assert.match(result.comparisons[0]?.reasons.join(' ') ?? '', /different calendar timezones/);
+  assert.deepEqual(result.comparisons[1]?.difference, {
+    absolute: -30,
+    percentOfPrimary: -0.15,
+  });
+
+  const insufficient = websiteAuthorities(
+    sites,
+    [
+      sample('cf', 100),
+      sample('pl', 90, {
+        coverage: {
+          observedDays: 1,
+          expectedDays: 2,
+          missingDays: ['2026-10-13'],
+          status: 'partial',
+          qualities: ['observed'],
+        },
+      }),
+      sample('um', 85),
+    ],
+    window,
+  )[0]!;
+  assert.equal(insufficient.status, 'ready');
+  assert.equal(insufficient.comparisons[0]?.status, 'incompatible');
+  assert.equal(insufficient.comparisons[0]?.difference, null);
+
+  const failedPrimary = websiteAuthorities(
+    sites,
+    [
+      sample('cf', 100, {
+        coverage: {
+          observedDays: 1,
+          expectedDays: 2,
+          missingDays: ['2026-10-13'],
+          status: 'partial',
+          qualities: ['observed'],
+        },
+      }),
+      sample('pl', 90),
+      sample('um', 85),
+    ],
+    window,
+  )[0]!;
+  assert.equal(failedPrimary.status, 'unavailable');
+  assert.deepEqual(failedPrimary.comparisons, []);
+
+  const zero = websiteAuthorities(
+    sites,
+    [sample('cf', 0), sample('pl', 10), sample('um', 12)],
+    window,
+  )[0]!;
+  assert.equal(zero.status, 'ready');
+  assert.equal(zero.value, 0);
+  assert.equal(zero.comparisons[0]?.difference?.absolute, 20);
+  assert.equal(zero.comparisons[0]?.difference?.percentOfPrimary, null);
+});

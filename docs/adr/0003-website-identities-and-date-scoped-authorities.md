@@ -36,6 +36,15 @@ historically safe project configuration.
 - Keep previous project configuration and report responses compatible if
   no explicit website policies are supplied.
 
+- Once the owner explicitly binds separate analytics resources to one
+  website, Pulse may use its existing strict pageview comparison contract
+  to expose a descriptive alternative-minus-preferred difference. Only
+  matching, complete, observed, non-sampled calendars and identical scopes
+  qualify; otherwise the comparison is unavailable with a reason. The
+  owner-declared identity is an assertion, not independent verification.
+  Never infer corrected traffic or an automation percentage from a
+  disagreement.
+
 ## Consequences
 
 Cloudflare whole-site authority needs its resource hostname pinned. Page/path

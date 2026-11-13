@@ -531,6 +531,23 @@ h2 {
 .website-policy-sources td {
   overflow-wrap: anywhere;
 }
+.website-policy-comparison-label {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 19px 0 10px;
+  line-height: 1.6;
+}
+.website-policy-comparisons td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.website-policy-reason {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 30rem;
+}
 .website-policy-limit {
   border-top: 1px solid var(--line);
   margin: 16px 0 0;

@@ -92,6 +92,42 @@ source-comparison workflow, which additionally checks the date calendars,
 dimension scopes and data quality. Even an apparently matching time series
 does not establish that two analytics providers count equivalent events.
 
+## Descriptive differences for declared sources
+
+When the owner has declared multiple providers under the same website,
+Pulse can evaluate their existing pageview measurements _against the chosen
+preferred provider_. This uses the same strict compatibility gate as the
+separate manual source-comparison endpoint. The owner-declared website policy
+provides the explicit same-site assertion for these reports; merely appearing
+under the same project is still insufficient.
+
+For every alternative source, the private website-policy section reports:
+
+- **Side by side:** both sources have exactly one complete, observed,
+  non-sampled daily pageview series for the same requested dates with
+  matching calendar timezone, scope and dimensions. Display _alternative
+  minus preferred_ as an absolute difference. The percentage is withheld
+  when the preferred baseline is below ten pageviews.
+- **Incompatible:** calendars, scope, coverage, quality, or daily evidence
+  prevent a safe descriptive calculation. Show a reason, not a numeric
+  difference. A partial or sampled source is never silently adjusted.
+- **Unavailable:** the chosen alternative has no unambiguous pageview
+  series. Keep the original source in the alternatives list, without a
+  fabricated zero.
+
+No comparisons are calculated if no preferred source is effective, the
+policy changes inside the reporting window, or the preferred source itself
+fails its evidence checks. In all cases the underlying provider cards remain
+visible and unmodified.
+
+**A difference is not a corrected pageview count, audience estimate,
+bot proportion, missing traffic, or evidence that the preferred provider
+is correct.** Different instrumentation may count different events.
+No anomaly threshold, automated bot classification, or person-level
+reconstruction is introduced. The private UI shows the descriptive
+difference and exact compatibility reasons without contacting any
+provider or adding another collector job.
+
 ## Historical safety
 
 A new policy cannot retroactively designate a source for already published
