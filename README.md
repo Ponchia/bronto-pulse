@@ -73,6 +73,8 @@ Pulse can also run on your own server using Node.js, SQLite and the included
 dashboard binds only to a loopback host port behind your chosen TLS proxy;
 the collector is an opt-in sidecar with a durable SQLite rotation cursor.
 Cloudflare Workers/D1 remain an alternative, not a prerequisite.
+A synthetic rootless Podman acceptance test is available with
+`npm run test:oci` (opt-in, separate from the ordinary check).
 
 ## Connector discovery and external analytics
 
