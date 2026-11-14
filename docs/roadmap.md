@@ -40,9 +40,11 @@ production deployment. That validation remains an explicit follow-up.
   the regular Worker rotation is unchanged. Still open: provider-wide quota
   coordination, and qualifying the mode on a real installation before
   recommending it over rotation.
-- Introduce explicit project/site/package/deployment relationships and a
-  primary-source declaration for comparisons; never add duplicate measurements
-  from analytics systems tracking the same site.
+- Explicit website identities, date-scoped pageview preferences and a read-only
+  project resource graph are implemented. The graph projects declared bindings,
+  not verified ownership. A persisted cross-provider entity registry and
+  deployment relationships remain future work; duplicate measurements of the
+  same site are never added together.
 - Consider PostgreSQL + multi-worker queue only after a real HA pilot.
   [ADR 0004](adr/0004-self-hosted-connector-egress.md) specifies the
   threat model and test gates for self-hosted analytics endpoints. Its

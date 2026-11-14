@@ -177,3 +177,18 @@ Sources:
 [Umami authentication](https://docs.umami.is/docs/api/authentication),
 [Plausible Stats API](https://plausible.io/docs/stats-api),
 [OWASP SSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+## Repeatable hostile acceptance
+
+`npm run test:selfhost:hostile` runs an independent synthetic adversarial suite
+against the Node transport, runtime admission and Worker boundary. It requires
+OpenSSL and uses temporary certificates and local fixture services; it contacts
+no provider account. The suite is separate from ordinary `npm test` and covers
+misleading host/address forms, TLS identity, redirects, proxy environment,
+request/response bounds, deadlines and production CLI admission. A passing run
+qualifies these tested boundaries, not a real provider account or production pilot.
+
+With opt-in due-time scheduling, a self-hosted HTTP 429 also carries its bounded,
+normalized `Retry-After` delay into the existing dataset retry guidance. The raw
+header is never retained. It does not trigger an in-job retry or activate a
+scheduler; explicit manual collection retains the documented operator override.

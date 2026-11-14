@@ -62,7 +62,8 @@
     "test:worker": "npm run build && node scripts/worker-contract.mjs && node scripts/access-contract.mjs && node scripts/native-aggregate-contract.mjs",
     "test:oci": "bash scripts/oci-smoke.sh",
     "test:compose:tls": "bash scripts/compose-tls-smoke.sh",
-    "test:browser:evidence": "playwright test --config playwright.evidence.config.ts"
+    "test:browser:evidence": "playwright test --config playwright.evidence.config.ts",
+    "test:selfhost:hostile": "node --import tsx --test tests/selfhosted-acceptance/*.hostile.ts tests/selfhosted-acceptance/fixture.selftest.ts"
   },
   "dependencies": {
     "jose": "6.2.15",

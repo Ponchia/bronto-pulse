@@ -2,6 +2,7 @@ import { credentialStatus, type Secrets } from '../auth.js';
 import type { CollectContext } from '../collectors/context.js';
 import type { Connection } from '../config.js';
 import { PulseError } from '../errors.js';
+import { retryAfterSeconds } from '../retry-after.js';
 import {
   admissionBlocker,
   admitDestination,
@@ -103,12 +104,19 @@ export async function selfHostedJson(
       'NOT_FOUND',
       'Self-hosted provider has no such site or read endpoint. Verify the site identity and instance version.',
     );
-  if (status === 429)
+  if (status === 429) {
+    // Keep only a normalized delay. Never persist header text or relax the
+    // transport's header bound when a synthetic/embedded runtime supplies it.
+    const headers = new Headers();
+    if (typeof reply.retryAfter === 'string' && /^[\x20-\x7e]{1,64}$/.test(reply.retryAfter))
+      headers.set('retry-after', reply.retryAfter);
     throw new PulseError(
       'RATE_LIMIT',
       'Self-hosted provider rate limit requires a later collection run.',
       true,
+      retryAfterSeconds(headers, Date.now()),
     );
+  }
   if (status !== 200)
     throw new PulseError('UNAVAILABLE', `Self-hosted provider returned HTTP ${status}.`);
   if (!(reply.body instanceof Uint8Array))
