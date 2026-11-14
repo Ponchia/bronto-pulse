@@ -129,10 +129,13 @@ keeps that for the dataset that failed:
   does not consult the wait, so use it only when you know the provider
   will accept the request. It is also the only way to lift a long or
   indefinite hold; nothing lifts one automatically.
-- `pulse export` includes the wait of every exported rate-limited run,
-  and `pulse import` checks each one against its run before restoring it.
-  A restored installation therefore waits for the same instant. An
-  archive written by an earlier release has none and restores as before.
+- `pulse export` writes every wait still in force together with its
+  failed run, even when that run is older than the newest runs an export
+  otherwise keeps. `pulse import` checks each one against its run before
+  restoring it, so a restored installation waits for the same instant.
+  A wait is left out only when the export itself shows a newer regular
+  run of that dataset. An archive written by an earlier release has none
+  and restores as before.
 
 What this does **not** do:
 

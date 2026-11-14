@@ -1082,3 +1082,109 @@ test('an unrepresentable wait is an indefinite hold that doctor shows and an exp
     store.driver.close?.();
   }
 });
+
+test('export keeps a wait in force behind more than 1000 newer unrelated runs', async () => {
+  const config = portfolio([pkg('alpha'), pkg('beta'), pkg('gamma')]);
+  const original = await database(config);
+  const restored = new Store(new SqliteDriver(':memory:'));
+  const [alpha, , gamma] = config.resources as [Resource, Resource, Resource];
+  const window = { from: '2026-11-06', to: '2026-11-12' };
+  const failure = async (resource: Resource, at: string, wait?: string) => {
+    const started = new Date(at);
+    const id = await original.begin(resource, 'downloads', window, started);
+    await original.fail(
+      id,
+      'RATE_LIMIT',
+      'Synthetic quota failure',
+      1,
+      started,
+      'failed',
+      wait ? { dataset: `${resource.id}:downloads`, notBefore: new Date(wait) } : undefined,
+    );
+    return id;
+  };
+  try {
+    // alpha is held for a week. gamma had a wait too, but a later regular
+    // failure without one replaced it: that wait is no longer in force.
+    const held = await failure(alpha, '2026-11-13T12:00:00Z', '2026-11-20T12:00:00Z');
+    const lapsed = await failure(gamma, '2026-11-13T12:00:10Z', '2026-11-20T12:00:00Z');
+    await failure(gamma, '2026-11-13T12:00:20Z');
+    // Then 1001 newer terminal runs of an unrelated dataset.
+    for (let chunk = 0; chunk < 11; chunk++)
+      await original.driver.batch(
+        Array.from({ length: 91 }, (_, i) => {
+          const at = new Date(
+            Date.parse('2026-11-13T12:10:00Z') + (chunk * 91 + i) * 1000,
+          ).toISOString();
+          return {
+            sql: "INSERT INTO runs(id,resource_id,group_id,from_day,to_day,status,started_at,finished_at,error_code,error_message) VALUES(?,?,?,?,?,'failed',?,?,'NETWORK','Synthetic')",
+            params: [`beta-${chunk}-${i}`, 'beta', 'downloads', window.from, window.to, at, at],
+          };
+        }),
+      );
+    const newest = await original.driver.all<{ id: string }>({
+      sql: "SELECT id FROM runs WHERE status!='running' ORDER BY started_at DESC LIMIT 1000",
+    });
+    assert.equal(
+      newest.some((r) => r.id === held),
+      false,
+      'the held run is outside the newest-1000 window',
+    );
+
+    const archive = await original.export();
+    const wait = { dataset: 'alpha:downloads', runId: held, notBefore: '2026-11-20T12:00:00.000Z' };
+    assert.deepEqual(archive.retryGuidance, [wait]);
+    assert.ok(archive.runs.some((r) => r.id === held));
+    // The lapsed wait is left behind: its dataset has a newer regular run in
+    // the same snapshot. Its run still travels, as an ordinary failure.
+    assert.ok(archive.runs.some((r) => r.id === lapsed));
+    assert.equal(archive.runs.length, 1002);
+
+    await restored.migrate();
+    await restored.import(archive);
+    assert.deepEqual((await restored.regularRunHeads()).retryGuidance, [wait]);
+    const requested: string[] = [];
+    const fetcher = async (input: RequestInfo | URL) => {
+      const [, from, to, name] = /^\/downloads\/range\/([\d-]+):([\d-]+)\/(.+)$/.exec(
+        new URL(String(input)).pathname,
+      )!;
+      requested.push(name!);
+      const downloads: { day: string; downloads: number }[] = [];
+      for (let d = from!; d <= to!; d = addDays(d, 1)) downloads.push({ day: d, downloads: 1 });
+      return Response.json({ start: from, end: to, package: name, downloads });
+    };
+    const due = { dueOnly: true, maxJobs: 5, fetcher, retryRateLimits: false };
+    // Before the provider's instant the restored installation asks for
+    // everything except the held dataset.
+    for (const at of ['2026-11-14T12:00:00Z', '2026-11-17T12:00:00Z', '2026-11-20T11:59:59Z'])
+      await sync(config, restored, {}, { ...due, now: new Date(at) });
+    assert.equal(requested.includes('alpha'), false, requested.join(','));
+    assert.ok(requested.includes('beta') && requested.includes('gamma'));
+    const after = await sync(
+      config,
+      restored,
+      {},
+      { ...due, now: new Date('2026-11-20T12:00:00Z') },
+    );
+    assert.ok(after.some((r) => r.resourceId === 'alpha' && r.status === 'success'));
+
+    // A hand-written instant the scheduler would honor is exported normalized.
+    await original.setSetting(
+      'scheduler_retry:alpha:downloads',
+      JSON.stringify({ run: held, notBefore: '2026-11-20T12:00:00Z' }),
+    );
+    assert.deepEqual((await original.export()).retryGuidance, [wait]);
+    // Once the dataset is collected explicitly the wait lapses and is not exported.
+    const [manual] = await sync(
+      config,
+      original,
+      {},
+      { now: new Date('2026-11-14T12:00:00Z'), fetcher, resourceId: 'alpha' },
+    );
+    assert.equal(manual?.status, 'success');
+    assert.equal('retryGuidance' in (await original.export()), false);
+  } finally {
+    original.driver.close?.();
+    restored.driver.close?.();
+  }
+});
