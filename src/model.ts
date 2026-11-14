@@ -167,7 +167,7 @@ export const METRICS: Readonly<Record<string, MetricDefinition>> = Object.freeze
         'Umami daily sessions',
         'sessions',
         'none',
-        'Daily source-defined sessions; not independently verified people or a total of unique visitors.',
+        'Daily distinct session identifiers, Umami’s visitor measure, not its visit count. The stored metric name and unit are retained for compatibility; never sum days or infer verified people.',
       ),
       m(
         'cloudflare.pageviews',
