@@ -142,6 +142,39 @@ and confirms the resulting tags before it succeeds. Rerun it alone to reapply th
 policy; with nothing to change it is a no-op. `--dry-run` prints the plan without
 changing anything.
 
+### Recovering a previously published version
+
+A successful immutable package upload, registry verification, and channel
+reconciliation are separate outcomes. Inspect the **actual jobs in that release
+run** before retrying. A rerun uses the workflow from its original commit;
+changes later merged to `main` do not add jobs to a historical run.
+
+On **14 November 2026**, the public registry reports `beta: 0.2.0-beta.2` and
+`latest: 0.2.0-beta.1`. Keep the documented `@beta` install suffix, or pin the
+exact published version. The [beta.2 release run](https://github.com/Ponchia/bronto-pulse/actions/runs/42036737324)
+completed publication and registry verification on 5 November, before the
+`sync-dist-tags` job was added. It contains no channel job to rerun. The live
+mismatch is tracked separately in [#71](https://github.com/Ponchia/bronto-pulse/issues/71);
+this status note does not repair the alias.
+
+For a release that includes `sync-dist-tags`, retry only that job after reviewing
+fresh registry state and completing its protected environment approval. An npm
+`Allow npm dist-tag` denial is a package-owner permission decision, not a failed
+immutable upload. Do not retry the publishing job to repair metadata.
+
+For the older beta.2 publication, the next independently justified and explicitly
+approved release through the current workflow can reconcile its channels. A
+metadata-only recovery instead needs a maintainer-reviewed execution path
+compatible with the existing tag-only environment and trusted publisher. Do not
+move the old tag, manufacture a release for alias cleanup, broaden the environment
+to `main`, or switch to a local credential to bypass that boundary.
+
+Before any approved change, use `scripts/sync-dist-tags.mjs --dry-run` with the
+audited source-locked publisher and an already published `--version` to review
+its exact add/remove plan. Afterward, verify registry aliases and unchanged
+package integrity separately. A plan or passing fixture test is not a successful
+registry mutation.
+
 ### First npm publication
 
 Done on 30 October 2026: the maintainer bootstrapped 0.2.0-beta.0 this way, and
