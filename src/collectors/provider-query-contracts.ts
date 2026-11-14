@@ -23,6 +23,9 @@ function boundary(value: unknown, expected: string, timezone: string, end: boole
   } catch {
     return false;
   }
+  // Date.parse truncates submillisecond precision. Do not let a partial first
+  // second masquerade as the beginning of a complete calendar day.
+  if (!end && /\.[0-9]*[1-9][0-9]*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
   const instant = Date.parse(value);
   if (!Number.isFinite(instant)) return false;
   // Both local-offset and UTC-normalized timestamps may describe the same day.
@@ -45,6 +48,7 @@ export function verifyPlausibleQuery(
   timezone: string,
   window: DateRange,
   rowCount: number,
+  requestedLimit: number,
 ): void {
   const meta = response.meta === undefined ? {} : object(response.meta, 'Plausible metadata');
   if (meta.imports_included !== undefined)
@@ -94,6 +98,11 @@ export function verifyPlausibleQuery(
   // a full sentinel page before publication, so no later page is silently used.
   if (query.pagination !== undefined) {
     const pagination = object(query.pagination, 'Plausible executed pagination');
+    invariant(
+      pagination.limit === undefined ||
+        (Number.isSafeInteger(pagination.limit) && pagination.limit === requestedLimit),
+      'Plausible executed result limit differs from the requested page.',
+    );
     invariant(
       pagination.offset === undefined || pagination.offset === 0,
       'Plausible executed query starts after the first result.',

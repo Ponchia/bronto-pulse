@@ -15,7 +15,7 @@ requested time unit against allowed units. For sufficiently long ranges it can
 replace `day` with a larger unit. A month-start label can look like a valid daily
 date even when its count represents the whole month.
 
-Pulse therefore limits each Umami request to **31 completed UTC calendar days**.
+Pulse therefore limits each Umami request to **31 UTC calendar days**.
 Larger collection windows are split into contiguous non-overlapping requests.
 This is a conservative bound inside the reviewed daily-unit behavior, not a claim
 that the provider's exact daily limit is 31 days. Every response is checked
@@ -48,14 +48,16 @@ semantics. No stored measurement is renamed, rescaled or rewritten.
 
 Stats API v2 returns the query actually executed after provider normalization.
 When an echo is present, Pulse validates the site, ordered metric names, daily
-dimension, whole-site scope, import exclusion, result-page offset and date range.
+dimension, whole-site scope, import exclusion, result-page offset/limit and date range.
 A contradiction fails the run before any observations are published. In
 particular, reordering `visitors` and `pageviews` must not silently swap values.
 
 A timestamp range must describe whole days in the configured reporting timezone.
 Both UTC-normalized and local-offset ISO timestamps are accepted when they name
 the same boundaries. Calendar-boundary checks account for daylight-saving
-changes rather than assuming every local day lasts 24 hours. Date-only echoes
+changes rather than assuming every local day lasts 24 hours. A nonzero fractional
+start is rejected even below JavaScript timestamp precision; the executed result
+limit, when supplied, must match the requested truncation sentinel. Date-only echoes
 remain accepted; they do not independently verify the declared timezone.
 
 The metadata `imports_included` must be false when supplied. A supplied

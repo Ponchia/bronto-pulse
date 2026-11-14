@@ -42,6 +42,16 @@ function plausible(query: Record<string, unknown> = {}, meta: Record<string, unk
 }
 for (const [name, query] of Object.entries({
   'wrong site': { site_id: 'different.example.org' },
+  'fractional partial start': {
+    date_range: ['2026-10-12T00:00:00.500+02:00', '2026-10-13T23:59:59+02:00'],
+  },
+  'submillisecond partial start': {
+    date_range: ['2026-10-12T00:00:00.000001+02:00', '2026-10-13T23:59:59+02:00'],
+  },
+  'smaller result page': { pagination: { offset: 0, limit: 1 } },
+  'malformed page limit': { pagination: { offset: 0, limit: '101' } },
+  'negative page limit': { pagination: { offset: 0, limit: -1 } },
+
   'reordered metrics': { metrics: ['visitors', 'pageviews'] },
   'wrong dimensions': { dimensions: ['time:month'] },
   'filtered scope': { filters: [['is', 'event:page', ['/private']]] },
@@ -175,4 +185,20 @@ test('Umami metric caveat identifies visitor/session identifiers without relabel
   assert.equal(metric.unit, 'sessions');
   assert.match(metric.caveat, /visitor/i);
   assert.match(metric.caveat, /visit count|visits/i);
+});
+
+test('Plausible accepts a matching executed page limit and exact fractional-zero start', async () => {
+  const c = config('plausible');
+  const limit = Math.min(c.settings.maxRows + 1, 10000);
+  const result = await collect(
+    c.resources[0]!,
+    'traffic',
+    ctx(c, [
+      plausible({
+        pagination: { offset: 0, limit },
+        date_range: ['2026-10-12T00:00:00.000000+02:00', '2026-10-13T23:59:59.999999+02:00'],
+      }),
+    ]),
+  );
+  assert.equal(result.observations[0]?.value, 12);
 });

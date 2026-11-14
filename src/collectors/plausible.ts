@@ -67,7 +67,7 @@ export async function collectPlausible(
       'ROW_LIMIT',
       'Plausible date series may be truncated; narrow the date window.',
     );
-  verifyPlausibleQuery(response, r.siteId, r.timezone, ctx.window, data.length);
+  verifyPlausibleQuery(response, r.siteId, r.timezone, ctx.window, data.length, pageLimit);
   const observations: Observation[] = [];
   const dates = new Set<string>();
   for (const item of data) {
