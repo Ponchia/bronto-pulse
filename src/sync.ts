@@ -1,5 +1,6 @@
 import { nativeSense6, type AggregateBindings } from './collectors/bindings.js';
-import { Credentials, credentialStatus, type Secrets } from './auth.js';
+import { Credentials, type Secrets } from './auth.js';
+import { connectionStatus } from './selfhost/client.js';
 import { collect, groups, probeCloudflare } from './collectors/index.js';
 import type { Config, Provider, Resource } from './config.js';
 import { PulseError, safeError } from './errors.js';
@@ -8,6 +9,7 @@ import type { Run } from './model.js';
 import { Store } from './storage/store.js';
 import { selectCollectionJobs } from './plan.js';
 import { dueJobs } from './due-schedule.js';
+import { retryNotBefore } from './retry-after.js';
 import { dateInZone, defaultRange, range, daysBetween, type DateRange } from './time.js';
 export interface SyncOptions {
   provider?: Provider;
@@ -37,6 +39,8 @@ export interface SyncResult {
   code?: string;
   message?: string;
   runId?: string;
+  /** Due-time only: the stored provider wait for this failed dataset. */
+  retryNotBefore?: string;
 }
 export function jobs(config: Config): { resource: Resource; group: string }[] {
   return config.resources
@@ -54,7 +58,7 @@ export function readyResource(
 ): Resource | undefined {
   if (resource.provider === 'npm' || nativeSense6(resource, bindings)) return resource;
   const connection = config.connections.find((c) => c.id === resource.connection);
-  if (credentialStatus(connection, secrets).available) return resource;
+  if (connectionStatus(connection, secrets, bindings.selfHosted).available) return resource;
   if (resource.provider === 'github' && ['repository', 'releases'].includes(group))
     return { ...resource, connection: undefined };
   return undefined;
@@ -95,12 +99,28 @@ export async function sync(
     );
   await store.register(config, now);
   if (!selected.length) return [];
+  const results: SyncResult[] = [];
   if (options.dueOnly) {
     // Regular source-date-qualified heads keep old backfills from postponing
-    // fresh collection while honoring longer resource refresh intervals.
+    // fresh collection while honoring longer resource or group intervals and
+    // any stored provider wait.
     const heads = await store.regularRunHeads();
+    // Ambiguous history is reported, never collected as if it were absent.
+    const unresolved = new Set(heads.unresolved);
+    for (const { resource, group } of selected)
+      if (unresolved.has(`${resource.id}:${group}`))
+        results.push({
+          resourceId: resource.id,
+          group,
+          status: 'skipped',
+          rows: 0,
+          requests: 0,
+          code: 'CONFLICT',
+          message:
+            'Regular run history is ambiguous beyond the bounded scan; nothing was collected. Run an explicit sync for this dataset.',
+        });
     selected = dueJobs(selected, heads, now).map(({ resource, group }) => ({ resource, group }));
-    if (!selected.length) return [];
+    if (!selected.length) return results;
   }
   const collectionConfig =
     options.maximumRows === undefined
@@ -122,7 +142,6 @@ export async function sync(
     ];
   const total = selected.length;
   selected = selected.slice(0, options.maxJobs ?? selected.length);
-  const results: SyncResult[] = [];
   for (const { resource, group } of selected) {
     const window =
       options.window ??
@@ -198,7 +217,25 @@ export async function sync(
       });
     } catch (error) {
       const clean = safeError(error);
-      if (id) await store.fail(id, clean.code, clean.message, http.requests, new Date());
+      const failedAt = new Date();
+      // Only the opt-in due-time mode records a provider wait; rotation and
+      // history backfills keep their exact previous writes.
+      const wait =
+        options.dueOnly && error instanceof PulseError && error.code === 'RATE_LIMIT'
+          ? error.retryAfterSeconds
+          : undefined;
+      const notBefore =
+        id && wait !== undefined ? retryNotBefore(failedAt.getTime(), wait) : undefined;
+      if (id)
+        await store.fail(
+          id,
+          clean.code,
+          clean.message,
+          http.requests,
+          failedAt,
+          'failed',
+          notBefore && { dataset: key, notBefore },
+        );
       results.push({
         resourceId: resource.id,
         group,
@@ -207,6 +244,7 @@ export async function sync(
         requests: http.requests,
         ...clean,
         runId: id,
+        ...(notBefore ? { retryNotBefore: notBefore.toISOString() } : {}),
       });
     } finally {
       await store.release(key, owner);
@@ -227,6 +265,7 @@ export async function doctor(
 ) {
   const heads = await store.runHeads();
   const observed = await store.observedThrough();
+  const waits = await store.retryGuidance();
   const states = config.resources
     .flatMap((resource) => groups(resource).map((group) => ({ resource, group })))
     .map(({ resource, group }) => {
@@ -237,19 +276,25 @@ export async function doctor(
       const age = success
         ? (now.getTime() - Date.parse(success.finishedAt ?? success.startedAt)) / 3600000
         : null;
+      const wait =
+        latest?.status === 'failed' && latest.code === 'RATE_LIMIT'
+          ? waits.find((w) => w.dataset === `${resource.id}:${group}` && w.runId === latest.id)
+          : undefined;
       const credentials = nativeSense6(resource, bindings)
         ? { available: true, method: 'd1-binding', missing: [] }
         : resource.provider === 'npm' ||
             (resource.provider === 'github' &&
               ['repository', 'releases'].includes(group) &&
-              !credentialStatus(
+              !connectionStatus(
                 config.connections.find((c) => c.id === resource.connection),
                 secrets,
+                bindings.selfHosted,
               ).available)
           ? { available: true, method: 'public', missing: [] }
-          : credentialStatus(
+          : connectionStatus(
               config.connections.find((c) => c.id === resource.connection),
               secrets,
+              bindings.selfHosted,
             );
       const latestDate =
         observed.find((o) => o.resourceId === resource.id && o.group === group)?.date ?? null;
@@ -304,6 +349,8 @@ export async function doctor(
             ? 'no_observations'
             : 'observations',
         nextAction: nextAction(resource.id, group, status, latest?.code ?? null),
+        // Present only while the latest run is the failure a provider wait belongs to.
+        ...(wait ? { retryNotBefore: wait.notBefore } : {}),
       };
     });
   return {
@@ -377,8 +424,17 @@ export function nextAction(resourceId: string, group: string, status: string, co
     command,
   };
 }
+export const MAX_PROBE_DAYS = 7;
+
 export async function probe(config: Config, secrets: Secrets, options: SyncOptions = {}) {
   const now = options.now ?? new Date();
+  if (!Number.isFinite(now.getTime())) throw new PulseError('CONFIG', 'Invalid probe clock.');
+  // Explicit probes must stay small and cannot silently become yesterday's check.
+  // Validate before selecting sources or constructing a credential-bearing client.
+  const requestedWindow =
+    options.window === undefined
+      ? undefined
+      : range(options.window.from, options.window.to, MAX_PROBE_DAYS);
   const selected = selectCollectionJobs(config, options);
   const maximum = options.maxJobs ?? 64;
   if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 1000)
@@ -388,20 +444,19 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
   for (const { resource, group } of selected.slice(0, maximum)) {
     const http = new HttpClient(options.fetcher, config.settings.requestTimeoutMs, options.sleep);
     const credentials = new Credentials(secrets, http, () => now);
+    const sourceTimezone =
+      resource.provider === 'gsc'
+        ? 'America/Los_Angeles'
+        : resource.provider === 'plausible'
+          ? resource.timezone
+          : 'UTC';
     const context = {
       config,
       http,
       credentials,
       now,
-      window: defaultRange(
-        now,
-        1,
-        resource.provider === 'gsc'
-          ? 'America/Los_Angeles'
-          : resource.provider === 'plausible'
-            ? resource.timezone
-            : 'UTC',
-      ),
+      window: requestedWindow ?? defaultRange(now, 1, sourceTimezone),
+      bindings: options.bindings,
     };
     if (resource.provider === 'cloudflare' && !capabilities.has(resource.id)) {
       try {
@@ -416,6 +471,10 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
         resourceId: resource.id,
         status: 'available',
         testedGroup: group,
+        requestedWindow: context.window,
+        // Native snapshots, rolling groups or retention limits can change this.
+        testedWindow: data.range,
+        sourceTimezone,
         rows: data.observations.length,
         capabilities: capabilities.get(resource.id),
         notes: data.notes,
@@ -426,6 +485,9 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
         resourceId: resource.id,
         status: 'unavailable',
         testedGroup: group,
+        requestedWindow: context.window,
+        testedWindow: null,
+        sourceTimezone,
         ...safeError(error),
         requests: http.requests,
       });

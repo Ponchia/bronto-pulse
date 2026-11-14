@@ -1,3 +1,5 @@
+import { investigateProject } from '../investigations.js';
+import { projectGraph } from '../project-graph.js';
 import type { AggregateBindings } from '../collectors/bindings.js';
 import type { Config } from '../config.js';
 import type { Secrets } from '../auth.js';
@@ -262,7 +264,7 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
       );
     if (url.pathname === root + '/brief') {
       const reports = await portfolio(data.config, data.store, windowFor(url, now), now);
-      const briefs = reports.reports.map((r) => projectBrief(r));
+      const briefs = reports.reports.map((r) => projectBrief(r, 20, r.resources));
       const format = url.searchParams.get('format') ?? 'json';
       if (format === 'markdown')
         return secure(
@@ -305,6 +307,46 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           },
         }),
       );
+    const evidenceView =
+      /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/(graph|investigation)$/.exec(url.pathname);
+    if (evidenceView) {
+      const format = url.searchParams.get('format');
+      if (format !== null && format !== 'json')
+        throw new PulseError('CONFIG', 'Evidence views support JSON only.');
+      if (evidenceView[2] === 'graph') {
+        if ([...url.searchParams.keys()].some((key) => key !== 'format'))
+          throw new PulseError(
+            'CONFIG',
+            'The configuration graph has no report date or source filters.',
+          );
+        return secure(json(projectGraph(data.config, evidenceView[1]!)));
+      }
+      const rawLimit = url.searchParams.get('limit');
+      if (
+        url.searchParams.getAll('limit').length > 1 ||
+        (rawLimit !== null &&
+          (!/^\d{1,3}$/.test(rawLimit) || Number(rawLimit) < 1 || Number(rawLimit) > 100))
+      )
+        throw new PulseError('CONFIG', 'Investigation limit must be an integer from 1 to 100.');
+      const maximum = rawLimit === null ? 20 : Number(rawLimit);
+      const report = await projectReport(
+        data.config,
+        data.store,
+        evidenceView[1]!,
+        windowFor(url, now),
+        now,
+      );
+      return secure(
+        json({
+          schemaVersion: 1,
+          project: report.project,
+          window: report.window,
+          generatedAt: report.generatedAt,
+          demo: report.demo,
+          investigation: investigateProject(report, maximum, report.resources),
+        }),
+      );
+    }
     const comparison = /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/source-comparison$/.exec(
       url.pathname,
     );
@@ -340,12 +382,13 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
         windowFor(url, now),
         now,
       );
-      if (format === 'json') return secure(json(isBrief ? projectBrief(report) : report));
+      if (format === 'json')
+        return secure(json(isBrief ? projectBrief(report, 20, report.resources) : report));
       const output =
         format === 'csv'
           ? csvReport(report)
           : isBrief
-            ? markdownBrief(projectBrief(report))
+            ? markdownBrief(projectBrief(report, 20, report.resources))
             : markdownReport(report);
       return secure(
         new Response(output, {

@@ -4,10 +4,14 @@ import { PulseError, invariant } from '../errors.js';
 import { addDays, contains, day } from '../time.js';
 import { array, number, object, text } from '../validation.js';
 import { collected, entry, token, type CollectContext } from './context.js';
+import { selfHostedJson } from '../selfhost/client.js';
 
 type Umami = Extract<Resource, { provider: 'umami' }>;
 
-/** Cloud API v3 fixed origin; self-hosted custom endpoints need a separate egress-security contract. */
+/**
+ * Umami Cloud uses its fixed origin and /v1 prefix. A self-hosted instance
+ * uses the pinned Node/OCI transport and the /api prefix (ADR 0004).
+ */
 export async function collectUmami(
   r: Umami,
   group: string,
@@ -22,10 +26,19 @@ export async function collectUmami(
     timezone: 'UTC',
     unit: 'day',
   });
+  const connection = ctx.config.connections.find((c) => c.id === r.connection);
+  const selfHosted = Boolean(r.instance || connection?.selfHosted);
   const response = object(
-    await ctx.http.json(`https://api.umami.is/v1/websites/${r.websiteId}/pageviews?${params}`, {
-      headers: { Authorization: `Bearer ${await token(r, ctx)}` },
-    }),
+    selfHosted
+      ? await selfHostedJson(ctx, connection, {
+          variant: 'umami-selfhosted',
+          websiteId: r.websiteId,
+          startAt: start,
+          endAt: end,
+        })
+      : await ctx.http.json(`https://api.umami.is/v1/websites/${r.websiteId}/pageviews?${params}`, {
+          headers: { Authorization: `Bearer ${await token(r, ctx)}` },
+        }),
   );
   const observations: Observation[] = [];
   for (const [field, metric] of [
@@ -54,11 +67,23 @@ export async function collectUmami(
       dates.add(date);
       const count = number(point.y, `Umami ${field}`);
       invariant(Number.isSafeInteger(count) && count >= 0, 'Umami returned an invalid count.');
-      observations.push(entry(metric, date, count, {}, 'observed', 'umami-v3-utc-daily-v1'));
+      observations.push(
+        entry(
+          metric,
+          date,
+          count,
+          {},
+          'observed',
+          // The instance version is not observable through this endpoint.
+          selfHosted ? 'umami-selfhosted-utc-daily-v1' : 'umami-v3-utc-daily-v1',
+        ),
+      );
     }
   }
   return collected(ctx.window, observations, [
-    'Umami v3 Cloud time series grouped by UTC calendar day. No inferred zeroes.',
+    selfHosted
+      ? `Self-hosted Umami instance ${r.instance}, time series grouped by UTC calendar day. No inferred zeroes. Synthetic-tested transport, not yet verified against a real installation.`
+      : 'Umami v3 Cloud time series grouped by UTC calendar day. No inferred zeroes.',
     'Sessions are recorded as daily source-defined values, not summed into distinct people.',
     'Other web analytics providers observing the same site remain independent datasets.',
   ]);

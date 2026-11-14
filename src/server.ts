@@ -6,6 +6,7 @@ import type { Secrets } from './auth.js';
 import { PulseError } from './errors.js';
 import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
+import type { AggregateBindings } from './collectors/bindings.js';
 export async function startServer(
   config: Config,
   store: Store,
@@ -15,7 +16,15 @@ export async function startServer(
     host = '127.0.0.1',
     token = secrets.PULSE_API_TOKEN ?? '',
     publicOrigin,
-  }: { port?: number; host?: string; token?: string; publicOrigin?: string } = {},
+    bindings,
+  }: {
+    port?: number;
+    host?: string;
+    token?: string;
+    publicOrigin?: string;
+    /** Installation capabilities, used only for the read-only health report. */
+    bindings?: AggregateBindings;
+  } = {},
 ) {
   const local = ['127.0.0.1', '::1', 'localhost'].includes(host);
   if (!local && !['0.0.0.0', '::'].includes(host))
@@ -115,7 +124,14 @@ export async function startServer(
         ),
         body: ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : Buffer.concat(chunks),
       });
-      const response = await handle(request, { config, store, secrets, apiToken: token, asset });
+      const response = await handle(request, {
+        config,
+        store,
+        secrets,
+        apiToken: token,
+        asset,
+        bindings,
+      });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(req.method === 'HEAD' ? undefined : Buffer.from(await response.arrayBuffer()));
     } catch {

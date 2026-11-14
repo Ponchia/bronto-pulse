@@ -48,6 +48,12 @@ an always-running service. Large installations should lower detail/cardinality,
 use smaller date windows or a queue-oriented scheduler rather than assume all
 providers fit into one invocation.
 
+Rotation is the default selection. An opt-in due-time mode instead picks the
+datasets whose minimum refresh gap has passed, from the same run history and
+under the same leases and budgets. It adds no table and no queue; its only
+extra state is one settings row per dataset that a provider asked to wait.
+See [scheduling](scheduling.md) for intervals, failure delays and limits.
+
 The default historical range is 14 days. GitHub clips to the provider's available
 window; npm uses bounded chunks. Search Console and Cloudflare fail explicitly
 when row limits are reached. A narrow retry then fills that dataset without

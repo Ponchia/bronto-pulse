@@ -10,17 +10,19 @@ import { connectorCatalog, hasConnector } from './collectors/registry.js';
 import { PulseError, safeError } from './errors.js';
 import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
-import { sync, doctor, probe } from './sync.js';
+import { sync, doctor, probe, MAX_PROBE_DAYS } from './sync.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
 import { seedDemo, type DemoScenario } from './demo.js';
 import { startServer } from './server.js';
-import { dateInZone, reportRange } from './time.js';
+import { dateInZone, reportRange, range } from './time.js';
 import { planCollection, markdownPlan } from './plan.js';
 import { projectBrief, markdownBrief } from './brief.js';
 import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
 import { auditCoverage } from './coverage.js';
+import { projectGraph } from './project-graph.js';
+import { nodeSelfHosted } from './selfhost/node-transport.js';
 
 // The package manifest is the one version source for a checkout and the published archive.
 const VERSION: string = JSON.parse(
@@ -32,10 +34,11 @@ pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
 pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
 pulse connectors                     Offline built-in source capabilities; no credentials needed
+pulse graph PROJECT                  Explicit resource relationships; no DB, credentials or network
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --due-only for due jobs
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
-pulse probe                          Read-only provider capability and permission checks
+pulse probe [--from DATE --to DATE]  Read-only capability check; explicit windows up to 7 days
 pulse inspect --resource ID --input FILE  Inspect an explicit JSON list of 1–20 GSC URLs
 pulse visibility template|report|promptfoo  Offline benchmark; --suite FILE, --session FILE or --input FILE
 pulse doctor                         Check coverage, freshness and credential availability
@@ -120,6 +123,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     'validate',
     'coverage',
     'connectors',
+    'graph',
     'plan',
     'sync',
     'backfill',
@@ -166,7 +170,23 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     );
   if (v['chunk-days'] && !['plan', 'backfill'].includes(command))
     throw new PulseError('CONFIG', '--chunk-days applies only to plan or backfill.');
+  if (command === 'probe') {
+    if (v.days !== undefined || v.rotate)
+      throw new PulseError(
+        'CONFIG',
+        'Probe uses a source-local day or explicit --from and --to; --days and --rotate do not apply.',
+      );
+    if ((v.from === undefined) !== (v.to === undefined))
+      throw new PulseError('CONFIG', 'A dated probe requires both --from and --to.');
+  }
+  const probeWindow =
+    command === 'probe' && v.from !== undefined && v.to !== undefined
+      ? range(v.from, v.to, MAX_PROBE_DAYS)
+      : undefined;
   const now = new Date();
+  // Installation-owned capability for self-hosted analytics instances (ADR
+  // 0004). Only this Node entry point creates it; no flag or config selects it.
+  const bindings = { selfHosted: nodeSelfHosted(process.env) };
   const selection = {
     provider: v.provider as Provider | undefined,
     resourceId: v.resource,
@@ -216,6 +236,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   const configPath = resolve(v.config ?? 'pulse.config.json');
+  if (command === 'graph') {
+    if (positionals.length !== 2 || Object.keys(v).some((key) => !['config', 'json'].includes(key)))
+      throw new PulseError(
+        'CONFIG',
+        'Use pulse graph PROJECT --config FILE --json; graph reads configuration only.',
+      );
+    const config = await configFrom(configPath);
+    console.log(JSON.stringify(projectGraph(config, positionals[1]!), null, 2));
+    return 0;
+  }
   if (command === 'coverage') {
     if (!v.input || positionals.length !== 1)
       throw new PulseError('CONFIG', 'Use pulse coverage --input inventory.json.');
@@ -231,6 +261,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       ...selection,
       now,
       maxJobs: planOptions.maxJobs,
+      bindings,
+      window: probeWindow,
     });
     console.log(JSON.stringify(result, null, 2));
     return result.omittedJobs || result.results.some((x) => x.status === 'unavailable') ? 2 : 0;
@@ -349,6 +381,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : v['due-only'] ? 1 : undefined,
         rotate: v.rotate,
         dueOnly: v['due-only'],
+        bindings,
       });
       print(
         results,
@@ -383,13 +416,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             group: job.group,
             window: job.window,
             now,
+            bindings,
           })),
         );
       print({ plan, results });
       return results.some((r) => r.status === 'failed') ? 2 : 0;
     }
     if (command === 'doctor') {
-      const result = await doctor(config, store, process.env);
+      const result = await doctor(config, store, process.env, undefined, bindings);
       print(
         result,
         result.resources
@@ -411,8 +445,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'brief') {
       const ids = positionals[1] ? [positionals[1]] : config.projects.map((p) => p.id);
       const briefs = [];
-      for (const id of ids)
-        briefs.push(projectBrief(await projectReport(config, store, id, period, now)));
+      for (const id of ids) {
+        const report = await projectReport(config, store, id, period, now);
+        briefs.push(projectBrief(report, 20, report.resources));
+      }
       await emit(
         positionals[1]
           ? briefs[0]
@@ -489,6 +525,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         host,
         publicOrigin,
         token,
+        bindings,
       });
       hold = true;
       if (localToken !== undefined) console.log(`One-session local access token: ${localToken}`);

@@ -17,6 +17,8 @@ import { PulseError } from './errors.js';
 import { days, previous, range, daysBetween, type DateRange } from './time.js';
 import { Store } from './storage/store.js';
 import { websiteAuthorities, type WebsiteAuthority } from './website-authority.js';
+import { investigateProject, type ProjectInvestigation } from './investigations.js';
+import { projectGraph, type ProjectGraph } from './project-graph.js';
 export interface Point {
   date: string;
   value: number;
@@ -81,6 +83,10 @@ export interface ProjectReport {
   evidence: EvidenceAssessment;
   /** Present only when an owner declared explicit website identities and policies. */
   websites?: WebsiteAuthority[];
+  /** Deterministic, evidence-linked next checks; no automated recommendations or actions. */
+  investigation?: ProjectInvestigation;
+  /** Explicit configuration relationships, not verified adoption or inferred journeys. */
+  resources?: ProjectGraph;
 }
 function allowed(o: StoredObservation, b: Binding): boolean {
   if ((b.effectiveFrom && o.from < b.effectiveFrom) || (b.effectiveTo && o.to > b.effectiveTo))
@@ -480,12 +486,17 @@ export async function projectReport(
     ),
     warnings: [...new Set(warnings)],
   };
-  return {
+  const completed: ProjectReport = {
     ...report,
+    resources: projectGraph(config, project.id),
     ...(project.websites?.length
       ? { websites: websiteAuthorities(project.websites, report.cards, window) }
       : {}),
     evidence: assessEvidence(report),
+  };
+  return {
+    ...completed,
+    investigation: investigateProject(completed, 20, completed.resources),
   };
 }
 export async function portfolio(config: Config, store: Store, window: DateRange, now = new Date()) {
@@ -530,6 +541,45 @@ export function markdownReport(report: ProjectReport): string {
     lines.push(
       `| ${c.label.replaceAll('|', '/')} | ${c.resourceId} | ${value} | ${c.coverage.observedDays}/${c.coverage.expectedDays} dates; ${c.coverage.status} |`,
     );
+  }
+  if (report.investigation) {
+    const prose = (value: string) =>
+      value
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/[<>]/g, '')
+        .replace(/([\\`*_{}\[\]#|])/g, '\\$1');
+    lines.push('', '## What to verify next', '', prose(report.investigation.limitation));
+    const printedLimits = new Set<string>();
+    for (const finding of report.investigation.findings.slice(0, 5)) {
+      lines.push('', '- ' + prose(finding.summary));
+      for (const limit of finding.limitations) {
+        if (!printedLimits.has(limit)) {
+          printedLimits.add(limit);
+          lines.push('  - Limit: ' + prose(limit));
+        }
+      }
+      for (const check of finding.nextChecks) lines.push('  - Next check: ' + prose(check.text));
+      for (const ref of finding.evidence)
+        lines.push(
+          '  - Evidence: ' +
+            prose(
+              ref.resourceId +
+                ' / ' +
+                (ref.metric ?? 'unavailable') +
+                ' / ' +
+                ref.window.from +
+                ' to ' +
+                ref.window.to,
+            ),
+        );
+    }
+    const omitted =
+      report.investigation.omittedFindings + Math.max(0, report.investigation.findings.length - 5);
+    if (omitted)
+      lines.push(
+        '',
+        `${omitted} further leads omitted; the private investigation API accepts limit=1..100. The full report retains source metrics.`,
+      );
   }
   if (report.websites?.length) {
     lines.push(

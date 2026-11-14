@@ -498,6 +498,134 @@ function websitePolicyPanel(report) {
   return panel;
 }
 
+function investigationPanel(investigation, maximum = 5) {
+  if (!investigation || !Array.isArray(investigation.findings)) return null;
+  const panel = el('section', {
+    class: 'investigation-panel',
+    'aria-label': 'What to verify next',
+  });
+  panel.append(
+    heading('What to verify next', 'Evidence barriers first; next checks never run automatically'),
+  );
+  if (!investigation.findings.length) {
+    panel.append(
+      empty(
+        'No additional investigation lead was established for this period. This is not proof of adoption or absence of interest.',
+      ),
+    );
+    return panel;
+  }
+  const list = el('div', { class: 'investigation-list' });
+  for (const finding of investigation.findings.slice(0, maximum)) {
+    const item = el('article', { class: 'investigation-item' });
+    item.append(
+      el('div', { class: 'investigation-meta' }, [
+        el('span', { class: 'badge', text: finding.category }),
+        el('span', { class: 'small muted', text: finding.evidenceState + ' evidence' }),
+      ]),
+      el('p', { class: 'investigation-summary', text: finding.summary }),
+    );
+    const checks = el('ol', { class: 'investigation-checks', 'aria-label': 'Next checks' });
+    for (const check of finding.nextChecks)
+      checks.append(
+        el('li', {}, [
+          el('span', { text: check.text }),
+          el('small', { class: 'muted', text: 'Where: ' + check.surface.replaceAll('_', ' ') }),
+        ]),
+      );
+    item.append(checks);
+    const evidence = el('details', { class: 'investigation-evidence' }, [
+      el('summary', { text: 'Source evidence and limits' }),
+    ]);
+    for (const ref of finding.evidence) {
+      const facts = el('dl', { class: 'investigation-facts' });
+      for (const [name, value] of Object.entries(ref.facts)) {
+        facts.append(
+          el('dt', { text: name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ') }),
+          el('dd', { text: value === null ? 'Unavailable' : String(value) }),
+        );
+      }
+      evidence.append(
+        el('p', {
+          class: 'small',
+          text: `${ref.resourceId} · ${ref.metric ?? 'No unambiguous metric'} · ${ref.window.from} → ${ref.window.to}`,
+        }),
+        facts,
+      );
+    }
+    for (const limit of finding.limitations)
+      evidence.append(el('p', { class: 'small muted', text: limit }));
+    if (finding.omittedEvidence)
+      evidence.append(
+        el('p', {
+          class: 'small',
+          text: `${finding.omittedEvidence} additional evidence references are in the full report.`,
+        }),
+      );
+    item.append(evidence);
+    list.append(item);
+  }
+  panel.append(list);
+  const omitted =
+    (investigation.omittedFindings ?? 0) + Math.max(0, investigation.findings.length - maximum);
+  if (omitted)
+    panel.append(
+      el('p', {
+        class: 'small muted',
+        text:
+          `${omitted} further leads are omitted from this view. ` +
+          ((investigation.omittedFindings ?? 0) > 0
+            ? 'The private investigation API supports limit=1..100; the full report retains the source metrics.'
+            : 'Inspect the private JSON report for the remaining leads and source metrics.'),
+      }),
+    );
+  panel.append(el('p', { class: 'small muted', text: investigation.limitation }));
+  return panel;
+}
+
+function resourceGraphPanel(graph) {
+  if (!graph || !Array.isArray(graph.resources)) return null;
+  const panel = el('details', { class: 'resource-graph-panel' }, [
+    el('summary', { text: 'Declared resource relationships' }),
+    el('p', { class: 'small muted', text: graph.limitation }),
+  ]);
+  panel.append(
+    table(
+      ['Resource', 'Role and declared identity', 'Scope and dates'],
+      graph.resources.map((resource) => [
+        el('div', {}, [
+          el('strong', { text: resource.label ?? resource.id }),
+          el('small', { text: resource.id + ' · ' + resource.provider }),
+        ]),
+        el('div', {}, [
+          resource.kind.replaceAll('_', ' '),
+          el('small', { text: resource.identity.value ?? 'No public identity declared' }),
+          el('small', { text: 'Basis: ' + resource.identity.basis.replaceAll('_', ' ') }),
+        ]),
+        el(
+          'div',
+          {},
+          resource.bindings.map((binding) =>
+            el('small', {
+              text: [
+                binding.scope?.hostname,
+                binding.scope?.pathPrefix,
+                (binding.effectiveFrom ?? 'No start bound') +
+                  ' → ' +
+                  (binding.effectiveTo ?? 'No end bound'),
+                binding.shared ? 'Explicitly shared; non-additive' : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            }),
+          ),
+        ),
+      ]),
+    ),
+  );
+  return panel;
+}
+
 function renderProject(report) {
   const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
   back.addEventListener('click', () => selectView('portfolio'));
@@ -535,6 +663,10 @@ function renderProject(report) {
       signals.append(el('li', { text: signal.message }));
     if (report.evidence.signals.length) content.append(signals);
   }
+  const investigation = investigationPanel(report.investigation);
+  if (investigation) content.append(investigation);
+  const resourceMap = resourceGraphPanel(report.resources);
+  if (resourceMap) content.append(resourceMap);
   const websitePanel = websitePolicyPanel(report);
   if (websitePanel) content.append(websitePanel);
   const grid = el('section', { class: 'metric-grid', 'aria-label': 'Project metrics' });
@@ -688,6 +820,8 @@ function renderBrief(data) {
     const button = el('button', { class: 'text-button', text: brief.project.label });
     button.addEventListener('click', () => selectProject(brief.project.id));
     panel.append(el('h2', {}, [button]));
+    const investigation = investigationPanel(brief.investigation, 3);
+    if (investigation) panel.append(investigation);
     const list = el('ul', { class: 'findings' });
     for (const finding of brief.findings)
       list.append(

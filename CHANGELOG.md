@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+- Preserve very large provider waits without an early in-job retry, recognize
+  GitHub HTTP-date quota waits, and apply configured per-job request/response
+  budgets to self-hosted transports as well as hosted providers.
+
+- Require the independent hostile-transport and evidence-browser acceptance
+  suites in PR, main and release CI; regression tests reject optional or
+  failure-suppressed execution.
+- Parse zero-padded retry delays and GitHub reset timestamps by their numeric
+  value rather than raw header length, avoiding accidental indefinite holds.
+
+- Share strict daily-count evidence validation between website comparisons and
+  preferred-source reporting, including contradictory coverage and numeric
+  overflow rejection without changing underlying observations.
+- Add deterministic investigation leads with source references, interpretation
+  limits and bounded next checks to reports, briefs and the dashboard. Preserve
+  original metric findings and never execute a suggested check automatically.
+- Expose explicit resource relationships through `pulse graph PROJECT` and the
+  private graph API, without inferring ownership or package-to-repository links.
+  Add mobile and text-escaping acceptance tests and a private live-pilot runbook. See
+  [investigation leads](docs/investigation-leads.md).
+- Due-time scheduling accepts `refreshHoursByGroup`, a per-group minimum
+  refresh gap that falls back to the resource's `refreshHours` and then to 24
+  hours. A key that is not a group the resource collects is a configuration
+  error. Configurations without it parse and schedule as before.
+- A due-time run that hits a rate limit keeps the provider's stated wait
+  (`Retry-After`, or GitHub's quota reset) for that dataset and never
+  shortens it. It can only lengthen the fixed 60-minute delay, and it does
+  not defer other datasets of the same provider. `pulse doctor` shows it as
+  `retryNotBefore`; an explicit sync of the dataset lifts it. No schema
+  change; rotation, history and explicit windows write nothing new.
+  `pulse export` carries the wait with its failed run in a new optional
+  archive field, checked on import.
+- A `Retry-After` given as an HTTP date now ends the job like a numeric wait
+  above ten seconds, instead of being retried inside it.
+- Fix due-time selection for Search Console and Plausible: a newer explicit
+  window ending one or two days back could hide the last regular run, so the
+  dataset was collected again as if never collected. Selection now applies
+  the exact source calendar over a bounded read and reports a dataset it
+  cannot decide as skipped instead of collecting it.
+  See [scheduling](docs/scheduling.md).
+- Read a Plausible Community Edition or Umami instance you run yourself, in
+  the Node and OCI runtime only. A connection declares the instance's exact
+  hostname and the deployment environment pins its IPv4 address; Pulse
+  connects to that address without DNS, verifies the certificate for the
+  hostname, sends one fixed read and follows no redirect. Private addresses
+  need exact admission in `PULSE_SELFHOSTED_PRIVATE_ADDRESSES`; loopback,
+  metadata and link-local addresses are always refused. A Worker refuses
+  these sources. The stored identity binds the instance label, hostname and
+  port, so a source cannot move between instances under one resource ID.
+  This is synthetic-tested and has not yet read a real installation. Hosted
+  Plausible and Umami Cloud sources and existing configurations are
+  unchanged. See [self-hosted analytics sources](docs/self-hosted-provider-adapters.md).
 - The release workflow now owns the npm dist-tags. A separately approved
   `sync-dist-tags` job runs after registry verification, through the trusted
   publisher's new "Allow npm dist-tag" permission and the same audited

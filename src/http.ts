@@ -1,4 +1,5 @@
 import { PulseError } from './errors.js';
+import { retryAfterSeconds } from './retry-after.js';
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 const ORIGINS = new Set([
   'https://api.github.com',
@@ -36,6 +37,26 @@ export class HttpClient {
     private readonly maximumRequests = 120,
     private readonly retryRateLimits = true,
   ) {}
+  /** A pinned adapter shares the same per-job response limit as fixed-origin fetch. */
+  get maximumResponseBytes(): number {
+    return this.maximumBytes;
+  }
+  /** Check before reading a credential for an exchange that cannot be admitted. */
+  assertRequestBudget(): void {
+    if (this.requests >= this.maximumRequests)
+      throw new PulseError(
+        'ROW_LIMIT',
+        'Per-job request budget exhausted. Narrow the collection window.',
+      );
+  }
+  /** Reserve one attempt, retaining the fixed-origin request counter semantics. */
+  reserveRequest(): void {
+    if (++this.requests > this.maximumRequests)
+      throw new PulseError(
+        'ROW_LIMIT',
+        'Per-job request budget exhausted. Narrow the collection window.',
+      );
+  }
   async json(url: string, init: RequestInit = {}): Promise<unknown> {
     const target = new URL(url);
     if (!ORIGINS.has(target.origin) || target.username || target.password)
@@ -71,11 +92,7 @@ export class HttpClient {
       );
     const failures: string[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (++this.requests > this.maximumRequests)
-        throw new PulseError(
-          'ROW_LIMIT',
-          'Per-job request budget exhausted. Narrow the collection window.',
-        );
+      this.reserveRequest();
       let response: Response;
       try {
         response = await this.fetcher(url, {
@@ -105,42 +122,51 @@ export class HttpClient {
           'Provider redirect refused. Verify the provider endpoint.',
         );
       }
+      // Normalize guidance once. Numeric coercion would accept non-HTTP values
+      // such as hexadecimal/exponents and lose valid HTTP dates or unbounded waits.
+      const githubQuota = target.origin === 'https://api.github.com';
+      const stated = retryAfterSeconds(response.headers, Date.now(), githubQuota);
+      const retryableStatus = [429, 500, 502, 503, 504].includes(response.status);
       // GitHub also reports exhausted primary/secondary quotas as HTTP 403.
       // Distinguish that documented case from a real missing permission. Do
       // not retain response content or retry a known rate limit in this job.
       if (
-        target.origin === 'https://api.github.com' &&
+        githubQuota &&
         [403, 429].includes(response.status) &&
-        (response.headers.get('x-ratelimit-remaining') === '0' ||
-          Number(response.headers.get('retry-after')) > 0)
+        (response.headers.get('x-ratelimit-remaining')?.trim() === '0' || stated !== undefined)
       ) {
         await response.body?.cancel();
         throw new PulseError(
           'RATE_LIMIT',
           'GitHub quota is exhausted. Retry in a later collection run.',
           true,
+          stated,
         );
       }
       if (response.status === 429 && !this.retryRateLimits) {
         await response.body?.cancel();
-        throw new PulseError('RATE_LIMIT', 'Provider quota requires a later collection run.', true);
-      }
-      if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
-        const raw = response.headers.get('retry-after');
-        const seconds = raw ? Number(raw) : NaN;
-        // Long rate-limit waits must be retried by the scheduler, not occupy a worker.
-        if (Number.isFinite(seconds) && seconds > 10) {
-          await response.body?.cancel();
-          throw new PulseError(
-            'RATE_LIMIT',
-            'Provider rate limit requires a later collection run.',
-            true,
-          );
-        }
-        await response.body?.cancel();
-        await this.sleep(
-          Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 200 * 2 ** attempt,
+        throw new PulseError(
+          'RATE_LIMIT',
+          'Provider quota requires a later collection run.',
+          true,
+          stated,
         );
+      }
+      // Long waits (including the parser's unbounded sentinel) belong to the
+      // scheduler. Preserve a final-attempt wait too: retry exhaustion does not
+      // revoke the provider's guidance, including on a 503 response.
+      if (retryableStatus && stated !== undefined && (stated > 10 || attempt === 2)) {
+        await response.body?.cancel();
+        throw new PulseError(
+          'RATE_LIMIT',
+          'Provider rate limit requires a later collection run.',
+          true,
+          stated,
+        );
+      }
+      if (retryableStatus && attempt < 2) {
+        await response.body?.cancel();
+        await this.sleep(stated === undefined ? 200 * 2 ** attempt : stated * 1000);
         continue;
       }
       if (!response.ok) {
@@ -153,7 +179,7 @@ export class HttpClient {
             'Provider denied this dataset. Verify account and least-privilege permissions.',
           );
         if (response.status === 429)
-          throw new PulseError('RATE_LIMIT', 'Provider rate limit exceeded.', true);
+          throw new PulseError('RATE_LIMIT', 'Provider rate limit exceeded.', true, stated);
         if (response.status === 404)
           throw new PulseError('NOT_FOUND', 'Provider resource or dataset is unavailable.');
         throw new PulseError('UNAVAILABLE', `Provider returned HTTP ${response.status}.`);

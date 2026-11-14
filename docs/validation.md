@@ -38,6 +38,41 @@ files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
 requirements should be reported separately from code completion.
 
+## Required combined acceptance
+
+Every pull request, main-branch push and release verification runs the ordinary
+repository checks, the independent `npm run test:selfhost:hostile` suite and
+both browser scenarios (`test:browser` and `test:browser:evidence`). These steps
+are mandatory, with no conditional or failure-suppression escape. A workflow
+contract test rejects removal or weakening of either additional gate.
+
+The hostile suite needs OpenSSL and generates temporary local TLS identities.
+Its fixture, policy, transport, CLI and Worker checks use only synthetic inputs
+and loopback servers. The evidence-browser scenario has its own database and
+port and verifies independent source comparisons without external requests.
+Neither suite establishes access to a real provider account.
+
+## Bounded provider probes
+
+`pulse probe` checks access without opening the installation database or publishing
+observations. By default each dataset uses its most recent completed source-local
+day: Pacific for Search Console, the configured site timezone for Plausible, and
+UTC for the remaining sources. An explicit window requires both `--from` and
+`--to` and may span at most seven calendar days. `--days` and `--rotate` are
+rejected instead of silently ignored. Invalid windows fail before configuration
+loading in the CLI, and before credential/client creation in the library.
+
+Each result includes `requestedWindow` and `sourceTimezone`. On success,
+`testedWindow` records the collector's actual returned range, which can differ
+because GitHub repository/release totals are current snapshots, referral groups
+are rolling windows, or a provider clips history to its retention limit. On
+failure `testedWindow` is `null`: the attempted dates do not establish validated
+coverage. The row count and existing notes remain visible; an available response
+with zero returned rows does not establish zero traffic or complete history.
+
+Use `--resource`, `--group` and `--max-jobs 1` for an account-specific acceptance
+check. A successful probe neither enables a source nor schedules its collection.
+
 ## Portable OCI runtime smoke
 
 An explicit opt-in `npm run test:oci` builds the Dockerfile with rootless
@@ -51,6 +86,26 @@ This proves local OCI functionality, not a real HTTPS proxy, Docker Compose
 orchestration, cloud migration, multi-replica storage, provider auth
 longevity or unattended backup recovery. Keep those as distinct
 operational acceptance gates.
+
+## Pinned self-hosted transport
+
+`tests/selfhost-policy.test.ts` and `tests/selfhost-transport.test.ts` run
+in `npm test`. The second file opens real TLS connections to a server on
+127.0.0.1 whose authority and certificates are generated in memory for each
+run. It reaches loopback through a test-only seam that no setting,
+configuration field or command-line flag can produce.
+
+The tests show that the socket follows the pinned address, that the declared
+hostname is the TLS server name and `Host`, and that a wrong, untrusted,
+expired or address-only certificate stops the read before the credential is
+sent. They also cover refused redirects, status classes, body, header and
+time bounds, forged destinations, and a Worker job failing without a
+credential read. The refusal under a process-wide verification bypass runs
+in a child process, so the test process itself never disables verification.
+
+This is contract-tested evidence only. No real Plausible Community Edition
+or Umami installation, public certificate authority, DNS, proxy or firewall
+is involved. Account probing against a consenting instance remains open.
 
 ## Worker runtime contract
 

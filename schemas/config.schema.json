@@ -35,6 +35,36 @@
               "umami"
             ]
           },
+          "selfHosted": {
+            "type": "object",
+            "properties": {
+              "instance": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "hostname": {
+                "type": "string",
+                "pattern": "^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+              },
+              "port": {
+                "default": 443,
+                "type": "integer",
+                "minimum": 443,
+                "maximum": 65535
+              },
+              "addressEnv": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+              }
+            },
+            "required": [
+              "instance",
+              "hostname",
+              "port",
+              "addressEnv"
+            ],
+            "additionalProperties": false
+          },
           "tokenEnv": {
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
@@ -105,6 +135,18 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 720
+              },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
               },
               "provider": {
                 "type": "string",
@@ -177,6 +219,18 @@
                 "minimum": 1,
                 "maximum": 720
               },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "npm"
@@ -238,6 +292,18 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 720
+              },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
               },
               "provider": {
                 "type": "string",
@@ -317,6 +383,18 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 720
+              },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
               },
               "provider": {
                 "type": "string",
@@ -402,6 +480,18 @@
                 "minimum": 1,
                 "maximum": 720
               },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "plausible"
@@ -414,6 +504,10 @@
               "timezone": {
                 "type": "string",
                 "maxLength": 64
+              },
+              "instance": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
               }
             },
             "required": [
@@ -450,6 +544,18 @@
                 "minimum": 1,
                 "maximum": 720
               },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "umami"
@@ -458,6 +564,10 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              "instance": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
               }
             },
             "required": [
@@ -492,6 +602,18 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 720
+              },
+              "refreshHoursByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 720
+                }
               },
               "provider": {
                 "type": "string",

@@ -11,10 +11,13 @@ Lifecycle: current
 | [Coverage](coverage.md)                                           | Offline inventory gaps, permissions and collection boundaries |
 | [Reporting](reporting.md)                                         | Evidence briefings, quality rules and private exports         |
 | [Adoption quality](adoption-quality.md)                           | Interpretation limits, review signals and external evidence   |
+| [Investigation leads](investigation-leads.md)                     | Reason catalogue, next checks and the project resource map    |
 | [Releasing](releasing.md)                                         | Maintainer gates, clean consumers and CI trust                |
 | [Architecture](architecture.md)                                   | Data flow, transaction model, portable boundaries             |
 | [Metric contracts](metrics.md)                                    | Aggregation semantics, attribution, coverage                  |
 | [Connectors](connectors.md)                                       | Curated source catalog and Plausible/Umami reference adapters |
+| [Self-hosted analytics sources](self-hosted-provider-adapters.md) | Plausible CE and Umami instances: setup, limits, maturity     |
+| [ADR 0004](adr/0004-self-hosted-connector-egress.md)              | SSRF, DNS/TLS pinning, private-network trust boundaries       |
 | [Product direction](product-strategy.md)                          | Competitive niche and staged roadmap (proposal)               |
 | [ADR 0002](adr/0002-curated-connectors-and-provider-semantics.md) | Fixed egress and source-native metrics                        |
 | [Providers](providers.md)                                         | API permissions, configuration and limitations                |
@@ -38,3 +41,5 @@ belongs outside Git. Historical research is not a current operational contract.
 - [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.
 
 - [Website identity and authority](website-authority.md) — explicit site relationships, effective-dated pageview preferences and no cross-source totals.
+
+- [Private pilot acceptance](pilot-acceptance.md) — consented real-source checks, comparable windows, independent-host recovery and operator usefulness; separate from fixture success.

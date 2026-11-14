@@ -37,6 +37,19 @@ Release annotations are context only, never proof that a release caused a change
 A default limit of 20 findings is explicit; omitted findings remain accessible
 through the full project report.
 
+Each briefing also carries an `investigation` object: leads to verify, derived
+from the same report. A lead has a stable reason ID, references to the
+resource, metric and dates it restates, its limitations and up to three next
+checks from a closed catalogue. Leads state no cause, score or audience
+estimate, and unavailable evidence is never reported as zero. The Markdown
+briefing prints them under **What to verify next**. See
+[investigation leads](investigation-leads.md) for the reason catalogue, the
+bounds and the read-only project resource map.
+
+A change is restated, as a finding or as a lead, only when the comparison
+agrees with the series that carries it. A summed daily count must be complete,
+observed and equal to the sum of its daily values.
+
 ## Export formats
 
 ```sh

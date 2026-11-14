@@ -42,6 +42,9 @@ jobs:
           node -e 'const v=process.versions.node.split(".").map(Number); if(v[0]<24||(v[0]===24&&v[1]<15))process.exit(1)'
       - run: npm ci
       - run: npm run check
+      # Independent TLS/adversarial acceptance is a required release gate too.
+      - run: openssl version
+      - run: npm run test:selfhost:hostile
       - run: npm run worker:check
       - run: npm run test:d1
       - run: npm run test:worker
@@ -59,6 +62,7 @@ jobs:
           assert.equal(image.dockerImageName, 'mcr.microsoft.com/playwright:v' + version + '-noble');
           NODE
       - run: npm run test:browser
+      - run: npm run test:browser:evidence
 
   # npm releases publish only through the source-locked publisher. Every change
   # proves it still prepares and passes its audit, so a new advisory fails here

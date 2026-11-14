@@ -4,6 +4,7 @@ import { PulseError, invariant } from '../errors.js';
 import { contains, day } from '../time.js';
 import { array, number, object, text } from '../validation.js';
 import { collected, entry, token, type CollectContext } from './context.js';
+import { selfHostedJson } from '../selfhost/client.js';
 
 type Plausible = Extract<Resource, { provider: 'plausible' }>;
 
@@ -21,25 +22,41 @@ export async function collectPlausible(
   // Plausible's query endpoint caps a single page at 10,000 rows. Use
   // one extra row as a truncation sentinel whenever our own budget permits.
   const pageLimit = Math.min(ctx.config.settings.maxRows + 1, 10000);
+  const connection = ctx.config.connections.find((c) => c.id === r.connection);
+  // A self-hosted Community Edition instance never goes through the generic
+  // client: its destination is pinned by the Node/OCI transport (ADR 0004)
+  // and the query below is rebuilt there from these four values only.
+  const selfHosted = Boolean(r.instance || connection?.selfHosted);
   const response = object(
-    await ctx.http.json('https://plausible.io/api/v2/query', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await token(r, ctx)}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        site_id: r.siteId,
-        metrics: ['pageviews', 'visitors'],
-        date_range: [ctx.window.from, ctx.window.to],
-        dimensions: ['time:day'],
-        include: { imports: false },
-        // Ask for one more row than our budget, then fail rather than silently
-        // publishing a truncated day series.
-        pagination: { limit: pageLimit, offset: 0 },
-      }),
-    }),
+    selfHosted
+      ? await selfHostedJson(ctx, connection, {
+          variant: 'plausible-ce',
+          siteId: r.siteId,
+          from: ctx.window.from,
+          to: ctx.window.to,
+          limit: pageLimit,
+        })
+      : await ctx.http.json('https://plausible.io/api/v2/query', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await token(r, ctx)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            site_id: r.siteId,
+            metrics: ['pageviews', 'visitors'],
+            date_range: [ctx.window.from, ctx.window.to],
+            dimensions: ['time:day'],
+            include: { imports: false },
+            // Ask for one more row than our budget, then fail rather than silently
+            // publishing a truncated day series.
+            pagination: { limit: pageLimit, offset: 0 },
+          }),
+        }),
   );
+  const origin = selfHosted
+    ? `Self-hosted Plausible Community Edition instance ${r.instance}; synthetic-tested transport, not yet verified against a real installation.`
+    : undefined;
   const meta = response.meta === undefined ? {} : object(response.meta);
   if (meta.imports_included === true)
     throw new PulseError('SCHEMA', 'Plausible unexpectedly included imported analytics history.');
@@ -76,5 +93,6 @@ export async function collectPlausible(
     'Daily visitors are provider-defined uniques and cannot be summed across days or sources.',
     `Site timezone is declared as ${r.timezone}; ensure it matches the Plausible site settings.`,
     'No absent date is inferred as zero; additional sources for the same site remain separate.',
+    ...(origin ? [origin] : []),
   ]);
 }

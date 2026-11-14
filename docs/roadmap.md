@@ -34,14 +34,23 @@ production deployment. That validation remains an explicit follow-up.
   timezones, missing days, imports, permissions and rate limits. The fixed
   hosted endpoints in the first adapters are not a self-hosted-provider
   integration.
-- Add due-time scheduling by dataset and provider, with bounded execution
-  budgets and retry backoff. Current regular Worker rotation remains unchanged.
-- Introduce explicit project/site/package/deployment relationships and a
-  primary-source declaration for comparisons; never add duplicate measurements
-  from analytics systems tracking the same site.
-- Consider PostgreSQL + multi-worker queue only after a real HA pilot; add
-  versioned external connector protocol and self-hosted source URLs only after
-  network egress and credential threat modeling.
+- Due-time scheduling is available as an opt-in mode with per-resource and
+  per-group intervals, fixed failure delays and a per-dataset
+  provider wait ([scheduling](scheduling.md)). Rotation stays the default and
+  the regular Worker rotation is unchanged. Still open: provider-wide quota
+  coordination, and qualifying the mode on a real installation before
+  recommending it over rotation.
+- Explicit website identities, date-scoped pageview preferences and a read-only
+  project resource graph are implemented. The graph projects declared bindings,
+  not verified ownership. A persisted cross-provider entity registry and
+  deployment relationships remain future work; duplicate measurements of the
+  same site are never added together.
+- Consider PostgreSQL + multi-worker queue only after a real HA pilot.
+  [ADR 0004](adr/0004-self-hosted-connector-egress.md) specifies the
+  threat model and test gates for self-hosted analytics endpoints. Its
+  first pinned Node/OCI transport is synthetic-tested; a pilot against a
+  consenting real installation is still required. No arbitrary URL
+  transport or external plugin execution is shipped.
 - Pilot with non-maintainer OSS teams and measure whether an evidence-backed
   finding is useful beyond an existing provider dashboard.
 

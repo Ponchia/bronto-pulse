@@ -1,6 +1,12 @@
 import * as z from 'zod/mini';
+import { groups } from './collectors/context.js';
 import { PulseError } from './errors.js';
 import { day, addDays } from './time.js';
+import {
+  PRIVATE_ADMISSION_SETTING,
+  isInstanceHostname,
+  isInstancePort,
+} from './selfhost/policy.js';
 z.config(z.locales.en());
 const id = z.string().check(z.regex(/^[a-z][a-z0-9_-]{0,63}$/));
 const envName = z.string().check(z.regex(/^[A-Z][A-Z0-9_]{0,127}$/));
@@ -16,9 +22,26 @@ const date = z.string().check(
 );
 const hash = z.string().check(z.regex(/^[a-f0-9]{32}$/i));
 const host = z.string().check(z.regex(/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/));
+// A self-hosted analytics instance (ADR 0004). The hostname serves TLS and
+// Host only; the destination address is a separate deployment setting named
+// by addressEnv. There is no URL, path or scheme field by design.
+const instanceHost = z
+  .string()
+  .check(
+    z.regex(
+      /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+    ),
+  );
+const selfHosted = z.strictObject({
+  instance: id,
+  hostname: instanceHost,
+  port: z._default(z.int().check(z.gte(443), z.lte(65535)), 443),
+  addressEnv: envName,
+});
 const connection = z.strictObject({
   id,
   provider: z.enum(['github', 'cloudflare', 'gsc', 'plausible', 'umami']),
+  selfHosted: z.optional(selfHosted),
   tokenEnv: z.optional(envName),
   clientIdEnv: z.optional(envName),
   clientSecretEnv: z.optional(envName),
@@ -34,6 +57,8 @@ const common = {
   connection: z.optional(id),
   enabled: z._default(z.boolean(), true),
   refreshHours: z.optional(z.int().check(z.gte(1), z.lte(720))),
+  // Due-time only: a per-group minimum gap that overrides refreshHours.
+  refreshHoursByGroup: z.optional(z.record(id, z.int().check(z.gte(1), z.lte(720)))),
 };
 // Older dates a history schedule may collect, one bounded chunk per invocation.
 // Only daily sources whose provider serves past dates on request accept it.
@@ -119,11 +144,14 @@ const resource = z.discriminatedUnion('provider', [
     siteId: siteDomain,
     // Query buckets use the site's reporting timezone; never assume UTC.
     timezone: analyticsZone,
+    // Names the self-hosted instance this site lives on; absent means hosted.
+    instance: z.optional(id),
   }),
   z.strictObject({
     ...common,
     provider: z.literal('umami'),
     websiteId: z.string().check(z.maxLength(128), z.regex(/^[A-Za-z0-9_-]+$/)),
+    instance: z.optional(id),
   }),
   z.strictObject({
     ...common,
@@ -242,6 +270,26 @@ export function parseConfig(input: unknown): Config {
       );
     if (conn.serviceAccountJsonEnv && conn.provider !== 'gsc')
       throw new PulseError('CONFIG', 'Service-account JSON authentication requires GSC.');
+    if (conn.selfHosted) {
+      if (!['plausible', 'umami'].includes(conn.provider))
+        throw new PulseError(
+          'CONFIG',
+          'Only Plausible and Umami connections may declare a self-hosted instance.',
+        );
+      if (!isInstanceHostname(conn.selfHosted.hostname) || !isInstancePort(conn.selfHosted.port))
+        throw new PulseError(
+          'CONFIG',
+          'Self-hosted instance needs an exact lower-case hostname and port 443 or an unprivileged port.',
+        );
+      if (
+        conn.selfHosted.addressEnv === conn.tokenEnv ||
+        conn.selfHosted.addressEnv === PRIVATE_ADMISSION_SETTING
+      )
+        throw new PulseError(
+          'CONFIG',
+          'The pinned address needs its own deployment setting, separate from the credential.',
+        );
+    }
     if (
       conn.serviceAccountJsonEnv &&
       (conn.clientIdEnv || conn.clientSecretEnv || conn.refreshTokenEnv)
@@ -256,6 +304,18 @@ export function parseConfig(input: unknown): Config {
     if (new Set(ids).size !== ids.length)
       throw new PulseError('CONFIG', 'Duplicate identifier in configuration.');
   }
+  // One label names one installation; one installation carries one label.
+  const instances = c.connections.flatMap((x) => (x.selfHosted ? [x.selfHosted] : []));
+  for (const [index, one] of instances.entries())
+    for (const other of instances.slice(index + 1)) {
+      const sameLabel = one.instance === other.instance,
+        sameOrigin = one.hostname === other.hostname && one.port === other.port;
+      if (sameLabel !== sameOrigin || (sameLabel && one.addressEnv !== other.addressEnv))
+        throw new PulseError(
+          'CONFIG',
+          'A self-hosted instance label must map to exactly one hostname, port and address setting.',
+        );
+    }
   for (const r of c.resources) {
     if (r.provider === 'npm' && r.connection)
       throw new PulseError('CONFIG', 'npm downloads must not receive private credentials.');
@@ -271,9 +331,25 @@ export function parseConfig(input: unknown): Config {
           'CONFIG',
           'Resource connection is absent or belongs to another provider.',
         );
+      // The site names its instance and the connection names its own. Both
+      // must agree, so repointing either one alone is a configuration error.
+      if (
+        (r.provider === 'plausible' || r.provider === 'umami') &&
+        r.instance !== conn.selfHosted?.instance
+      )
+        throw new PulseError(
+          'CONFIG',
+          'A website source and its connection must name the same self-hosted instance, or neither.',
+        );
     }
     if ('groups' in r && new Set(r.groups).size !== r.groups.length)
       throw new PulseError('CONFIG', 'Duplicate collection group.');
+    // A misspelt or uncollected group would otherwise be silently ignored.
+    if (Object.keys(r.refreshHoursByGroup ?? {}).some((name) => !groups(r).includes(name)))
+      throw new PulseError(
+        'CONFIG',
+        'Per-group refresh intervals must name groups this resource collects.',
+      );
   }
   const bindings: { project: string; b: Binding }[] = [];
   for (const p of c.projects) {
@@ -373,8 +449,26 @@ export function parseConfig(input: unknown): Config {
   }
   return c;
 }
+/**
+ * Durable identity of a self-hosted provider installation: its label and its
+ * canonical origin. Relabelling it or moving it to another hostname or port
+ * both yield another identity. The pinned address is a deployment detail
+ * that TLS already authenticates, so it stays outside.
+ */
+function instanceIdentity(
+  r: Extract<Resource, { provider: 'plausible' | 'umami' }>,
+  connections: readonly Connection[] | undefined,
+): string {
+  const declared = connections?.find((c) => c.id === r.connection)?.selfHosted;
+  if (!declared || declared.instance !== r.instance)
+    throw new PulseError(
+      'CONFIG',
+      'Self-hosted resource identity requires its declared instance connection.',
+    );
+  return `selfhosted:${declared.instance}@${declared.hostname}:${declared.port}`;
+}
 /** Identity does not include labels or auth. A stable provider ID survives a display rename. */
-export function resourceIdentity(r: Resource): string {
+export function resourceIdentity(r: Resource, connections?: readonly Connection[]): string {
   switch (r.provider) {
     case 'github':
       return `github:${r.repositoryId ?? r.repository.toLowerCase()}`;
@@ -384,10 +478,17 @@ export function resourceIdentity(r: Resource): string {
       return `cloudflare:${r.accountId}:${r.siteTag}`;
     case 'gsc':
       return `gsc:${r.siteUrl}:${r.searchType}`;
+    // The provider instance is identity, distinct from the measured site.
+    // Hosted identities are unchanged; a self-hosted one fails closed
+    // without its connection rather than passing for the hosted dataset.
     case 'plausible':
-      return `plausible:${r.siteId.toLowerCase()}:${r.timezone}`;
+      return r.instance
+        ? `plausible:${instanceIdentity(r, connections)}:${r.siteId.toLowerCase()}:${r.timezone}`
+        : `plausible:${r.siteId.toLowerCase()}:${r.timezone}`;
     case 'umami':
-      return `umami:${r.websiteId}`;
+      return r.instance
+        ? `umami:${instanceIdentity(r, connections)}:${r.websiteId}`
+        : `umami:${r.websiteId}`;
     case 'sense6':
       return `sense6:${r.accountId}:${r.databaseId}`;
   }

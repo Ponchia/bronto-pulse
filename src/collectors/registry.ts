@@ -18,6 +18,19 @@ export interface ConnectorManifest {
   readonly history: 'bounded-daily' | 'rolling-and-snapshots' | 'daily-aggregate';
   readonly defaultTimeZone: 'UTC' | 'America/Los_Angeles' | 'site';
   readonly providerOrigin: 'fixed' | 'binding';
+  /**
+   * Optional self-hosted variant (ADR 0004). It never widens `endpoints`:
+   * the destination is an operator-declared hostname with a pinned address,
+   * reachable only through the Node/OCI transport. `maturity` states what
+   * has been proven; no real installation has been exercised yet.
+   */
+  readonly selfHosted?: {
+    readonly variant: 'plausible-ce' | 'umami-selfhosted';
+    readonly read: string;
+    readonly supportedRuntimes: readonly 'node'[];
+    readonly destination: 'operator-hostname-with-pinned-address';
+    readonly maturity: 'synthetic-tested-account-unverified';
+  };
 }
 
 /**
@@ -121,6 +134,13 @@ export const CONNECTOR_CATALOG: Readonly<Record<Provider, ConnectorManifest>> = 
     history: 'bounded-daily',
     defaultTimeZone: 'site',
     providerOrigin: 'fixed',
+    selfHosted: {
+      variant: 'plausible-ce',
+      read: 'POST /api/v2/query',
+      supportedRuntimes: ['node'],
+      destination: 'operator-hostname-with-pinned-address',
+      maturity: 'synthetic-tested-account-unverified',
+    },
   },
   umami: {
     id: 'umami',
@@ -133,6 +153,13 @@ export const CONNECTOR_CATALOG: Readonly<Record<Provider, ConnectorManifest>> = 
     history: 'bounded-daily',
     defaultTimeZone: 'UTC',
     providerOrigin: 'fixed',
+    selfHosted: {
+      variant: 'umami-selfhosted',
+      read: 'GET /api/websites/{websiteId}/pageviews',
+      supportedRuntimes: ['node'],
+      destination: 'operator-hostname-with-pinned-address',
+      maturity: 'synthetic-tested-account-unverified',
+    },
   },
 });
 export function hasConnector(id: string): id is Provider {
@@ -145,6 +172,14 @@ export function connectorCatalog(): ConnectorManifest[] {
     supportedRuntimes: [...value.supportedRuntimes],
     groups: [...value.groups],
     metrics: [...value.metrics],
+    ...(value.selfHosted
+      ? {
+          selfHosted: {
+            ...value.selfHosted,
+            supportedRuntimes: [...value.selfHosted.supportedRuntimes],
+          },
+        }
+      : {}),
   }));
 }
 /** Every declared metric must have one compatible aggregation contract. */
