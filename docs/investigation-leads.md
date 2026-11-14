@@ -15,17 +15,17 @@ data.
 
 ## Shape of a lead
 
-| Field                         | Meaning                                                                                            |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| `id`                          | Reason, resource and a hash of the series. Stable across runs, periods and values.                 |
-| `reason`                      | One identifier from the catalogue below. Renaming one is a breaking change.                        |
-| `evidenceState`               | `unavailable`, `partial`, `limited` or `observed`: how much published evidence stands behind it.   |
-| `resourceId`                  | The configured resource. Empty when the lead concerns a declared website rather than one resource. |
-| `summary`                     | One fixed-template sentence built from IDs, dates, metric labels and counts.                       |
-| `evidence`, `omittedEvidence` | Up to eight references: resource, metric, `seriesKey`, the dates described and the facts restated. |
-| `limitations`                 | Up to four statements of what the evidence does not establish.                                     |
-| `nextChecks`                  | Up to three checks from a closed catalogue, each with a surface, a resource and dates.             |
-| `subject`                     | The resource's declared kind and identity. Present only when a project resource map is supplied.   |
+| Field                         | Meaning                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `id`                          | Reason, resource and a hash of the series. Stable across runs, periods and values.                             |
+| `reason`                      | One identifier from the catalogue below. Renaming one is a breaking change.                                    |
+| `evidenceState`               | `unavailable`, `partial`, `limited` or `observed`: how much published evidence stands behind it.               |
+| `resourceId`                  | The configured resource. Empty when the lead concerns a declared website rather than one resource.             |
+| `summary`                     | One fixed-template sentence built from IDs, dates, metric labels and counts.                                   |
+| `evidence`, `omittedEvidence` | Up to eight references: resource, metric, `seriesKey`, the dates described and the facts restated.             |
+| `limitations`                 | Up to four statements of what the evidence does not establish.                                                 |
+| `nextChecks`                  | Up to three checks from a closed catalogue, each with a surface, a resource and dates.                         |
+| `subject`                     | The resource's declared kind, identity and enabled flag. Present only when a project resource map is supplied. |
 
 `seriesKey` equals `MetricCard.key` in the full report when exactly one
 matching series exists, so a lead can be traced to its daily points. A fact
@@ -58,7 +58,8 @@ decide whether a later change can be read at all.
 | `change.period`                               | A supported non-zero change against the preceding equal-length period.                 |
 | `change.small_baseline`                       | The same, for a summed count whose baseline is below 10. No percentage is stated.      |
 | `change.snapshot_net`                         | A supported non-zero net change between two dated snapshots.                           |
-| `comparison.baseline_unavailable`             | A complete, observed series has a current value but no comparable baseline.            |
+| `comparison.baseline_unavailable`             | A complete, observed dated series has a current value but no comparable baseline.      |
+| `comparison.snapshot_baseline_unavailable`    | A snapshot has a current value but no supported net change.                            |
 
 The thresholds behind the review signals are defined in
 [adoption-quality review](adoption-quality.md). The website statuses come from
@@ -85,6 +86,14 @@ A check appears only when there is something to read. A lead suggests the
 recorded annotations only when at least one annotation for that resource falls
 inside the dates described, and it reports the count as context, not as a
 cause.
+
+A snapshot that was not taken cannot be collected afterwards. A lead about
+snapshots alone therefore never points to the collection plan, and it says so
+in its limitations.
+
+When the project resource map shows that collection for a resource is disabled,
+its coverage and comparison leads state that first and ask you to confirm the
+setting before any collection check.
 
 ## Bounds
 

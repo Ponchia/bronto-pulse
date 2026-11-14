@@ -139,7 +139,16 @@ export function projectGraph(config: Config, projectId: string): ProjectGraph {
     const resource = config.resources.find((candidate) => candidate.id === id);
     // parseConfig refuses unknown references; a hand-built object fails closed here.
     if (!resource) throw new PulseError('CONFIG', 'Project references an unknown resource.');
-    const bindings = project.resources.filter((binding) => binding.resource === id);
+    // Dated segments are listed by start date, whatever their order in configuration.
+    const bindings = project.resources
+      .filter((binding) => binding.resource === id)
+      .sort(
+        (a, b) =>
+          compare(a.effectiveFrom ?? '', b.effectiveFrom ?? '') ||
+          compare(a.effectiveTo ?? '9999-12-31', b.effectiveTo ?? '9999-12-31') ||
+          compare(a.scope?.hostname ?? '', b.scope?.hostname ?? '') ||
+          compare(a.scope?.pathPrefix ?? '', b.scope?.pathPrefix ?? ''),
+      );
     const sharedWithProjects = bindings.some((binding) => binding.allowShared)
       ? config.projects
           .filter(
