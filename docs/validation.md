@@ -38,6 +38,27 @@ files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
 requirements should be reported separately from code completion.
 
+## Bounded provider probes
+
+`pulse probe` checks access without opening the installation database or publishing
+observations. By default each dataset uses its most recent completed source-local
+day: Pacific for Search Console, the configured site timezone for Plausible, and
+UTC for the remaining sources. An explicit window requires both `--from` and
+`--to` and may span at most seven calendar days. `--days` and `--rotate` are
+rejected instead of silently ignored. Invalid windows fail before configuration
+loading in the CLI, and before credential/client creation in the library.
+
+Each result includes `requestedWindow` and `sourceTimezone`. On success,
+`testedWindow` records the collector's actual returned range, which can differ
+because GitHub repository/release totals are current snapshots, referral groups
+are rolling windows, or a provider clips history to its retention limit. On
+failure `testedWindow` is `null`: the attempted dates do not establish validated
+coverage. The row count and existing notes remain visible; an available response
+with zero returned rows does not establish zero traffic or complete history.
+
+Use `--resource`, `--group` and `--max-jobs 1` for an account-specific acceptance
+check. A successful probe neither enables a source nor schedules its collection.
+
 ## Portable OCI runtime smoke
 
 An explicit opt-in `npm run test:oci` builds the Dockerfile with rootless

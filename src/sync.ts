@@ -424,8 +424,17 @@ export function nextAction(resourceId: string, group: string, status: string, co
     command,
   };
 }
+export const MAX_PROBE_DAYS = 7;
+
 export async function probe(config: Config, secrets: Secrets, options: SyncOptions = {}) {
   const now = options.now ?? new Date();
+  if (!Number.isFinite(now.getTime())) throw new PulseError('CONFIG', 'Invalid probe clock.');
+  // Explicit probes must stay small and cannot silently become yesterday's check.
+  // Validate before selecting sources or constructing a credential-bearing client.
+  const requestedWindow =
+    options.window === undefined
+      ? undefined
+      : range(options.window.from, options.window.to, MAX_PROBE_DAYS);
   const selected = selectCollectionJobs(config, options);
   const maximum = options.maxJobs ?? 64;
   if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 1000)
@@ -435,20 +444,18 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
   for (const { resource, group } of selected.slice(0, maximum)) {
     const http = new HttpClient(options.fetcher, config.settings.requestTimeoutMs, options.sleep);
     const credentials = new Credentials(secrets, http, () => now);
+    const sourceTimezone =
+      resource.provider === 'gsc'
+        ? 'America/Los_Angeles'
+        : resource.provider === 'plausible'
+          ? resource.timezone
+          : 'UTC';
     const context = {
       config,
       http,
       credentials,
       now,
-      window: defaultRange(
-        now,
-        1,
-        resource.provider === 'gsc'
-          ? 'America/Los_Angeles'
-          : resource.provider === 'plausible'
-            ? resource.timezone
-            : 'UTC',
-      ),
+      window: requestedWindow ?? defaultRange(now, 1, sourceTimezone),
       bindings: options.bindings,
     };
     if (resource.provider === 'cloudflare' && !capabilities.has(resource.id)) {
@@ -464,6 +471,10 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
         resourceId: resource.id,
         status: 'available',
         testedGroup: group,
+        requestedWindow: context.window,
+        // Native snapshots, rolling groups or retention limits can change this.
+        testedWindow: data.range,
+        sourceTimezone,
         rows: data.observations.length,
         capabilities: capabilities.get(resource.id),
         notes: data.notes,
@@ -474,6 +485,9 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
         resourceId: resource.id,
         status: 'unavailable',
         testedGroup: group,
+        requestedWindow: context.window,
+        testedWindow: null,
+        sourceTimezone,
         ...safeError(error),
         requests: http.requests,
       });
