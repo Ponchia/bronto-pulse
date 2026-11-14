@@ -5,6 +5,7 @@ import { PulseError } from '../src/errors.js';
 
 const NPM = 'https://api.npmjs.org/downloads/range/2026-11-01:2026-11-02/example';
 const GITHUB = 'https://api.github.com/repos/example/project';
+// Beyond exact numeric range, but inside the bounded header parser's 64-character limit.
 
 async function failure(
   statuses: readonly number[],
@@ -44,7 +45,7 @@ async function failure(
 
 for (const status of [429, 500, 502, 503, 504]) {
   test(`HTTP ${status}: an unbounded provider wait defers without retry`, async () => {
-    const result = await failure([status], { 'retry-after': '1' + '0'.repeat(400) });
+    const result = await failure([status], { 'retry-after': '9'.repeat(32) });
     assert.equal(result.requests, 1);
     assert.deepEqual(result.sleeps, []);
     assert.equal(result.error.code, 'RATE_LIMIT');
@@ -85,7 +86,7 @@ for (const raw of ['0x20', '2e2', 'Infinity', '1.5']) {
   });
 }
 
-for (const delay of ['90', '2', '1' + '0'.repeat(400)]) {
+for (const delay of ['90', '2', '9'.repeat(32)]) {
   test(`HTTP 503 preserves final guidance (${delay.length > 20 ? 'huge' : delay})`, async () => {
     const result = await failure([500, 502, 503], { 'retry-after': delay }, NPM, true, 3);
     assert.equal(result.requests, 3);

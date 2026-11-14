@@ -163,12 +163,7 @@ export class HttpClient {
             'Provider denied this dataset. Verify account and least-privilege permissions.',
           );
         if (response.status === 429)
-          throw new PulseError(
-            'RATE_LIMIT',
-            'Provider rate limit exceeded.',
-            true,
-            stated,
-          );
+          throw new PulseError('RATE_LIMIT', 'Provider rate limit exceeded.', true, stated);
         if (response.status === 404)
           throw new PulseError('NOT_FOUND', 'Provider resource or dataset is unavailable.');
         throw new PulseError('UNAVAILABLE', `Provider returned HTTP ${response.status}.`);
