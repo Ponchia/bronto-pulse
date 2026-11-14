@@ -105,6 +105,16 @@ most 8 evidence references, 4 limitations and 3 next checks, and lists at most
 under **What to verify next**. A limitation shared by several leads is printed
 once, with the first lead that carries it.
 
+The dashboard shows five leads for a project and three per project in the
+briefing view, with a count of all leads. **Show all leads** opens the rest in
+place and moves keyboard focus to the first newly shown lead. Leads the report
+did not list are requested once, for the same project and the same dates as
+the report on screen, up to 100. Beyond 100 the dashboard states how many
+remain; it lists none of them and drops none from the count. If that request
+fails, the leads already shown stay, the panel says so and the control can be
+pressed again. Each lead keeps its own limitations under **Source evidence and
+limits**.
+
 ## Project resource map
 
 `projectGraph(config, projectId)` in `src/project-graph.ts` is a read-only
