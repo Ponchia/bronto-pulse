@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Expand investigation leads in the dashboard, preserving keyboard focus, evidence
+  limits and explicit truncation counts. Improve Back/Forward navigation, current
+  view and period accessibility, and readable proxy-error states.
+- Preserve Umami daily granularity through bounded date slices and check Plausible
+  executed-query semantics before publication. Refuse mismatched dates, scope,
+  metric ordering and page limits; retain prior observations when a slice fails.
+
 - Reject ignored, repeated and incomplete CLI/API selectors before private-state
   access; expose the same bounded `days` report window through the API. Authentication
   still precedes query diagnostics, and no new collection endpoint is introduced.

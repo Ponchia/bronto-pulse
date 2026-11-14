@@ -93,7 +93,10 @@ empty database. See [operations](operations.md) for an independent restore drill
 ## Browser behavior
 
 The dashboard retains selected dates, project and view in its URL. A reload
-reopens that view without storing tokens in browser storage. A failed refresh
+reopens that view without storing tokens in browser storage. Browser Back and
+Forward move between projects and views; refreshing or changing the dates updates
+the current entry. Additional investigation leads open in place with their source
+limits, keyboard focus and an explicit display cap. A failed refresh
 removes the old data from the export action; the UI never offers an old report as
 though the failed new request had succeeded. Collection plans in the browser are
 read-only previews. Actual collection remains an explicit CLI or scheduler action.
