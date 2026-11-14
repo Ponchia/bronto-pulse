@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { csvReport } from '../src/report-export.js';
-import { projectReport } from '../src/report.js';
+import { projectReport, type MetricCard } from '../src/report.js';
 import { database, fixture, publish, sample, now, window } from './helpers.js';
 import { parseConfig } from '../src/config.js';
 
@@ -44,8 +44,10 @@ for (const demo of [false, true]) {
       assert.deepEqual(head.slice(0, 3), ['project', 'resource', 'metric']);
       for (const row of records) {
         assert.equal(row.length, head.length);
-        const out = Object.fromEntries(head.map((key, i) => [key, row[i]]));
-        const card = report.cards.find((c) => c.key === out.series_key);
+        const out: Record<string, string | undefined> = Object.fromEntries(
+          head.map((key, i) => [key, row[i]]),
+        );
+        const card: MetricCard | undefined = report.cards.find((c) => c.key === out.series_key);
         assert.ok(card, 'exported row must resolve to its exact source series');
         assert.equal(out.provider, card.provider);
         assert.deepEqual(JSON.parse(out.dimensions!), card.dimensions);
