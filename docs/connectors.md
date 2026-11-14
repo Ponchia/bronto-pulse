@@ -110,3 +110,12 @@ matching account or instance.
 
 See [providers](providers.md), [metric contracts](metrics.md) and
 [product direction](product-strategy.md).
+
+## Provider contract checks
+
+Daily Umami requests are sliced at 31 UTC days to avoid upstream time-unit
+coarsening. The `sessions` field represents distinct visitor/session identifiers,
+not Umami visits; the existing non-additive metric key is retained. Plausible
+executed-query echoes and supplied result-count metadata are checked before
+publication. See [provider contract verification](provider-contract-verification.md)
+for pinned sources, calendar checks, compatibility limits and test evidence.
