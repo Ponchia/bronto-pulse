@@ -31,6 +31,7 @@ export const INVESTIGATION_REASONS = [
   'change.small_baseline',
   'change.snapshot_net',
   'comparison.baseline_unavailable',
+  'comparison.snapshot_baseline_unavailable',
 ] as const;
 export type InvestigationReason = (typeof INVESTIGATION_REASONS)[number];
 
@@ -48,6 +49,10 @@ const CHECKS = {
     'pulse_plan',
     (r, w) =>
       `Review the offline collection plan for ${r} over ${span(w)} to see whether those dates are still collectable within provider retention.`,
+  ],
+  'config.collection_enabled': [
+    'configuration',
+    (r) => `Confirm whether collection for ${r} is meant to stay disabled in configuration.`,
   ],
   'config.binding_dates': [
     'configuration',
@@ -126,6 +131,8 @@ export interface NextCheck {
 export interface InvestigationSubject {
   kind: ResourceKind;
   identity: GraphIdentity;
+  /** False when the operator disabled collection; retained history is still reported. */
+  enabled: boolean;
   sharedWithProjects: number;
   websites: string[];
 }
@@ -272,6 +279,9 @@ function lead(
   };
 }
 
+const SNAPSHOT_LIMITATION =
+  'A snapshot that was not taken cannot be collected afterwards. Only later snapshots can supply the missing evidence.';
+const snapshot = (card: MetricCard) => card.aggregation === 'latest';
 function coverageLeads(report: ProjectReport, out: InvestigationFinding[]): void {
   const window = report.window;
   for (const resourceId of [...new Set(report.cards.map((c) => c.resourceId))].sort(compare)) {
@@ -295,10 +305,14 @@ function coverageLeads(report: ProjectReport, out: InvestigationFinding[]): void
           ),
           [
             'An absent observation is not a measured zero. This report does not establish whether collection did not run, access was refused, the provider no longer retains the dates or a mapping boundary excludes them.',
+            ...(unavailable.some(snapshot) ? [SNAPSHOT_LIMITATION] : []),
           ],
           [
             check('health.latest_refresh', resourceId, null),
-            check('plan.window_coverage', resourceId, window),
+            // A collection plan covers dated series only; it cannot recover a snapshot.
+            ...(unavailable.every(snapshot)
+              ? []
+              : [check('plan.window_coverage', resourceId, window)]),
             check('config.binding_dates', resourceId, window),
           ],
         ),
@@ -804,33 +818,57 @@ function baselineLeads(report: ProjectReport, out: InvestigationFinding[]): void
         c.coverage.qualities.every((q) => q === 'observed') &&
         (c.aggregation === 'latest' || c.coverage.status === 'complete'),
     );
-    if (!cards.length) continue;
-    out.push(
-      lead(
-        'comparison.baseline_unavailable',
-        'limited',
-        resourceId,
-        '',
-        `${resourceId}: ${series(cards.length, 'has', 'have')} a current value for ${span(window)} but no comparable baseline. Read the period as a baseline, not a trend.`,
-        cards.map((c) =>
-          cardRef(c, covered(c, window), {
-            aggregation: c.aggregation,
-            currentValue: finite(c.value),
-            comparisonReason: clean(c.comparison.reason, 240),
-            mappingEffectiveFrom: c.scope.effectiveFrom ?? null,
-            mappingEffectiveTo: c.scope.effectiveTo ?? null,
-          }),
+    const refs = (selected: MetricCard[]) =>
+      selected.map((c) =>
+        cardRef(c, covered(c, window), {
+          aggregation: c.aggregation,
+          currentValue: finite(c.value),
+          comparisonReason: clean(c.comparison.reason, 240),
+          mappingEffectiveFrom: c.scope.effectiveFrom ?? null,
+          mappingEffectiveTo: c.scope.effectiveTo ?? null,
+        }),
+      );
+    const dated = cards.filter((c) => !snapshot(c));
+    if (dated.length)
+      out.push(
+        lead(
+          'comparison.baseline_unavailable',
+          'limited',
+          resourceId,
+          '',
+          `${resourceId}: ${series(dated.length, 'has', 'have')} a current value for ${span(window)} but no comparable baseline. Read the period as a baseline, not a trend.`,
+          refs(dated),
+          [
+            'No change is stated because the preceding equal-length period lacks complete, observed, same-scope data. A missing baseline is not a baseline of zero.',
+          ],
+          [
+            check('report.next_complete_window', resourceId, window),
+            check('plan.window_coverage', resourceId, prior),
+            check('config.binding_dates', resourceId, prior),
+          ],
         ),
-        [
-          'No change is stated because the preceding equal-length period lacks complete, observed, same-scope data or a sufficiently recent snapshot. A missing baseline is not a baseline of zero.',
-        ],
-        [
-          check('report.next_complete_window', resourceId, window),
-          check('plan.window_coverage', resourceId, prior),
-          check('config.binding_dates', resourceId, prior),
-        ],
-      ),
-    );
+      );
+    // A snapshot has no history to collect, so its checks differ from a dated series.
+    const snapshots = cards.filter(snapshot);
+    if (snapshots.length)
+      out.push(
+        lead(
+          'comparison.snapshot_baseline_unavailable',
+          'limited',
+          resourceId,
+          '',
+          `${resourceId}: ${series(snapshots.length, 'has', 'have')} a current snapshot for ${span(window)} but no supported net change. Read the value as a baseline, not a trend.`,
+          refs(snapshots),
+          [
+            'A net change needs a snapshot near the end of both periods under the same mapping. A missing baseline is not a baseline of zero.',
+            SNAPSHOT_LIMITATION,
+          ],
+          [
+            check('health.latest_refresh', resourceId, null),
+            check('report.next_complete_window', resourceId, window),
+          ],
+        ),
+      );
   }
 }
 
@@ -874,9 +912,22 @@ export function investigateProject(
       finding.subject = {
         kind: resource.kind,
         identity: resource.identity,
+        enabled: resource.enabled,
         sharedWithProjects: resource.sharedWithProjects.length,
         websites: resource.websites,
       };
+      // A deliberately disabled source explains missing evidence better than a
+      // collection check does, so it leads both lists. Both stay within their bounds.
+      if (!resource.enabled && ['coverage', 'comparison'].includes(finding.category)) {
+        finding.limitations = [
+          'Collection for this resource is disabled in configuration. Retained history is still reported, and no new dates arrive while it stays disabled.',
+          ...finding.limitations,
+        ].slice(0, INVESTIGATION_LIMITS.limitations);
+        finding.nextChecks = [
+          check('config.collection_enabled', resource.id, null),
+          ...finding.nextChecks,
+        ].slice(0, INVESTIGATION_LIMITS.nextChecks);
+      }
       if (
         resource.sharedWithProjects.length &&
         finding.limitations.length < INVESTIGATION_LIMITS.limitations

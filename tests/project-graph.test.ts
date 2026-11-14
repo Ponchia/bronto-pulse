@@ -246,6 +246,33 @@ test('relationships come only from declared bindings and website policies', () =
 test('the map is deterministic for reordered configuration', () => {
   assert.deepEqual(projectGraph(config(true), 'widget'), projectGraph(config(), 'widget'));
   assert.deepEqual(projectGraph(config(), 'widget'), projectGraph(config(), 'widget'));
+  // Dated segments of one resource are listed by start date in either order.
+  const segments = (flip: boolean) => {
+    const bindings = [
+      { resource: 'pkg', effectiveTo: '2026-09-30' },
+      { resource: 'pkg', effectiveFrom: '2026-10-01', effectiveTo: '2026-10-31' },
+      { resource: 'pkg', effectiveFrom: '2026-11-01' },
+    ];
+    return projectGraph(
+      parseConfig({
+        version: 1,
+        resources: [{ id: 'pkg', provider: 'npm', package: 'widget' }],
+        projects: [
+          { id: 'widget', label: 'Widget', resources: flip ? bindings.reverse() : bindings },
+        ],
+      }),
+      'widget',
+    );
+  };
+  assert.deepEqual(segments(true), segments(false));
+  assert.deepEqual(
+    segments(true).resources[0]!.bindings.map((b) => [b.effectiveFrom, b.effectiveTo]),
+    [
+      [null, '2026-09-30'],
+      ['2026-10-01', '2026-10-31'],
+      ['2026-11-01', null],
+    ],
+  );
 });
 
 test('the map discloses no credential, connection or account-side identifier', () => {

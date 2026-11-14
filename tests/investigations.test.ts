@@ -272,11 +272,145 @@ test('partial series keep their observed subtotal and a bounded list of missing 
   assert.match(lead.summary, /not full-period totals/);
   assert.ok(!reasons(result.findings).includes('change.period'));
   // The partial series is not also offered as a missing baseline.
-  const baseline = result.findings.find((f) => f.reason === 'comparison.baseline_unavailable')!;
+  assert.ok(!reasons(result.findings).includes('comparison.baseline_unavailable'));
+  const baseline = result.findings.find(
+    (f) => f.reason === 'comparison.snapshot_baseline_unavailable',
+  )!;
   assert.deepEqual(
     baseline.evidence.map((ref) => ref.metric),
     ['github.stars'],
   );
+});
+
+test('a snapshot without history is never sent to a collection plan', async () => {
+  const stars = card({
+    metric: 'github.stars',
+    label: 'Stars',
+    unit: 'stars',
+    aggregation: 'latest',
+    value: 12,
+  });
+  const result = investigateProject(
+    report([
+      stars,
+      card(),
+      unavailable({ metric: 'github.forks', aggregation: 'latest' }),
+      unavailable({ metric: 'github.open_issues', aggregation: 'latest' }),
+    ]),
+  );
+  assert.deepEqual(reasons(result.findings), [
+    'coverage.series_unavailable',
+    'comparison.baseline_unavailable',
+    'comparison.snapshot_baseline_unavailable',
+  ]);
+  const [missing, dated, snapshots] = result.findings;
+  // Only snapshots are missing: no plan check, and the limit says why.
+  assert.deepEqual(
+    missing!.nextChecks.map((step) => step.id),
+    ['health.latest_refresh', 'config.binding_dates'],
+  );
+  assert.match(missing!.limitations.join(' '), /cannot be collected afterwards/);
+  // A dated series keeps the plan for the preceding period.
+  assert.deepEqual(
+    dated!.evidence.map((ref) => ref.metric),
+    ['npm.downloads'],
+  );
+  assert.deepEqual(
+    dated!.nextChecks.map((step) => [step.id, step.window]),
+    [
+      ['report.next_complete_window', window],
+      ['plan.window_coverage', prior],
+      ['config.binding_dates', prior],
+    ],
+  );
+  assert.ok(!/snapshot/.test(dated!.limitations.join(' ')));
+  assert.deepEqual(
+    snapshots!.evidence.map((ref) => [ref.metric, ref.facts.currentValue]),
+    [['github.stars', 12]],
+  );
+  assert.deepEqual(
+    snapshots!.nextChecks.map((step) => step.id),
+    ['health.latest_refresh', 'report.next_complete_window'],
+  );
+  assert.match(snapshots!.summary, /current snapshot .* no supported net change/);
+  assert.match(snapshots!.limitations.join(' '), /cannot be collected afterwards/);
+  assert.match(snapshots!.limitations.join(' '), /not a baseline of zero/);
+  // A mix of missing dated and snapshot series keeps the plan and adds the snapshot limit.
+  const mixed = investigateProject(
+    report([unavailable(), unavailable({ metric: 'github.forks', aggregation: 'latest' })]),
+  ).findings[0]!;
+  assert.deepEqual(
+    mixed.nextChecks.map((step) => step.id),
+    ['health.latest_refresh', 'plan.window_coverage', 'config.binding_dates'],
+  );
+  assert.match(mixed.limitations.join(' '), /cannot be collected afterwards/);
+
+  // End to end: one stored snapshot and nothing earlier.
+  const config = fixture('github', { groups: ['repository'] }),
+    store = await database(config);
+  try {
+    await put(
+      store,
+      config,
+      'repository',
+      [{ ...entry('github.stars', '2026-10-13', 12), kind: 'snapshot' }],
+      '2026-10-13',
+      '2026-10-13',
+    );
+    const real = await projectReport(config, store, 'project', shortWindow, now);
+    for (const finding of real.investigation!.findings)
+      assert.ok(
+        !finding.nextChecks.some((step) => step.id === 'plan.window_coverage'),
+        finding.reason,
+      );
+    assert.ok(
+      real.investigation!.findings.some(
+        (f) => f.reason === 'comparison.snapshot_baseline_unavailable',
+      ),
+    );
+  } finally {
+    store.driver.close?.();
+  }
+});
+
+test('a disabled resource is named before any collection check', async () => {
+  const config = fixture('github', { groups: ['views'], enabled: false }),
+    store = await database(config);
+  try {
+    const real = await projectReport(config, store, 'project', shortWindow, now);
+    assert.match(real.warnings.join(' '), /collection is disabled/);
+    const lead = real.investigation!.findings[0]!;
+    assert.equal(lead.reason, 'coverage.series_unavailable');
+    assert.equal(lead.subject?.enabled, false);
+    assert.equal(lead.nextChecks[0]!.id, 'config.collection_enabled');
+    assert.equal(lead.nextChecks[0]!.surface, 'configuration');
+    assert.equal(lead.nextChecks.length, INVESTIGATION_LIMITS.nextChecks);
+    assert.match(lead.limitations[0]!, /disabled in configuration/);
+    assert.ok(lead.limitations.length <= INVESTIGATION_LIMITS.limitations);
+    // The briefing, which the CLI and API return, says the same.
+    const brief = projectBrief(real, 20, real.resources);
+    assert.deepEqual(brief.investigation, real.investigation);
+    assert.match(markdownBrief(brief), /Limit: Collection for this resource is disabled/);
+    // Without the map the lead is unchanged: nothing is guessed about configuration.
+    const plain = investigateProject(real).findings[0]!;
+    assert.equal(plain.subject, undefined);
+    assert.equal(plain.nextChecks[0]!.id, 'health.latest_refresh');
+    assert.equal(plain.id, lead.id);
+  } finally {
+    store.driver.close?.();
+  }
+  // An enabled resource gains neither the limit nor the check.
+  const enabled = fixture('github', { groups: ['views'] }),
+    other = await database(enabled);
+  try {
+    const real = await projectReport(enabled, other, 'project', shortWindow, now);
+    const lead = real.investigation!.findings[0]!;
+    assert.equal(lead.subject?.enabled, true);
+    assert.ok(!lead.nextChecks.some((step) => step.id === 'config.collection_enabled'));
+    assert.ok(!/disabled/.test(lead.limitations.join(' ')));
+  } finally {
+    other.driver.close?.();
+  }
 });
 
 test('a mapping boundary narrows the dates a lead describes', () => {
