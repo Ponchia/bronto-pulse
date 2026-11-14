@@ -1,65 +1,179 @@
-# Self-hosted analytics source connectors: planned support
+# Self-hosted analytics source connectors
 
-Lifecycle: proposal
+Lifecycle: current
 
-Pulse can already run itself on Node/SQLite or an OCI container. That
-does **not** mean the current provider adapters connect to arbitrary
-self-hosted Plausible or Umami instances. The initial adapters are hosted
-API integrations. The proposed security contract is in
+Pulse can read daily traffic from a Plausible Community Edition or Umami
+instance that the operator runs. It does so through a pinned HTTPS transport
+that exists only in the Node and OCI runtime. The security contract is
 [ADR 0004](adr/0004-self-hosted-connector-egress.md).
 
-## Provider matrix
+**Maturity: synthetic-tested, account-unverified.** The transport and both
+adapters pass adversarial tests against a local TLS fixture. No real
+Plausible Community Edition or Umami installation has been read yet. Treat
+the first run against your instance as a pilot and compare its numbers with
+the provider's own dashboard before relying on them.
 
-| Variant                     | Read endpoint                                         | Authentication                                                    | Status in Pulse                            |
-| --------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------ |
-| Plausible hosted            | POST /api/v2/query on plausible.io                    | Team-scoped Stats API key; hosted plan restrictions               | Initial hosted adapter, account-unverified |
-| Plausible Community Edition | POST /api/v2/query on operator instance               | Instance-specific API key; verify release version and permissions | Planned                                    |
-| Umami Cloud                 | GET /v1/websites/{id}/pageviews on api.umami.is       | Cloud API key                                                     | Initial hosted adapter, account-unverified |
-| Umami self-hosted           | GET /api/websites/{id}/pageviews on operator instance | Self-hosted API key recommended                                   | Planned                                    |
+## Provider variants
 
-Umami's API documentation distinguishes the /api prefix of self-hosted
-instances from the /v1 path of Umami Cloud. A simple hostname replacement
-would therefore be functionally incorrect even without SSRF risks.
+| Variant                     | Read                                                | Runtime           | Status in Pulse                      |
+| --------------------------- | --------------------------------------------------- | ----------------- | ------------------------------------ |
+| Plausible hosted            | `POST /api/v2/query` on `plausible.io`              | Node and Worker   | Hosted adapter, account-unverified   |
+| Plausible Community Edition | `POST /api/v2/query` on the operator instance       | Node and OCI only | Synthetic-tested, account-unverified |
+| Umami Cloud                 | `GET /v1/websites/{id}/pageviews` on `api.umami.is` | Node and Worker   | Hosted adapter, account-unverified   |
+| Umami self-hosted           | `GET /api/websites/{id}/pageviews` on the instance  | Node and OCI only | Synthetic-tested, account-unverified |
 
-Plausible Stats is a read-only query API even though it uses HTTP POST.
-Its Events API is for writing events, and administrative access is separate.
-Do not request new write permissions in an analytics collector.
+Self-hosted Umami serves its API under `/api`; Umami Cloud uses `/v1`. The
+variant, not the provider name, selects the path. Plausible's Stats API is a
+read-only query although it uses POST. Pulse sends the same query to a
+Community Edition instance as to the hosted service, with imported history
+excluded. `pulse connectors --json` lists each variant under `selfHosted`.
 
-## Proposed operator workflow
+## Configure an instance
 
-1. Independently deploy and verify Pulse plus the analytics provider. Record
-   the instance version, website identity and scope.
-2. Create a provider-instance-specific API key with the narrowest possible
-   permissions and store it in a private operator environment. Never include
-   keys in a public project config, URL, browser call or log.
-3. Admit an exact HTTPS destination. A future Node transport must pin the
-   validated address at connection time and preserve TLS certificate checks.
-   Private-network access requires an explicit deployment-level permit.
-4. Probe a single bounded read-only dataset and verify the provider's actual
-   timezone, retention, imports, permissions and rate limit behavior.
-5. Activate collection after probe success, with per-source quota and stable
-   instance identity; historical mapping switches use effective dates.
-6. Present new metrics alongside existing ones without summing provider
-   pageviews or inferring people from daily sessions/visitors.
+A self-hosted instance is declared on the connection, next to the credential
+it belongs to. The site names the same instance:
 
-The list above is a **future operator procedure**, not working CLI syntax.
-Do not rewrite Cloud-hosted URLs in config, and do not introduce an open
-HTTP proxy or reverse proxy receiving Pulse's hosted source token.
+```json
+{
+  "connections": [
+    {
+      "id": "umami-home",
+      "provider": "umami",
+      "tokenEnv": "UMAMI_HOME_API_KEY",
+      "selfHosted": {
+        "instance": "home",
+        "hostname": "analytics.example.org",
+        "port": 443,
+        "addressEnv": "UMAMI_HOME_ADDRESS"
+      }
+    }
+  ],
+  "resources": [
+    {
+      "id": "site-umami-home",
+      "provider": "umami",
+      "websiteId": "website-123",
+      "connection": "umami-home",
+      "instance": "home"
+    }
+  ]
+}
+```
 
-## What makes this worth doing
+| Field        | Meaning                                                                                |
+| ------------ | -------------------------------------------------------------------------------------- |
+| `instance`   | Your label for the installation. It is part of the stored identity.                    |
+| `hostname`   | Exact lower-case name on the instance's certificate. Used for TLS and `Host` only.     |
+| `port`       | 443 by default. Otherwise an unprivileged port from 1024 to 65535.                     |
+| `addressEnv` | Name of the deployment setting that holds the address. It differs from the credential. |
 
-Many small OSS teams already operate website analytics on a VPS or
-Kubernetes. Requiring a new SaaS contract just to use the Pulse evidence
-layer would undermine the product's niche.
+There is no URL, scheme, path or header field, and unknown fields are
+rejected. The hostname is never resolved. The address comes from the
+deployment environment, not from the project configuration:
 
-The correct solution is securely bounded interoperability: source-native
-counts, transparent metrics, independent credential custody and portable
-history. The first supported self-hosted connector will need real provider
-account evidence and the TLS, egress, error and migration tests described
-in [ADR 0004](adr/0004-self-hosted-connector-egress.md).
+```sh
+UMAMI_HOME_API_KEY=...            # a key created on this instance
+UMAMI_HOME_ADDRESS=192.168.10.20  # one canonical IPv4 literal
+PULSE_SELFHOSTED_PRIVATE_ADDRESSES=192.168.10.20
+```
+
+`PULSE_SELFHOSTED_PRIVATE_ADDRESSES` is a comma-separated list of exact
+RFC 1918 addresses the deployment may reach. A private pin that is not on the
+list is refused. The list takes no ranges, wildcards or spaces, and one
+invalid entry voids the whole list. A public address needs no admission.
+
+An instance whose certificate comes from a private authority needs that
+authority in Node's trust store. Start Pulse with `NODE_EXTRA_CA_CERTS`
+pointing at the authority certificate. Pulse has no setting that relaxes
+certificate verification, and it refuses self-hosted reads when
+`NODE_TLS_REJECT_UNAUTHORIZED=0` is set for the process.
+
+Then validate, probe and collect as for any source:
+
+```sh
+pulse validate --json
+pulse probe --resource site-umami-home --json
+pulse sync --resource site-umami-home
+```
+
+## What the transport enforces
+
+- **One destination.** Each read opens a fresh TLS connection to the pinned
+  literal address. No DNS lookup, proxy, connection pool or keep-alive is
+  involved. The connection is abandoned if the peer address differs.
+- **Certificate for the declared name.** The hostname is the TLS server name
+  and the name the certificate must verify for. A certificate for another
+  name, for the address only, from an unknown authority, expired or not yet
+  valid stops the read before the credential is sent.
+- **One fixed read per variant.** Method, path and query keys are built from
+  the validated site identifier and dates. No caller supplies a path, header
+  or body.
+- **No redirects.** Any 3xx response fails. The target is never contacted
+  and never stored.
+- **Bounds.** One total deadline (`settings.requestTimeoutMs`) covers
+  connection, handshake, headers and body. The body is limited to 2 MiB,
+  response headers to 16 KiB, and compressed responses are refused.
+- **One attempt.** A failed read is not repeated inside the job, so a
+  misbehaving instance receives the key once. The scheduler retries later.
+- **Fixed error messages.** Errors name a category and a setting. They never
+  contain the key, the address, the hostname or any part of a response.
+
+## What is always refused
+
+- Loopback, link-local and cloud metadata addresses, shared address space
+  (`100.64.0.0/10`), unspecified, multicast, reserved, documentation and
+  benchmarking ranges. No setting admits them.
+- IPv6 addresses, address lists, ranges and every non-canonical IPv4 spelling.
+- A hostname that is an address, a single label, `localhost`, a metadata
+  name, or `plausible.io` and `umami.is`, which keep their hosted adapters.
+- Password login. Use an API key created on the instance. A key for Umami
+  Cloud or the hosted Plausible service is not a key for your instance.
+
+## Identity and history
+
+The stored identity of a self-hosted source contains the instance label,
+hostname and port together with the site, for example
+`umami:selfhosted:home@analytics.example.org:443:website-123`. A hosted
+source keeps its existing identity.
+
+Pulse therefore refuses to reuse a resource ID when a source moves from the
+hosted service to an instance, between instances, to another hostname or
+port, or to another label. Keep the old resource with `enabled: false`, add
+a resource with a new ID, and give the project binding an effective date as
+described in [configuration](configuration.md). The pinned address is not
+part of the identity: the same installation can move to a new address.
+
+## Cloudflare Workers
+
+A Worker has no pinned transport. A self-hosted source fails there with a
+configuration error before its credential is read, ready-only collection
+skips it, and the health report names `node-pinned-transport` as missing. An
+ordinary Worker `fetch` cannot prove which address it reached, so it is not
+used as a substitute.
+
+## Known limits
+
+- No real provider installation has been read. Version differences in
+  Plausible Community Edition and Umami responses are untested. The Umami
+  instance version is not visible through this endpoint, so observations
+  carry the methodology `umami-selfhosted-utc-daily-v1`.
+- IPv4 only. IPv6, shared address space used by overlay networks, and
+  same-host loopback are not reachable.
+- The pinned address is static. If the instance moves, update the setting.
+- The transport runs inside the collector process. A separate connector
+  process with its own network scope remains a later option in ADR 0004.
+
+## Before calling a pilot successful
+
+1. Create an API key on the instance with read access to one site only.
+2. Probe one day and compare pageviews with the provider dashboard for the
+   same day and timezone.
+3. Check a day without traffic, a revoked key and an unreachable instance.
+   Each must fail or report no observation without replacing history.
+4. Record the instance version and the result outside the repository.
 
 Sources:
 [Umami API overview](https://docs.umami.is/docs/api),
 [Umami authentication](https://docs.umami.is/docs/api/authentication),
-[Plausible data access](https://plausible.io/docs/data-access),
+[Plausible Stats API](https://plausible.io/docs/stats-api),
 [OWASP SSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).

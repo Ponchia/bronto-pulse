@@ -53,6 +53,11 @@ It does not reconstruct per-project sessions from a shared host.
 See the [full synthetic example](../examples/full.json) for the five providers
 and [quickstart example](../examples/quickstart.json) for minimal setup.
 
+A Plausible or Umami connection may carry a `selfHosted` block that names an
+instance you run, and its resources then name the same `instance`. The block
+holds a hostname and the name of a deployment setting, never a URL or an
+address. See [self-hosted analytics source connectors](self-hosted-provider-adapters.md).
+
 ## Historical changes
 
 Once observations are published, resource identity cannot be silently replaced.

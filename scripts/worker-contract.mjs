@@ -19,6 +19,14 @@ assert.ok(
   !Object.keys(bundle.metafile.inputs).some((path) => path.includes('/zod/v4/classic/')),
   'The Worker must retain the qualified lightweight schema dependency graph.',
 );
+// ADR 0004: the pinned self-hosted transport is Node/OCI-only. A Worker bundle
+// that contained it, or any Node module, could not prove destination pinning.
+assert.ok(
+  !Object.keys(bundle.metafile.inputs).some(
+    (path) => path.includes('selfhost/node-transport') || path.startsWith('node:'),
+  ),
+  'The Worker bundle must not contain the pinned self-hosted transport.',
+);
 const offset = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 const historyCron = '7-59/15 * * * *';
 const config = {

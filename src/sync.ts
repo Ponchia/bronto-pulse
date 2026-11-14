@@ -1,5 +1,6 @@
 import { nativeSense6, type AggregateBindings } from './collectors/bindings.js';
-import { Credentials, credentialStatus, type Secrets } from './auth.js';
+import { Credentials, type Secrets } from './auth.js';
+import { connectionStatus } from './selfhost/client.js';
 import { collect, groups, probeCloudflare } from './collectors/index.js';
 import type { Config, Provider, Resource } from './config.js';
 import { PulseError, safeError } from './errors.js';
@@ -54,7 +55,7 @@ export function readyResource(
 ): Resource | undefined {
   if (resource.provider === 'npm' || nativeSense6(resource, bindings)) return resource;
   const connection = config.connections.find((c) => c.id === resource.connection);
-  if (credentialStatus(connection, secrets).available) return resource;
+  if (connectionStatus(connection, secrets, bindings.selfHosted).available) return resource;
   if (resource.provider === 'github' && ['repository', 'releases'].includes(group))
     return { ...resource, connection: undefined };
   return undefined;
@@ -242,14 +243,16 @@ export async function doctor(
         : resource.provider === 'npm' ||
             (resource.provider === 'github' &&
               ['repository', 'releases'].includes(group) &&
-              !credentialStatus(
+              !connectionStatus(
                 config.connections.find((c) => c.id === resource.connection),
                 secrets,
+                bindings.selfHosted,
               ).available)
           ? { available: true, method: 'public', missing: [] }
-          : credentialStatus(
+          : connectionStatus(
               config.connections.find((c) => c.id === resource.connection),
               secrets,
+              bindings.selfHosted,
             );
       const latestDate =
         observed.find((o) => o.resourceId === resource.id && o.group === group)?.date ?? null;
@@ -402,6 +405,7 @@ export async function probe(config: Config, secrets: Secrets, options: SyncOptio
             ? resource.timezone
             : 'UTC',
       ),
+      bindings: options.bindings,
     };
     if (resource.provider === 'cloudflare' && !capabilities.has(resource.id)) {
       try {

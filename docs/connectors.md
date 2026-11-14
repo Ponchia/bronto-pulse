@@ -97,16 +97,16 @@ Run offline `pulse validate` and `pulse plan`; then account-specific
 Do not share private configuration files, runtime secrets, source responses,
 or query text in public issues/CI.
 
-The proposed [self-hosted analytics connector](self-hosted-provider-adapters.md)
-and [egress threat model](adr/0004-self-hosted-connector-egress.md)
-cover the distinct provider API variants, TLS and transport acceptance
-needed before self-hosted origins are enabled.
+A Plausible Community Edition or Umami instance you run yourself is reached
+through a separate pinned transport in the Node and OCI runtime, never by
+changing a URL. See [self-hosted analytics source connectors](self-hosted-provider-adapters.md)
+for its configuration and [ADR 0004](adr/0004-self-hosted-connector-egress.md)
+for the threat model. A Worker refuses those sources.
 
-**Initial limit:** only the hosted Plausible and Umami Cloud fixed origins.
-Self-hosted API origins require a future security design and acceptance
-tests, not a casual substitution of a configurable URL. No live account
-probes were conducted while authoring these adapters. Their validation
-is synthetic until a consenting operator connects a matching account.
+**Maturity:** the hosted and the self-hosted variants are synthetic-tested.
+No live account or installation was probed while authoring these adapters.
+Their validation stays synthetic until a consenting operator connects a
+matching account or instance.
 
 See [providers](providers.md), [metric contracts](metrics.md) and
 [product direction](product-strategy.md).

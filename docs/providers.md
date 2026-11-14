@@ -155,8 +155,20 @@ References: [Umami Cloud API](https://docs.umami.is/docs/cloud/api-key),
 [Umami pageviews series](https://docs.umami.is/docs/api-reference/get-website-pageviews).
 
 Both adapters were synthetic-contract tested, not yet verified with a live
-third-party account. See [Connectors](connectors.md) for configuration and
-fixed-origin self-hosting limitations.
+third-party account. See [Connectors](connectors.md) for configuration.
+
+## Self-hosted Plausible Community Edition and Umami
+
+An instance the operator runs is a separate variant of each adapter. It needs
+an API key created on that instance, an exact hostname in the connection and
+a pinned address in the deployment environment. Pulse sends the same
+read-only daily query as the hosted variant, to `/api/v2/query` on Plausible
+Community Edition and `/api/websites/{id}/pageviews` on Umami. It performs no
+password login and reads no other endpoint.
+
+The variant runs only in the Node and OCI runtime and is synthetic-tested,
+not yet verified with a real installation. See
+[self-hosted analytics source connectors](self-hosted-provider-adapters.md).
 
 ## Sense6 optional counters
 

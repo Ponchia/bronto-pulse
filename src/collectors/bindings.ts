@@ -1,10 +1,16 @@
 import type { Resource } from '../config.js';
 import type { D1Like } from '../storage/driver.js';
 import { PulseError } from '../errors.js';
+import type { SelfHostedRuntime } from '../selfhost/policy.js';
 
 /** Installation-owned binding, never selected or constructed from a request. */
 export interface AggregateBindings {
   sense6?: { accountId: string; databaseId: string; database: D1Like };
+  /**
+   * Pinned transport for self-hosted analytics instances. Only the Node CLI
+   * supplies it. `workerBindings` never does, so a Worker refuses those reads.
+   */
+  selfHosted?: SelfHostedRuntime;
 }
 export interface AggregateEnvironment {
   PULSE_SENSE6_DB?: D1Like;
