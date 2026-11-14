@@ -167,6 +167,10 @@ try {
       ?.reason,
     'retry_due',
   );
+  // The portable export keeps that wait with its run, in one D1 snapshot.
+  const portable = await store.export();
+  assert.deepEqual(portable.retryGuidance, scheduled.retryGuidance);
+  assert.ok(portable.runs.some((r) => r.id === guided));
   console.log(
     'REAL D1 CONTRACT PASSED: schema, JSON1, fenced publication, correction, replacement, reporting, normalized URL inspection history, transactional snapshot, independent recovery, exact paged due-time heads and provider wait.',
   );

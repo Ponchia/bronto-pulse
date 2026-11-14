@@ -91,6 +91,11 @@ const RETRY_GUIDANCE_ROWS: Statement = {
   sql: 'SELECT key,value FROM metadata WHERE key>=? AND key<?',
   params: [RETRY_GUIDANCE_PREFIX, RETRY_GUIDANCE_PREFIX.slice(0, -1) + ';'],
 };
+/** The run a stored wait row names, as SQL over `metadata m`; NULL for an unreadable row. */
+const GUIDED_RUN_ID = "CASE WHEN json_valid(m.value) THEN json_extract(m.value,'$.run') END";
+const GUIDED_RUN_IDS = `SELECT ${GUIDED_RUN_ID} FROM metadata m WHERE m.key>=? AND m.key<?`;
+/** Newer runs of guided datasets read at export to decide which waits are still in force. */
+const SUPERSEDING_RUNS = 2000;
 /**
  * A wait is portable only with its own run: a rate-limited failure of that
  * dataset, and a representable instant after it.
@@ -738,18 +743,42 @@ export class Store {
       annotations = [],
       inspections = [],
       guidance = [],
+      newer = [],
     ] = await this.driver.readBatch([
       { sql: 'SELECT key FROM leases WHERE expires_at>unixepoch()*1000' },
       { sql: "SELECT value FROM metadata WHERE key='config'" },
       { sql: 'SELECT * FROM resources' },
       {
-        sql: "SELECT * FROM runs WHERE status!='running' AND (id IN (SELECT run_id FROM partitions) OR id IN (SELECT id FROM runs WHERE status!='running' ORDER BY started_at DESC LIMIT 1000)) ORDER BY rowid",
+        // The last branch keeps the failed run of every stored provider wait,
+        // however many newer runs other datasets have: one per dataset at most.
+        sql:
+          "SELECT * FROM runs WHERE status!='running' AND (id IN (SELECT run_id FROM partitions) OR id IN (SELECT id FROM runs WHERE status!='running' ORDER BY started_at DESC LIMIT 1000) OR id IN (" +
+          GUIDED_RUN_IDS +
+          ')) ORDER BY rowid',
+        params: RETRY_GUIDANCE_ROWS.params,
       },
       { sql: 'SELECT * FROM partitions' },
       { sql: RAW_OBS_SELECT + ' LIMIT ?', params: [maxRows + 1] },
       { sql: 'SELECT * FROM annotations' },
       { sql: 'SELECT * FROM url_inspections LIMIT ?', params: [maxRows + 1] },
       RETRY_GUIDANCE_ROWS,
+      {
+        // Runs of a guided dataset newer than its guided run, newest first,
+        // for the exact check below of whether the wait is still in force.
+        sql:
+          "SELECT r.resource_id,r.group_id,r.to_day,r.started_at,z.provider AS source_provider,json_extract(z.config_json,'$.timezone') AS source_zone " +
+          'FROM metadata m JOIN runs g ON g.id=' +
+          GUIDED_RUN_ID +
+          " JOIN runs r ON r.resource_id=g.resource_id AND r.group_id=g.group_id AND r.status!='running' AND (r.started_at>g.started_at OR (r.started_at=g.started_at AND r.rowid>g.rowid)) " +
+          'JOIN resources z ON z.id=r.resource_id ' +
+          "WHERE m.key>=? AND m.key<? AND m.key=?||g.resource_id||':'||g.group_id AND r.to_day>=date(substr(r.started_at,1,10),'-2 day') " +
+          'ORDER BY r.started_at DESC LIMIT ?',
+        params: [
+          ...(RETRY_GUIDANCE_ROWS.params ?? []),
+          RETRY_GUIDANCE_PREFIX,
+          SUPERSEDING_RUNS + 1,
+        ],
+      },
     ]);
     if (locks.length)
       throw new PulseError('CONFLICT', 'Wait for active collection jobs before exporting.');
@@ -760,12 +789,34 @@ export class Store {
         'ROW_LIMIT',
         'Export exceeds the bounded row limit. Use an encrypted database backup for a larger installation.',
       );
-    // A provider wait travels only with the failed run it belongs to, so a
-    // restore cannot retry before the provider's stated time.
-    const failed = new Map(runs.map((r) => [String(r.id), r]));
-    const retryGuidance = guidance
-      .flatMap(storedRetryGuidance)
-      .filter((hint) => guidedRun(hint, failed.get(hint.runId)));
+    // A wait leaves with its failed run, in the form the scheduler would honor,
+    // so a restore cannot retry before the provider's stated time. It is left
+    // behind only when this snapshot shows a newer regular run of its dataset,
+    // which already made it inert. If that list was cut short, it is kept.
+    const exported = new Map(runs.map((r) => [String(r.id), r]));
+    const superseded = new Set(
+      newer
+        .filter((r) =>
+          isRegularRun(sourceZone(String(r.source_provider), r.source_zone as string | null), {
+            to: String(r.to_day),
+            startedAt: String(r.started_at),
+          }),
+        )
+        .map((r) => `${String(r.resource_id)}:${String(r.group_id)}`),
+    );
+    const retryGuidance = guidance.flatMap(storedRetryGuidance).flatMap((hint) => {
+      const run = exported.get(hint.runId);
+      if (
+        superseded.has(hint.dataset) ||
+        run?.status !== 'failed' ||
+        run.error_code !== 'RATE_LIMIT' ||
+        hint.dataset !== `${String(run.resource_id)}:${String(run.group_id)}`
+      )
+        return [];
+      const until = Date.parse(hint.notBefore);
+      if (!(until > Date.parse(String(run.finished_at ?? run.started_at)))) return [];
+      return [{ ...hint, notBefore: new Date(Math.min(until, RETRY_HOLD_INSTANT)).toISOString() }];
+    });
     // Abandoned running jobs have no published partitions; omit them rather than
     // producing a backup our own importer cannot restore.
     return {
