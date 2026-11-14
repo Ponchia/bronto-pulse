@@ -55,7 +55,15 @@ async function api(path) {
     location.assign('/login');
     throw Error('Session expired');
   }
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    // A proxy error page is not JSON; a parser message would not help the reader.
+    throw Error(
+      `The server returned an unreadable answer (${response.status}). Nothing was changed.`,
+    );
+  }
   if (!response.ok) throw Error(data.error?.message ?? 'Request failed.');
   return data;
 }
@@ -65,10 +73,32 @@ function period(days) {
   $('to').value = end.toISOString().slice(0, 10);
   end.setUTCDate(end.getUTCDate() - days + 1);
   $('from').value = end.toISOString().slice(0, 10);
-  document
-    .querySelectorAll('[data-days]')
-    .forEach((b) => b.classList.toggle('selected', Number(b.dataset.days) === days));
 }
+/** Navigation and period controls describe the view that is loading, for sight and for assistive technology. */
+function syncControls() {
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    const active = b.dataset.view === state.view;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  const end = new Date();
+  end.setUTCDate(end.getUTCDate() - 1);
+  const to = end.toISOString().slice(0, 10);
+  document.querySelectorAll('[data-days]').forEach((b) => {
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - Number(b.dataset.days) + 1);
+    // A preset is selected only while the dates are exactly its dates.
+    const selected = $('to').value === to && $('from').value === start.toISOString().slice(0, 10);
+    b.classList.toggle('selected', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  });
+}
+// The report is too long to be a live region: a short status line is announced instead.
+const loadStatus = el('p', { id: 'load-status', class: 'visually-hidden', role: 'status' });
+content.removeAttribute('aria-live');
+content.before(loadStatus);
+document.querySelector('.segmented')?.setAttribute('role', 'group');
 function message(text) {
   $('message').textContent = text;
   $('message').hidden = !text;
@@ -498,7 +528,71 @@ function websitePolicyPanel(report) {
   return panel;
 }
 
-function investigationPanel(investigation, maximum = 5) {
+// The investigation API returns at most this many leads; the rest stay counted.
+const LEAD_VIEW_LIMIT = 100;
+let leadPanels = 0;
+function leadItem(finding, id, open) {
+  const item = el('article', {
+    class: 'investigation-item',
+    // Named by its own summary and focusable by script, so newly shown leads can be reached.
+    'aria-labelledby': id,
+    tabindex: '-1',
+  });
+  item.dataset.lead = finding.id ?? '';
+  item.append(
+    el('div', { class: 'investigation-meta' }, [
+      el('span', { class: 'badge', text: finding.category }),
+      el('span', { class: 'small muted', text: finding.evidenceState + ' evidence' }),
+    ]),
+    el('p', { class: 'investigation-summary', id, text: finding.summary }),
+  );
+  const checks = el('ol', { class: 'investigation-checks', 'aria-label': 'Next checks' });
+  for (const check of finding.nextChecks)
+    checks.append(
+      el('li', {}, [
+        el('span', { text: check.text }),
+        el('small', { class: 'muted', text: 'Where: ' + check.surface.replaceAll('_', ' ') }),
+      ]),
+    );
+  item.append(checks);
+  const evidence = el('details', { class: 'investigation-evidence' }, [
+    el('summary', { text: 'Source evidence and limits' }),
+  ]);
+  evidence.open = open;
+  for (const ref of finding.evidence) {
+    const facts = el('dl', { class: 'investigation-facts' });
+    for (const [name, value] of Object.entries(ref.facts)) {
+      facts.append(
+        el('dt', { text: name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ') }),
+        el('dd', { text: value === null ? 'Unavailable' : String(value) }),
+      );
+    }
+    evidence.append(
+      el('p', {
+        class: 'small',
+        text: `${ref.resourceId} · ${ref.metric ?? 'No unambiguous metric'} · ${ref.window.from} → ${ref.window.to}`,
+      }),
+      facts,
+    );
+  }
+  for (const limit of finding.limitations)
+    evidence.append(el('p', { class: 'small muted', text: limit }));
+  if (finding.omittedEvidence)
+    evidence.append(
+      el('p', {
+        class: 'small',
+        text: `${finding.omittedEvidence} additional evidence references are in the full report.`,
+      }),
+    );
+  item.append(evidence);
+  return item;
+}
+/**
+ * `source` names the project and the dates of the report these leads belong to.
+ * Leads the report did not list are requested for exactly that project and those
+ * dates, never for dates still being edited in the filter.
+ */
+function investigationPanel(investigation, source, maximum = 5) {
   if (!investigation || !Array.isArray(investigation.findings)) return null;
   const panel = el('section', {
     class: 'investigation-panel',
@@ -515,70 +609,98 @@ function investigationPanel(investigation, maximum = 5) {
     );
     return panel;
   }
+  const prefix = 'lead-' + ++leadPanels + '-';
+  let findings = investigation.findings;
+  let unlisted = investigation.omittedFindings ?? 0;
+  let shown = Math.min(maximum, findings.length);
+  let requested = false;
+  let busy = false;
   const list = el('div', { class: 'investigation-list' });
-  for (const finding of investigation.findings.slice(0, maximum)) {
-    const item = el('article', { class: 'investigation-item' });
-    item.append(
-      el('div', { class: 'investigation-meta' }, [
-        el('span', { class: 'badge', text: finding.category }),
-        el('span', { class: 'small muted', text: finding.evidenceState + ' evidence' }),
-      ]),
-      el('p', { class: 'investigation-summary', text: finding.summary }),
+  const count = el('p', { class: 'small muted investigation-count', role: 'status' });
+  const problem = el('p', { class: 'notice investigation-problem', role: 'alert' });
+  const more = el('button', { class: 'button secondary investigation-more', type: 'button' });
+  const canLoad = () => unlisted > 0 && !requested && Boolean(source);
+  const render = () => {
+    const open = new Set(
+      [...list.querySelectorAll('details[open]')].map(
+        (details) => details.closest('.investigation-item').dataset.lead,
+      ),
     );
-    const checks = el('ol', { class: 'investigation-checks', 'aria-label': 'Next checks' });
-    for (const check of finding.nextChecks)
-      checks.append(
-        el('li', {}, [
-          el('span', { text: check.text }),
-          el('small', { class: 'muted', text: 'Where: ' + check.surface.replaceAll('_', ' ') }),
-        ]),
-      );
-    item.append(checks);
-    const evidence = el('details', { class: 'investigation-evidence' }, [
-      el('summary', { text: 'Source evidence and limits' }),
-    ]);
-    for (const ref of finding.evidence) {
-      const facts = el('dl', { class: 'investigation-facts' });
-      for (const [name, value] of Object.entries(ref.facts)) {
-        facts.append(
-          el('dt', { text: name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ') }),
-          el('dd', { text: value === null ? 'Unavailable' : String(value) }),
+    list.replaceChildren(
+      ...findings
+        .slice(0, shown)
+        .map((finding, index) => leadItem(finding, prefix + index, open.has(finding.id))),
+    );
+    const total = findings.length + unlisted;
+    const reachable = canLoad() ? Math.min(total, LEAD_VIEW_LIMIT) : findings.length;
+    more.hidden = shown >= reachable;
+    more.textContent =
+      reachable < total ? `Show ${reachable} of ${total} leads` : `Show all ${total} leads`;
+    count.textContent =
+      shown >= total
+        ? `Showing all ${total} leads.`
+        : more.hidden
+          ? // Nothing more can be listed here: say how many remain rather than hide them.
+            `Showing ${shown} of ${total} leads. This view lists at most ${LEAD_VIEW_LIMIT}; the remaining ${total - shown} are counted, not listed.`
+          : `Showing ${shown} of ${total} leads.`;
+  };
+  more.addEventListener('click', async () => {
+    if (busy) return;
+    const before = shown;
+    problem.remove();
+    if (canLoad()) {
+      const generation = state.loading;
+      const stale = () => generation !== state.loading || !panel.isConnected;
+      busy = true;
+      // aria-disabled keeps keyboard focus on the control while it waits.
+      more.setAttribute('aria-disabled', 'true');
+      more.textContent = 'Loading leads…';
+      list.setAttribute('aria-busy', 'true');
+      try {
+        const data = await api(
+          '/projects/' +
+            encodeURIComponent(source.projectId) +
+            '/investigation?' +
+            new URLSearchParams({
+              from: source.window.from,
+              to: source.window.to,
+              limit: String(LEAD_VIEW_LIMIT),
+            }),
         );
+        if (stale()) return;
+        const next = data.investigation;
+        // An answer for another project or other dates is not these leads.
+        if (
+          !Array.isArray(next?.findings) ||
+          data.project?.id !== source.projectId ||
+          data.window?.from !== source.window.from ||
+          data.window?.to !== source.window.to
+        )
+          throw Error('Unexpected investigation answer.');
+        findings = next.findings;
+        unlisted = next.omittedFindings ?? 0;
+        requested = true;
+      } catch {
+        if (stale()) return;
+        problem.textContent = `The remaining leads could not be loaded. The ${shown} leads shown are unchanged.`;
+        more.before(problem);
+        // Restore the control's label; the leads already shown stay as they are.
+        render();
+        return;
+      } finally {
+        busy = false;
+        more.removeAttribute('aria-disabled');
+        list.removeAttribute('aria-busy');
       }
-      evidence.append(
-        el('p', {
-          class: 'small',
-          text: `${ref.resourceId} · ${ref.metric ?? 'No unambiguous metric'} · ${ref.window.from} → ${ref.window.to}`,
-        }),
-        facts,
-      );
     }
-    for (const limit of finding.limitations)
-      evidence.append(el('p', { class: 'small muted', text: limit }));
-    if (finding.omittedEvidence)
-      evidence.append(
-        el('p', {
-          class: 'small',
-          text: `${finding.omittedEvidence} additional evidence references are in the full report.`,
-        }),
-      );
-    item.append(evidence);
-    list.append(item);
-  }
-  panel.append(list);
-  const omitted =
-    (investigation.omittedFindings ?? 0) + Math.max(0, investigation.findings.length - maximum);
-  if (omitted)
-    panel.append(
-      el('p', {
-        class: 'small muted',
-        text:
-          `${omitted} further leads are omitted from this view. ` +
-          ((investigation.omittedFindings ?? 0) > 0
-            ? 'The private investigation API supports limit=1..100; the full report retains the source metrics.'
-            : 'Inspect the private JSON report for the remaining leads and source metrics.'),
-      }),
-    );
+    shown = findings.length;
+    render();
+    // Continue reading at the first lead that was not shown before.
+    list.children[Math.min(before, shown - 1)]?.focus();
+  });
+  render();
+  const hidden = findings.length + unlisted > shown;
+  panel.append(...(hidden ? [count] : []), list, ...(hidden ? [more] : []));
   panel.append(el('p', { class: 'small muted', text: investigation.limitation }));
   return panel;
 }
@@ -663,7 +785,10 @@ function renderProject(report) {
       signals.append(el('li', { text: signal.message }));
     if (report.evidence.signals.length) content.append(signals);
   }
-  const investigation = investigationPanel(report.investigation);
+  const investigation = investigationPanel(report.investigation, {
+    projectId: report.project.id,
+    window: report.window,
+  });
   if (investigation) content.append(investigation);
   const resourceMap = resourceGraphPanel(report.resources);
   if (resourceMap) content.append(resourceMap);
@@ -820,7 +945,11 @@ function renderBrief(data) {
     const button = el('button', { class: 'text-button', text: brief.project.label });
     button.addEventListener('click', () => selectProject(brief.project.id));
     panel.append(el('h2', {}, [button]));
-    const investigation = investigationPanel(brief.investigation, 3);
+    const investigation = investigationPanel(
+      brief.investigation,
+      { projectId: brief.project.id, window: brief.window },
+      3,
+    );
     if (investigation) panel.append(investigation);
     const list = el('ul', { class: 'findings' });
     for (const finding of brief.findings)
@@ -878,23 +1007,52 @@ function renderPlan(data) {
   for (const note of data.notices) notes.append(el('li', { text: note }));
   content.append(notes);
 }
-function saveView() {
+function saveView(push = false) {
   const params = new URLSearchParams({
     view: state.view,
     from: $('from').value,
     to: $('to').value,
   });
   if (state.project) params.set('project', state.project);
-  history.replaceState(null, '', '/?' + params);
+  const url = '/?' + params;
+  // Choosing a view or project adds a history entry; refreshing or changing dates rewrites it.
+  if (push && url !== location.pathname + location.search) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
 }
-async function load() {
+/** Read a view from the address: on first load and when the reader goes back or forward. */
+function restoreView(params) {
+  const view = params.get('view');
+  state.view = ['portfolio', 'brief', 'plan', 'health', 'definitions'].includes(view)
+    ? view
+    : 'portfolio';
+  state.project =
+    state.view === 'portfolio' && /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('project') ?? '')
+      ? params.get('project')
+      : null;
+  for (const id of ['from', 'to'])
+    if (/^\d{4}-\d{2}-\d{2}$/.test(params.get(id) ?? '')) $(id).value = params.get(id);
+}
+async function load({ push = false } = {}) {
   const generation = ++state.loading;
-  $('refresh').disabled = true;
+  // Replacing the report removes the control the reader just used; remember that.
+  const focusLost = content.contains(document.activeElement);
+  const settle = (text) => {
+    loadStatus.textContent = text;
+    if (!focusLost) return;
+    const title = $('page-title');
+    title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+  };
+  // aria-disabled, not disabled: a disabled button drops the keyboard focus it holds.
+  $('refresh').setAttribute('aria-disabled', 'true');
   $('download').disabled = true;
   state.data = null;
   $('error').hidden = true;
   message('');
-  saveView();
+  saveView(push);
+  syncControls();
+  loadStatus.textContent = 'Loading…';
+  content.setAttribute('aria-busy', 'true');
   content.replaceChildren(el('div', { class: 'loading', text: 'Reading source-aware history…' }));
   try {
     const data =
@@ -972,6 +1130,7 @@ async function load() {
       ? 'Read ' +
         new Date(data.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : 'Definitions v1';
+    settle($('page-title').textContent + ' loaded.');
   } catch (error) {
     if (generation !== state.loading) return;
     content.replaceChildren(
@@ -979,9 +1138,11 @@ async function load() {
     );
     $('error').textContent = error.message;
     $('error').hidden = false;
+    settle('The report could not be loaded.');
   } finally {
     if (generation === state.loading) {
-      $('refresh').disabled = false;
+      content.removeAttribute('aria-busy');
+      $('refresh').removeAttribute('aria-disabled');
       $('download').disabled = !state.data;
     }
   }
@@ -989,16 +1150,12 @@ async function load() {
 function selectView(view) {
   state.view = view;
   state.project = null;
-  document.querySelectorAll('[data-view]').forEach((b) => {
-    b.classList.toggle('active', b.dataset.view === view);
-    b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false');
-  });
-  void load();
+  void load({ push: true });
 }
 function selectProject(id) {
   state.view = 'portfolio';
   state.project = id;
-  void load();
+  void load({ push: true });
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 document
@@ -1011,7 +1168,9 @@ document.querySelectorAll('[data-days]').forEach((b) =>
   }),
 );
 $('apply').addEventListener('click', () => void load());
-$('refresh').addEventListener('click', () => void load());
+$('refresh').addEventListener('click', () => {
+  if ($('refresh').getAttribute('aria-disabled') !== 'true') void load();
+});
 $('download').addEventListener('click', () => {
   if (!state.data) return;
   const blob = new Blob([JSON.stringify(state.data, null, 2)], { type: 'application/json' }),
@@ -1021,14 +1180,9 @@ $('download').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 period(30);
-const initial = new URLSearchParams(location.search);
-if (['portfolio', 'brief', 'plan', 'health', 'definitions'].includes(initial.get('view')))
-  state.view = initial.get('view');
-if (state.view === 'portfolio' && /^[a-z][a-z0-9_-]{0,63}$/.test(initial.get('project') ?? ''))
-  state.project = initial.get('project');
-for (const id of ['from', 'to'])
-  if (/^\d{4}-\d{2}-\d{2}$/.test(initial.get(id) ?? '')) $(id).value = initial.get(id);
-document
-  .querySelectorAll('[data-view]')
-  .forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
+restoreView(new URLSearchParams(location.search));
+window.addEventListener('popstate', () => {
+  restoreView(new URLSearchParams(location.search));
+  void load();
+});
 void load();
