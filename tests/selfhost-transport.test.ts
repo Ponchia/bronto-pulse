@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createServer, type AddressInfo } from 'node:net';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { collect } from '../src/collectors/index.js';
 import { PulseError } from '../src/errors.js';
@@ -31,6 +35,7 @@ import {
  * transport connected to the pinned literal without any name resolution.
  */
 const LOOPBACK = '127.0.0.1';
+const run = promisify(execFile);
 const trusted = authority();
 const leaf = trusted.issue({ names: [HOST] });
 /** `null` selects Node's default roots, exactly as the CLI capability does. */
@@ -299,15 +304,19 @@ test('TLS: a certificate that does not verify for the declared hostname stops be
 });
 
 test('TLS: a process-wide verification bypass refuses the read before any connection', async () => {
-  const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  // The bypass is given to a child process only; this process never carries it.
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const bypass = { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' };
   await withInstance(selfSigned('other.pulse-fixture.example'), ok, async (server) => {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    try {
-      await assert.rejects(call(server.port), failure('CONFIG', /verification is disabled/));
-    } finally {
-      if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
-    }
+    const { stdout } = await run(
+      process.execPath,
+      ['--import', 'tsx', 'tests/selfhost-bypass-child.ts', String(server.port)],
+      { cwd: root, env: bypass, timeout: 120000 },
+    );
+    const outcome = JSON.parse(stdout) as { code: string; message: string };
+    messages.push(outcome.message);
+    assert.equal(outcome.code, 'CONFIG', outcome.message);
+    assert.match(outcome.message, /verification is disabled/);
     assert.equal(server.connections, 0);
   });
 });

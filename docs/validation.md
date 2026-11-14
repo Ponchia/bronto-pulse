@@ -65,7 +65,8 @@ hostname is the TLS server name and `Host`, and that a wrong, untrusted,
 expired or address-only certificate stops the read before the credential is
 sent. They also cover refused redirects, status classes, body, header and
 time bounds, forged destinations, and a Worker job failing without a
-credential read.
+credential read. The refusal under a process-wide verification bypass runs
+in a child process, so the test process itself never disables verification.
 
 This is contract-tested evidence only. No real Plausible Community Edition
 or Umami installation, public certificate authority, DNS, proxy or firewall
