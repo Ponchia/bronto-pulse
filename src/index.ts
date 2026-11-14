@@ -14,6 +14,30 @@ export { projectBrief, markdownBrief } from './brief.js';
 export { csvReport } from './report-export.js';
 export { planCollection, markdownPlan } from './plan.js';
 export type { Brief, Finding } from './brief.js';
+export {
+  investigateProject,
+  INVESTIGATION_REASONS,
+  INVESTIGATION_LIMITS,
+} from './investigations.js';
+export type {
+  ProjectInvestigation,
+  InvestigationFinding,
+  InvestigationReason,
+  InvestigationSubject,
+  EvidenceRef,
+  NextCheck,
+  NextCheckId,
+} from './investigations.js';
+export { projectGraph } from './project-graph.js';
+export type {
+  ProjectGraph,
+  GraphResource,
+  GraphWebsite,
+  GraphRelationship,
+  GraphIdentity,
+  GraphBinding,
+  ResourceKind,
+} from './project-graph.js';
 export type { CollectionPlan, PlannedJob } from './plan.js';
 export { inspectUrls, inspectionUrl } from './inspection.js';
 export type { Inspection } from './inspection.js';
