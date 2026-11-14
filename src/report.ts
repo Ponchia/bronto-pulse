@@ -549,12 +549,19 @@ export function markdownReport(report: ProjectReport): string {
         .replace(/[<>]/g, '')
         .replace(/([\\`*_{}\[\]#|])/g, '\\$1');
     lines.push('', '## What to verify next', '', prose(report.investigation.limitation));
+    const printedLimits = new Set<string>();
     for (const finding of report.investigation.findings.slice(0, 5)) {
       lines.push('', '- ' + prose(finding.summary));
-      for (const check of finding.nextChecks) lines.push('  Next check: ' + prose(check.text));
+      for (const limit of finding.limitations) {
+        if (!printedLimits.has(limit)) {
+          printedLimits.add(limit);
+          lines.push('  - Limit: ' + prose(limit));
+        }
+      }
+      for (const check of finding.nextChecks) lines.push('  - Next check: ' + prose(check.text));
       for (const ref of finding.evidence)
         lines.push(
-          '  Evidence: ' +
+          '  - Evidence: ' +
             prose(
               ref.resourceId +
                 ' / ' +
@@ -571,7 +578,7 @@ export function markdownReport(report: ProjectReport): string {
     if (omitted)
       lines.push(
         '',
-        `${omitted} further leads omitted; inspect the private JSON report and source metrics.`,
+        `${omitted} further leads omitted; the private investigation API accepts limit=1..100. The full report retains source metrics.`,
       );
   }
   if (report.websites?.length) {

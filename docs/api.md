@@ -80,7 +80,8 @@ The authenticated project report now includes additive `investigation` and
 
 - `GET /api/v1/projects/<id>/investigation?from=2026-10-12&to=2026-10-13`
   returns the project, exact requested window, generation time and deterministic
-  investigation leads. Each lead has source references, interpretation limits
+  investigation leads. Optional `limit=1..100` controls the lead count (default 20);
+  `omittedFindings` records the remainder. Each lead has source references, interpretation limits
   and bounded next checks. A next check is an instruction to inspect evidence,
   never an automatically executed collector or external request.
 - `GET /api/v1/projects/<id>/graph` returns the explicit configuration projection:
@@ -95,3 +96,7 @@ CLI equivalent: `pulse graph PROJECT --config /private/pulse.config.json --json`
 That command reads only the configuration and opens no database or network.
 See the [pilot acceptance guide](pilot-acceptance.md) for live qualification;
 synthetic fixture success is not account access or a completed pilot.
+
+The current access boundary is installation-owner access, not per-project access.
+The graph can therefore name other projects explicitly sharing a resource. A future
+per-project authorization model must filter those relationships before returning them.

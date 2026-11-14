@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { handle, type ApiContext } from '../src/api/handler.js';
-import { projectReport } from '../src/report.js';
+import { projectReport, markdownReport } from '../src/report.js';
+import { parseConfig } from '../src/config.js';
 import { projectBrief } from '../src/brief.js';
 import { projectGraph } from '../src/project-graph.js';
 import { fixture, database, now, window } from './helpers.js';
@@ -118,5 +119,85 @@ test('pulse graph is an offline configuration projection and does not create a d
     assert.throws(() => run('graph', 'project', '--config', configPath, '--port', '1'));
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('bounded investigation API exposes more than the default 20 leads without accepting unbounded limits', async () => {
+  const resources = Array.from({ length: 25 }, (_, i) => ({
+    id: 'package_' + i,
+    provider: 'npm',
+    package: 'example-package-' + i,
+  }));
+  const config = parseConfig({
+    version: 1,
+    resources,
+    projects: [
+      { id: 'many', label: 'Many sources', resources: resources.map((r) => ({ resource: r.id })) },
+    ],
+  });
+  const store = await database(config);
+  const context: ApiContext = {
+    config,
+    store,
+    secrets: {},
+    apiToken: accessToken,
+    now: () => now,
+    asset: async () => new Response('unused'),
+  };
+  const request = (limit: string) =>
+    new Request(
+      'https://pulse.example/api/v1/projects/many/investigation?from=' +
+        window.from +
+        '&to=' +
+        window.to +
+        limit,
+      { headers: { Authorization: 'Bearer ' + accessToken } },
+    );
+  try {
+    const initial = await (await handle(request(''), context)).json();
+    assert.equal(initial.investigation.findings.length, 20);
+    assert.equal(initial.investigation.omittedFindings, 5);
+    const expanded = await (await handle(request('&limit=100'), context)).json();
+    assert.equal(expanded.investigation.findings.length, 25);
+    assert.equal(expanded.investigation.omittedFindings, 0);
+    const one = await (await handle(request('&limit=1'), context)).json();
+    assert.equal(one.investigation.findings.length, 1);
+    assert.equal(one.investigation.omittedFindings, 24);
+    for (const invalid of ['', '0', '-1', '101', '1.5', '1e2', 'Infinity', '1&limit=2'])
+      assert.equal((await handle(request('&limit=' + invalid), context)).status, 400, invalid);
+  } finally {
+    store.driver.close?.();
+  }
+});
+
+test('Markdown reports retain per-lead interpretation limits and structured next checks', async () => {
+  const config = fixture();
+  const store = await database(config);
+  try {
+    const report = await projectReport(config, store, 'project', window, now);
+    const finding = report.investigation!.findings[0]!;
+    report.investigation!.findings = [
+      {
+        ...finding,
+        limitations: [
+          'A difference does not estimate missing traffic.',
+          '<script>unsafe()</script>',
+        ],
+      },
+      {
+        ...finding,
+        id: finding.id + ':second',
+        limitations: ['A difference does not estimate missing traffic.'],
+      },
+    ];
+    const markdown = markdownReport(report);
+    assert.match(markdown, /\n  - Next check: /);
+    assert.match(markdown, /\n  - Evidence: /);
+    assert.match(markdown, /\n  - Limit: A difference does not estimate missing traffic\./);
+    assert.equal(markdown.split('A difference does not estimate missing traffic.').length - 1, 1);
+    assert.doesNotMatch(markdown, /<script>/);
+    assert.doesNotMatch(markdown, /\n  Next check: /);
+  } finally {
+    store.driver.close?.();
   }
 });

@@ -541,7 +541,7 @@ function investigationPanel(investigation, maximum = 5) {
       const facts = el('dl', { class: 'investigation-facts' });
       for (const [name, value] of Object.entries(ref.facts)) {
         facts.append(
-          el('dt', { text: name }),
+          el('dt', { text: name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ') }),
           el('dd', { text: value === null ? 'Unavailable' : String(value) }),
         );
       }
@@ -572,7 +572,11 @@ function investigationPanel(investigation, maximum = 5) {
     panel.append(
       el('p', {
         class: 'small muted',
-        text: `${omitted} further leads are omitted from this view; inspect the private JSON report and its source metrics.`,
+        text:
+          `${omitted} further leads are omitted from this view. ` +
+          ((investigation.omittedFindings ?? 0) > 0
+            ? 'The private investigation API supports limit=1..100; the full report retains the source metrics.'
+            : 'Inspect the private JSON report for the remaining leads and source metrics.'),
       }),
     );
   panel.append(el('p', { class: 'small muted', text: investigation.limitation }));

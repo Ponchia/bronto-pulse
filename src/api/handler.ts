@@ -1,3 +1,4 @@
+import { investigateProject } from '../investigations.js';
 import { projectGraph } from '../project-graph.js';
 import type { AggregateBindings } from '../collectors/bindings.js';
 import type { Config } from '../config.js';
@@ -320,6 +321,14 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           );
         return secure(json(projectGraph(data.config, evidenceView[1]!)));
       }
+      const rawLimit = url.searchParams.get('limit');
+      if (
+        url.searchParams.getAll('limit').length > 1 ||
+        (rawLimit !== null &&
+          (!/^\d{1,3}$/.test(rawLimit) || Number(rawLimit) < 1 || Number(rawLimit) > 100))
+      )
+        throw new PulseError('CONFIG', 'Investigation limit must be an integer from 1 to 100.');
+      const maximum = rawLimit === null ? 20 : Number(rawLimit);
       const report = await projectReport(
         data.config,
         data.store,
@@ -334,7 +343,7 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           window: report.window,
           generatedAt: report.generatedAt,
           demo: report.demo,
-          investigation: report.investigation,
+          investigation: investigateProject(report, maximum, report.resources),
         }),
       );
     }
