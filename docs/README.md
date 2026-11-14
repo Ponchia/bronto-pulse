@@ -43,3 +43,5 @@ belongs outside Git. Historical research is not a current operational contract.
 - [Website identity and authority](website-authority.md) — explicit site relationships, effective-dated pageview preferences and no cross-source totals.
 
 - [Private pilot acceptance](pilot-acceptance.md) — consented real-source checks, comparable windows, independent-host recovery and operator usefulness; separate from fixture success.
+
+- [Upstream provider acceptance](upstream-provider-acceptance.md) — opt-in official Umami runtime with a disposable synthetic installation; separate from real-account validation.

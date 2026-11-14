@@ -1,0 +1,20 @@
+{
+  "provider": "umami",
+  "release": "v3.5.0",
+  "releasedAt": "2026-11-12",
+  "sourceRepository": "https://github.com/umami-software/umami",
+  "sourceCommit": "d3c62a805beda8643cb468924dda38617fb4c286",
+  "image": "ghcr.io/umami-software/umami",
+  "imageTag": "3.5.0",
+  "imageIndexDigest": "sha256:b64f40400d77bcadd39cf5c62a1e368c99524ca442024f96e1133355a19a5dbc",
+  "imageIds": {
+    "amd64": "e3d7ff2395a19e929dc602701b708c20bfdca661d1d9bd08f8a993777f5b5ed9",
+    "arm64": "a2cb9c4ae41e24a50f5c2ebbce7c0079b7a9f6f7819f98fb894423679ef35ae5"
+  },
+  "database": {
+    "image": "docker.io/library/postgres",
+    "imageTag": "16",
+    "imageIndexDigest": "sha256:f9a7b9ebf6f56201f949db745e47bc423c0f0f8294bafe991cc10bf74b029657"
+  },
+  "pinnedOn": "2026-11-14"
+}
