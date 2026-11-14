@@ -171,12 +171,10 @@ function clean(code?: string) {
     return true;
   };
 }
+/** Duration of an assertion. A failed assertion propagates: timing never hides it. */
 const elapsed = async (work: Promise<unknown>): Promise<number> => {
   const started = performance.now();
-  await work.then(
-    () => undefined,
-    () => undefined,
-  );
+  await work;
   return performance.now() - started;
 };
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
