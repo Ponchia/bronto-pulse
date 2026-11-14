@@ -100,3 +100,30 @@ synthetic fixture success is not account access or a completed pilot.
 The current access boundary is installation-owner access, not per-project access.
 The graph can therefore name other projects explicitly sharing a resource. A future
 per-project authorization model must filter those relationships before returning them.
+
+## Query selection is explicit
+
+Authenticated API requests reject unsupported or repeated query parameters with
+HTTP 400 before loading private configuration or storage. Authentication is still
+checked first. An unrecognized endpoint returns 404; neither case starts a
+collector or broadens an access grant.
+
+Date-aware reports, briefs, portfolio, plans, investigations and source comparisons
+accept `from`, `to` or `days`. `days` is a decimal integer from 1 to 366, ends on the
+last completed UTC date by default, and may combine with `to`. An explicit `from`
+cannot combine with `days`. These are the same report windows used by the CLI;
+provider-native calendars remain attached to each metric.
+
+| Endpoint                                              | Additional query parameters                  |
+| ----------------------------------------------------- | -------------------------------------------- |
+| Project report                                        | `format=json`, `markdown` or `csv`           |
+| Portfolio/project brief                               | `format=json` or `markdown`                  |
+| Investigation                                         | `limit=1..100`, `format=json`                |
+| Source comparison                                     | `primary`, `secondary`, `same_site`          |
+| Configuration graph                                   | `format=json`; no date filters               |
+| Runs                                                  | `resource`, `limit=1..1000`; no date filters |
+| Projects, connectors, health, metrics, private export | None                                         |
+
+The plan and portfolio endpoints accept dates only. In particular,
+`/api/v1/export?resource=...` is rejected: the backup endpoint does not implement
+partial export. A selector or misspelling must not silently return broader data.

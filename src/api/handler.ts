@@ -54,19 +54,75 @@ function json(body: unknown, status = 200): Response {
   });
 }
 function windowFor(url: URL, now: Date): DateRange {
+  const rawDays = url.searchParams.get('days');
+  if (rawDays !== null && (!/^\d{1,3}$/.test(rawDays) || url.searchParams.has('from')))
+    throw new PulseError('CONFIG', 'Days must be a decimal integer and cannot combine with from.');
   return reportRange(
     {
       from: url.searchParams.get('from') ?? undefined,
       to: url.searchParams.get('to') ?? undefined,
+      days: rawDays === null ? undefined : Number(rawDays),
     },
     now,
   );
 }
 function limitFor(url: URL, maximum = 1000): number {
-  const n = Number(url.searchParams.get('limit') ?? 100);
+  const raw = url.searchParams.get('limit') ?? '100';
+  if (!/^\d{1,4}$/.test(raw)) throw new PulseError('CONFIG', 'Invalid page size.');
+  const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > maximum)
     throw new PulseError('CONFIG', 'Invalid page size.');
   return n;
+}
+/** Query selectors are a contract, not hints: never return a broader result silently. */
+function validateQuery(url: URL, now: Date): void {
+  const dateKeys = ['from', 'to', 'days'];
+  const plain = new Set(['projects', 'connectors', 'health', 'metrics', 'export']);
+  const tail = url.pathname.slice('/api/v1/'.length);
+  let allowed: string[] | undefined;
+  let dated = false;
+  if (plain.has(tail)) allowed = [];
+  else if (tail === 'runs') allowed = ['limit', 'resource'];
+  else if (tail === 'plan' || tail === 'portfolio') {
+    allowed = dateKeys;
+    dated = true;
+  } else if (tail === 'brief' || /^projects\/[a-z][a-z0-9_-]{0,63}\/(report|brief)$/.test(tail)) {
+    allowed = [...dateKeys, 'format'];
+    dated = true;
+  } else if (/^projects\/[a-z][a-z0-9_-]{0,63}\/graph$/.test(tail)) allowed = ['format'];
+  else if (/^projects\/[a-z][a-z0-9_-]{0,63}\/investigation$/.test(tail)) {
+    allowed = [...dateKeys, 'limit', 'format'];
+    dated = true;
+  } else if (/^projects\/[a-z][a-z0-9_-]{0,63}\/source-comparison$/.test(tail)) {
+    allowed = [...dateKeys, 'primary', 'secondary', 'same_site'];
+    dated = true;
+  }
+  if (!url.pathname.startsWith('/api/v1/') || !allowed)
+    throw new PulseError('NOT_FOUND', 'Endpoint was not found.');
+  const seen = new Set<string>();
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.includes(key) || seen.has(key))
+      throw new PulseError('CONFIG', 'Unsupported or repeated query parameter for this endpoint.');
+    seen.add(key);
+  }
+  const format = url.searchParams.get('format');
+  if (format !== null) {
+    const formats = tail.endsWith('/report')
+      ? ['json', 'markdown', 'csv']
+      : tail === 'brief' || tail.endsWith('/brief')
+        ? ['json', 'markdown']
+        : ['json'];
+    if (!formats.includes(format))
+      throw new PulseError('CONFIG', 'Unsupported format for this endpoint.');
+  }
+  if (dated) windowFor(url, now);
+  if (tail === 'runs') {
+    limitFor(url);
+    const resource = url.searchParams.get('resource');
+    if (resource !== null && !/^[a-z][a-z0-9_-]{0,63}$/.test(resource))
+      throw new PulseError('CONFIG', 'Invalid resource identifier.');
+  }
+  if (tail.endsWith('/investigation')) limitFor(url, 100);
 }
 const ASSETS = new Set([
   '/',
@@ -222,6 +278,8 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
               : url.pathname,
         ),
       );
+    // Authenticate first, then validate before loading private configuration/storage.
+    validateQuery(url, now);
     let data: ApiData;
     try {
       data = 'loadData' in ctx ? await ctx.loadData() : ctx;

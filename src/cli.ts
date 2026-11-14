@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
+import { validateCliInput } from './cli-options.js';
 import { readFileSync, realpathSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -75,9 +76,14 @@ async function configFrom(path: string): Promise<Config> {
   }
 }
 export async function main(argv = process.argv.slice(2)): Promise<number> {
-  const { values: v, positionals } = parseArgs({
+  const {
+    values: v,
+    positionals,
+    tokens,
+  } = parseArgs({
     args: argv,
     allowPositionals: true,
+    tokens: true,
     options: {
       config: { type: 'string' },
       db: { type: 'string' },
@@ -118,31 +124,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     console.log(HELP);
     return 0;
   }
-  const known = new Set([
-    'init',
-    'validate',
-    'coverage',
-    'connectors',
-    'graph',
-    'plan',
-    'sync',
-    'backfill',
-    'probe',
-    'doctor',
-    'report',
-    'brief',
-    'compare',
-    'portfolio',
-    'export',
-    'import',
-    'annotate',
-    'compact',
-    'serve',
-    'demo',
-    'inspect',
-    'visibility',
-  ]);
-  if (!known.has(command)) throw new PulseError('CONFIG', 'Unknown command. Run pulse --help.');
+  validateCliInput(
+    command,
+    positionals.slice(1),
+    v,
+    tokens.flatMap((token) => (token.kind === 'option' ? [token.name] : [])),
+  );
   if (v.format && !['json', 'markdown', 'csv'].includes(v.format))
     throw new PulseError('CONFIG', 'Output format must be json, markdown or csv.');
   if (v.json && v.format && v.format !== 'json')
@@ -158,7 +145,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     throw new PulseError('CONFIG', '--scenario applies only to the synthetic demo.');
   if (command === 'demo' && v.scenario && !['portfolio', 'evidence'].includes(v.scenario))
     throw new PulseError('CONFIG', 'Unknown demo scenario; use portfolio or evidence.');
-  if (v['due-only'] && (command !== 'sync' || v.rotate || v.from || v.to || v['dry-run']))
+  if (v['due-only'] && (command !== 'sync' || v.rotate || v.from || v.to || v.days || v['dry-run']))
     throw new PulseError(
       'CONFIG',
       'Due-only selection requires sync without rotation, explicit dates or offline dry-run.',
@@ -313,17 +300,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           : '.pulse/demo.db'
         : '.pulse/pulse.db'),
   );
+  // Read bounded bytes and parse before creating a restore destination. An invalid
+  // private JSON file must not create a database or echo its contents.
+  const archive = command === 'import' ? await privateJson(v.input, 100 * 1024 * 1024) : undefined;
   const store = new Store(new SqliteDriver(dbPath));
   await store.migrate();
   let hold = false;
   try {
     if (command === 'import') {
-      if (!v.input)
-        throw new PulseError('CONFIG', 'Pass --input FILE to restore a private archive.');
-      const raw = await readFile(v.input, 'utf8');
-      if (raw.length > 100 * 1024 * 1024)
-        throw new PulseError('ROW_LIMIT', 'Archive is too large for bounded JSON import.');
-      await store.import(JSON.parse(raw));
+      await store.import(archive);
       console.log('Import completed atomically into the empty database.');
       return 0;
     }

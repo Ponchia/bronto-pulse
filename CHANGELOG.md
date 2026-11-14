@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Reject ignored, repeated and incomplete CLI/API selectors before private-state
+  access; expose the same bounded `days` report window through the API. Authentication
+  still precedes query diagnostics, and no new collection endpoint is introduced.
+- Preserve source dimensions, comparison baseline dates, synthetic/collected labels
+  and report warnings in append-only CSV provenance columns.
+- Read bounded private import JSON before creating a destination; the recovery
+  script uses the archive configuration instead of a silently ignored override.
+
 - Preserve very large provider waits without an early in-job retry, recognize
   GitHub HTTP-date quota waits, and apply configured per-job request/response
   budgets to self-hosted transports as well as hosted providers.
