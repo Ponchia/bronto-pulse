@@ -106,21 +106,25 @@ export class HttpClient {
           'Provider redirect refused. Verify the provider endpoint.',
         );
       }
+      // Normalize guidance once. Numeric coercion would accept non-HTTP values
+      // such as hexadecimal/exponents and lose valid HTTP dates or unbounded waits.
+      const githubQuota = target.origin === 'https://api.github.com';
+      const stated = retryAfterSeconds(response.headers, Date.now(), githubQuota);
+      const retryableStatus = [429, 500, 502, 503, 504].includes(response.status);
       // GitHub also reports exhausted primary/secondary quotas as HTTP 403.
       // Distinguish that documented case from a real missing permission. Do
       // not retain response content or retry a known rate limit in this job.
       if (
-        target.origin === 'https://api.github.com' &&
+        githubQuota &&
         [403, 429].includes(response.status) &&
-        (response.headers.get('x-ratelimit-remaining') === '0' ||
-          Number(response.headers.get('retry-after')) > 0)
+        (response.headers.get('x-ratelimit-remaining')?.trim() === '0' || stated !== undefined)
       ) {
         await response.body?.cancel();
         throw new PulseError(
           'RATE_LIMIT',
           'GitHub quota is exhausted. Retry in a later collection run.',
           true,
-          retryAfterSeconds(response.headers, Date.now(), true),
+          stated,
         );
       }
       if (response.status === 429 && !this.retryRateLimits) {
@@ -129,30 +133,24 @@ export class HttpClient {
           'RATE_LIMIT',
           'Provider quota requires a later collection run.',
           true,
-          retryAfterSeconds(response.headers, Date.now()),
+          stated,
         );
       }
-      if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
-        const raw = response.headers.get('retry-after');
-        const numeric = raw ? Number(raw) : NaN;
-        // An HTTP-date wait is normalized first, so it defers like a numeric one
-        // instead of being retried inside this job.
-        const stated = retryAfterSeconds(response.headers, Date.now());
-        const seconds = Number.isFinite(numeric) ? numeric : (stated ?? NaN);
-        // Long rate-limit waits must be retried by the scheduler, not occupy a worker.
-        if (Number.isFinite(seconds) && seconds > 10) {
-          await response.body?.cancel();
-          throw new PulseError(
-            'RATE_LIMIT',
-            'Provider rate limit requires a later collection run.',
-            true,
-            stated,
-          );
-        }
+      // Long waits (including the parser's unbounded sentinel) belong to the
+      // scheduler. Preserve a final-attempt wait too: retry exhaustion does not
+      // revoke the provider's guidance, including on a 503 response.
+      if (retryableStatus && stated !== undefined && (stated > 10 || attempt === 2)) {
         await response.body?.cancel();
-        await this.sleep(
-          Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 200 * 2 ** attempt,
+        throw new PulseError(
+          'RATE_LIMIT',
+          'Provider rate limit requires a later collection run.',
+          true,
+          stated,
         );
+      }
+      if (retryableStatus && attempt < 2) {
+        await response.body?.cancel();
+        await this.sleep(stated === undefined ? 200 * 2 ** attempt : stated * 1000);
         continue;
       }
       if (!response.ok) {
@@ -169,7 +167,7 @@ export class HttpClient {
             'RATE_LIMIT',
             'Provider rate limit exceeded.',
             true,
-            retryAfterSeconds(response.headers, Date.now()),
+            stated,
           );
         if (response.status === 404)
           throw new PulseError('NOT_FOUND', 'Provider resource or dataset is unavailable.');
