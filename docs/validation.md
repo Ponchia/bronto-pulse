@@ -52,6 +52,25 @@ orchestration, cloud migration, multi-replica storage, provider auth
 longevity or unattended backup recovery. Keep those as distinct
 operational acceptance gates.
 
+## Pinned self-hosted transport
+
+`tests/selfhost-policy.test.ts` and `tests/selfhost-transport.test.ts` run
+in `npm test`. The second file opens real TLS connections to a server on
+127.0.0.1 whose authority and certificates are generated in memory for each
+run. It reaches loopback through a test-only seam that no setting,
+configuration field or command-line flag can produce.
+
+The tests show that the socket follows the pinned address, that the declared
+hostname is the TLS server name and `Host`, and that a wrong, untrusted,
+expired or address-only certificate stops the read before the credential is
+sent. They also cover refused redirects, status classes, body, header and
+time bounds, forged destinations, and a Worker job failing without a
+credential read.
+
+This is contract-tested evidence only. No real Plausible Community Edition
+or Umami installation, public certificate authority, DNS, proxy or firewall
+is involved. Account probing against a consenting instance remains open.
+
 ## Worker runtime contract
 
 `npm run test:worker` bundles the actual scheduled handler and executes it inside

@@ -243,7 +243,7 @@ export class Store {
 
     for (const r of config.resources) {
       const old = existing.find((x) => x.id === r.id),
-        identity = resourceIdentity(r);
+        identity = resourceIdentity(r, config.connections);
       if (
         old &&
         old.identity !== identity &&
@@ -817,7 +817,7 @@ export class Store {
       invariant(
         resource &&
           row.provider === resource.provider &&
-          row.identity === resourceIdentity(resource),
+          row.identity === resourceIdentity(resource, config.connections),
         'Invalid archived resource identity.',
       );
       invariant(typeof row.config_json === 'string', 'Invalid archived resource configuration.');

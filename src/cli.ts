@@ -22,6 +22,7 @@ import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
 import { auditCoverage } from './coverage.js';
 import { projectGraph } from './project-graph.js';
+import { nodeSelfHosted } from './selfhost/node-transport.js';
 
 // The package manifest is the one version source for a checkout and the published archive.
 const VERSION: string = JSON.parse(
@@ -170,6 +171,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (v['chunk-days'] && !['plan', 'backfill'].includes(command))
     throw new PulseError('CONFIG', '--chunk-days applies only to plan or backfill.');
   const now = new Date();
+  // Installation-owned capability for self-hosted analytics instances (ADR
+  // 0004). Only this Node entry point creates it; no flag or config selects it.
+  const bindings = { selfHosted: nodeSelfHosted(process.env) };
   const selection = {
     provider: v.provider as Provider | undefined,
     resourceId: v.resource,
@@ -244,6 +248,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       ...selection,
       now,
       maxJobs: planOptions.maxJobs,
+      bindings,
     });
     console.log(JSON.stringify(result, null, 2));
     return result.omittedJobs || result.results.some((x) => x.status === 'unavailable') ? 2 : 0;
@@ -362,6 +367,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : v['due-only'] ? 1 : undefined,
         rotate: v.rotate,
         dueOnly: v['due-only'],
+        bindings,
       });
       print(
         results,
@@ -396,13 +402,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             group: job.group,
             window: job.window,
             now,
+            bindings,
           })),
         );
       print({ plan, results });
       return results.some((r) => r.status === 'failed') ? 2 : 0;
     }
     if (command === 'doctor') {
-      const result = await doctor(config, store, process.env);
+      const result = await doctor(config, store, process.env, undefined, bindings);
       print(
         result,
         result.resources
@@ -504,6 +511,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         host,
         publicOrigin,
         token,
+        bindings,
       });
       hold = true;
       if (localToken !== undefined) console.log(`One-session local access token: ${localToken}`);

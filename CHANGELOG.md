@@ -32,6 +32,18 @@
   the exact source calendar over a bounded read and reports a dataset it
   cannot decide as skipped instead of collecting it.
   See [scheduling](docs/scheduling.md).
+- Read a Plausible Community Edition or Umami instance you run yourself, in
+  the Node and OCI runtime only. A connection declares the instance's exact
+  hostname and the deployment environment pins its IPv4 address; Pulse
+  connects to that address without DNS, verifies the certificate for the
+  hostname, sends one fixed read and follows no redirect. Private addresses
+  need exact admission in `PULSE_SELFHOSTED_PRIVATE_ADDRESSES`; loopback,
+  metadata and link-local addresses are always refused. A Worker refuses
+  these sources. The stored identity binds the instance label, hostname and
+  port, so a source cannot move between instances under one resource ID.
+  This is synthetic-tested and has not yet read a real installation. Hosted
+  Plausible and Umami Cloud sources and existing configurations are
+  unchanged. See [self-hosted analytics sources](docs/self-hosted-provider-adapters.md).
 - The release workflow now owns the npm dist-tags. A separately approved
   `sync-dist-tags` job runs after registry verification, through the trusted
   publisher's new "Allow npm dist-tag" permission and the same audited

@@ -2,7 +2,9 @@
 
 Lifecycle: proposal
 
-Status: Proposed; **no self-hosted provider transport is shipped by this ADR**.
+Status: Proposed. A first Node/OCI transport implements decisions 1 to 6
+behind explicit configuration. It is synthetic-tested and has not read a real
+provider installation; see [implementation status](#implementation-status).
 
 ## Context
 
@@ -111,13 +113,31 @@ not just a provider name, determines which endpoint is permitted.
   source and excludes arbitrary browser-triggered collection. Restart,
   backups and restore are independent of Cloudflare.
 
+## Implementation status
+
+The first transport is described for operators in
+[self-hosted analytics source connectors](../self-hosted-provider-adapters.md).
+
+| Decision or gate                               | State                                                                        |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| 1. Hosted origins and allowlists unchanged     | Met. The generic HTTP client is untouched.                                   |
+| 2. Pinned Node/OCI transport                   | Met for IPv4. Tested against a local TLS fixture.                            |
+| 3. Private-network admission                   | Met for exact RFC 1918 literals. Loopback, shared space and IPv6 refused.    |
+| 4. Fixed read paths, no redirects, safe errors | Met. One closed read per variant, one attempt per job.                       |
+| 5. Instance identity separate from the site    | Met. Identity binds label, hostname and port; a change needs a new resource. |
+| 6. Workers fail closed                         | Met. No transport is bound; the bundle is checked for its absence.           |
+| 7. Separate connector processes                | Not started.                                                                 |
+| Real, consenting self-hosted provider          | **Open.** Required before the connection is advertised as supported.         |
+| Provider version differences, quota recovery   | Open. Only synthetic responses are covered.                                  |
+| IPv6 and mapped-address coverage               | Open. IPv6 is refused outright.                                              |
+
 ## Consequences
 
-The tempting 'paste an instance URL' experience is postponed until its
-security proof exists. This ADR does not enable endpoints, migrate data,
-install software, change credentials, authorize infrastructure or modify
-production. A future implementation requires adversarial tests and a
-separate reviewed PR.
+There is still no 'paste an instance URL' experience: an instance is an exact
+hostname in private configuration plus a literal address in the deployment
+environment. This ADR does not migrate data, install software, change
+credentials, authorize infrastructure or modify production. Advertising the
+connection as supported requires the open gates above.
 
 References:
 [Umami API overview](https://docs.umami.is/docs/api),
