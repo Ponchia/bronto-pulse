@@ -1,3 +1,9 @@
+import {
+  investigateProject,
+  supportedChange,
+  type ProjectInvestigation,
+} from './investigations.js';
+import type { ProjectGraph } from './project-graph.js';
 import type { ProjectReport } from './report.js';
 
 export interface Finding {
@@ -20,10 +26,14 @@ export interface Brief {
   limitation: string;
   evidence: ProjectReport['evidence'];
   websites?: ProjectReport['websites'];
+  /** Leads to verify, derived from the same report as `findings`; see investigations.ts. */
+  investigation: ProjectInvestigation;
+  /** Present only when the caller supplies the project's declared resource map. */
+  resources?: ProjectGraph;
 }
 const display = (n: number) => (Number.isInteger(n) ? String(n) : Number(n.toFixed(4)).toString());
 /** Deterministic evidence summaries. No LLM, identity attribution or causal claims. */
-export function projectBrief(report: ProjectReport, maximum = 20): Brief {
+export function projectBrief(report: ProjectReport, maximum = 20, graph?: ProjectGraph): Brief {
   if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 100)
     throw new RangeError('Brief limit must be between 1 and 100.');
   const findings: Finding[] = [];
@@ -70,6 +80,8 @@ export function projectBrief(report: ProjectReport, maximum = 20): Brief {
   for (const card of [...report.cards].sort((a, b) => a.key.localeCompare(b.key))) {
     const change = card.comparison.absoluteChange;
     if (change === null || change === 0) continue;
+    // A comparison that no longer agrees with its own card is not restated.
+    if (!supportedChange(card, report.window)) continue;
     const direction = change > 0 ? 'increased' : 'decreased';
     const basis =
       card.comparison.kind === 'net_change'
@@ -117,6 +129,8 @@ export function projectBrief(report: ProjectReport, maximum = 20): Brief {
     evidence: report.evidence,
     ...(report.websites?.length ? { websites: report.websites } : {}),
     limitation: report.evidence.limitation + ' Release annotations provide context only.',
+    investigation: investigateProject(report, maximum, graph),
+    ...(graph ? { resources: graph } : {}),
   };
 }
 function prose(value: string): string {
@@ -126,6 +140,9 @@ function prose(value: string): string {
     .replace(/([\\`*_{}\[\]#|])/g, '\\$1');
 }
 export function markdownBrief(brief: Brief): string {
+  // A limitation shared by several leads is printed with the first lead that carries it.
+  const printed = new Set<string>();
+  const once = (text: string) => !printed.has(text) && Boolean(printed.add(text));
   return [
     `# ${prose(brief.project.label)} — project briefing`,
     '',
@@ -138,6 +155,26 @@ export function markdownBrief(brief: Brief): string {
       ? [
           '',
           `${brief.omittedFindings} additional findings omitted; inspect the full project report.`,
+        ]
+      : []),
+    ...(brief.investigation.findings.length
+      ? [
+          '',
+          '## What to verify next',
+          prose(brief.investigation.limitation) +
+            ' A limit shared by several leads is printed once.',
+          ...brief.investigation.findings.flatMap((lead) => [
+            // Reason IDs are fixed constants; every other field is escaped.
+            '- `' + lead.reason + '` ' + prose(lead.summary),
+            ...lead.limitations.filter(once).map((text) => '  - Limit: ' + prose(text)),
+            ...lead.nextChecks.map((step) => '  - Verify: ' + prose(step.text)),
+          ]),
+          ...(brief.investigation.omittedFindings
+            ? [
+                '',
+                `${brief.investigation.omittedFindings} additional leads omitted; request a higher limit or inspect the full project report.`,
+              ]
+            : []),
         ]
       : []),
     ...(brief.websites?.length
