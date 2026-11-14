@@ -455,6 +455,9 @@ test('snapshot changes are net differences between dated snapshots', () => {
     /decreased by 3 stars net between the snapshots dated 2026-08-30 and 2026-09-29/,
   );
   assert.match(lead.limitations[0]!, /not gross additions or removals/);
+  assert.deepEqual(lead.limitations.slice(1), ['Not unique users.']);
+  const plain = investigateProject(report([{ ...stars, caveat: '' }])).findings[0]!;
+  assert.equal(plain.limitations.length, 1);
   assert.deepEqual(lead.nextChecks[0]!.window, { from: '2026-08-30', to: '2026-09-29' });
 });
 
