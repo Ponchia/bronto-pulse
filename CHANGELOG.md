@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Briefings carry an additive `investigation` object: deterministic leads with
+  stable reason IDs, references to the resource, metric and dates they
+  restate, explicit limitations and up to three next checks from a closed
+  catalogue. Leads state no cause, score or audience estimate, and unavailable
+  evidence is never reported as zero. The Markdown briefing prints them under
+  "What to verify next". A change is restated only when the comparison agrees
+  with its own series. Add `projectGraph`, a read-only map of a project's
+  declared resources, websites and relationships that discloses no credential
+  or account-side identifier. See
+  [investigation leads](docs/investigation-leads.md).
 - The release workflow now owns the npm dist-tags. A separately approved
   `sync-dist-tags` job runs after registry verification, through the trusted
   publisher's new "Allow npm dist-tag" permission and the same audited
