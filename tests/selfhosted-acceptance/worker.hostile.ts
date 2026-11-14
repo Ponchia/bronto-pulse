@@ -150,13 +150,18 @@ test('Worker: self-hosted sources fail closed before any credential read or fetc
     });
     assert.deepEqual(ready, []);
     assert.deepEqual(fetched, [], 'the Worker path called fetch for a self-hosted source');
-    // Readiness may test that a credential setting is present; collection above never reads it.
     // Health reporting names the missing runtime capability rather than claiming readiness.
-    const health = await doctor(config, store, values, now, bindings);
+    const health = await doctor(config, store, secrets, now, bindings);
     for (const row of health.resources) {
       assert.notEqual(row.status, 'ok');
       assert.notEqual(row.status, 'ready');
     }
+    // Neither readiness scheduling nor health reporting looks at the credential setting.
+    assert.deepEqual(
+      read.filter((name) => name.endsWith('_TOKEN')),
+      [],
+      'Worker readiness or health reporting consulted a self-hosted credential setting',
+    );
     assert.ok(!JSON.stringify(health).includes(TOKEN));
     assert.ok(
       !JSON.stringify(health).includes('10.0.0.5'),
