@@ -5,6 +5,7 @@ import { contains, day } from '../time.js';
 import { array, number, object, text } from '../validation.js';
 import { collected, entry, token, type CollectContext } from './context.js';
 import { selfHostedJson } from '../selfhost/client.js';
+import { verifyPlausibleQuery } from './provider-query-contracts.js';
 
 type Plausible = Extract<Resource, { provider: 'plausible' }>;
 
@@ -66,6 +67,7 @@ export async function collectPlausible(
       'ROW_LIMIT',
       'Plausible date series may be truncated; narrow the date window.',
     );
+  verifyPlausibleQuery(response, r.siteId, r.timezone, ctx.window, data.length, pageLimit);
   const observations: Observation[] = [];
   const dates = new Set<string>();
   for (const item of data) {

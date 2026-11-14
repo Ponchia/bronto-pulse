@@ -36,6 +36,17 @@ const headings = [
   'evidence_class',
   'independent_adoption',
   'metric_caveat',
+  // Append-only provenance columns preserve the positions of existing consumer fields.
+  'series_key',
+  'provider',
+  'dimensions',
+  'latest_collected_at',
+  'baseline_from',
+  'baseline_to',
+  'relative_change',
+  'data_kind',
+  'generated_at',
+  'report_warnings',
 ];
 export function csvReport(report: ProjectReport): string {
   const rows: (string | number | null)[][] = [headings];
@@ -66,6 +77,16 @@ export function csvReport(report: ProjectReport): string {
       c.evidenceClass,
       report.evidence.independentAdoption,
       c.caveat,
+      c.key,
+      c.provider,
+      JSON.stringify(c.dimensions),
+      c.latestCollectedAt,
+      c.comparison.baselinePeriod?.from ?? null,
+      c.comparison.baselinePeriod?.to ?? null,
+      c.comparison.relativeChange,
+      report.demo ? 'synthetic' : 'collected',
+      report.generatedAt,
+      JSON.stringify(report.warnings),
     ]);
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }

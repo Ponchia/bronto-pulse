@@ -65,6 +65,27 @@ Text cells that could be interpreted as spreadsheet formulas are prefixed as
 text; embedded delimiters and newlines are quoted. Numeric changes remain numeric,
 including negative values. This is not permission to publish private report data.
 
+CSV also preserves the exact series key, provider, JSON dimensions, last collection
+instant, actual comparison baseline dates and the fractional relative change.
+Each metric row carries `data_kind` (`synthetic` or `collected`), generation time
+and JSON report warnings so a downloaded demo cannot lose its synthetic label.
+These provenance columns are appended after the existing columns; existing
+column positions remain unchanged. Read column names rather than assuming a fixed
+column count. CSV still contains metric cards, not every breakdown, annotation or
+investigation; use JSON for the complete report.
+
+## Exact input selection
+
+The CLI refuses options that have no effect for the selected command, repeated
+options and extra positional arguments before opening its database. For example,
+`report PROJECT --provider npm` and `export --resource ID` are errors, rather than
+reports or backups that silently include more than requested. Numeric options use
+positive decimal integers. `--days` selects 1–366 completed dates and may combine
+with `--to`; use explicit `--from`/`--to` instead of combining `--days` with `--from`.
+Malformed, missing or over-budget import JSON is rejected before a new destination
+is created. Semantic archive validation and atomic empty-database import remain
+separate storage checks.
+
 Reports and briefs are **not database backups**. `pulse export` includes the
 recovery catalog and published history; restore it with `pulse import` into an
 empty database. See [operations](operations.md) for an independent restore drill.
@@ -72,7 +93,10 @@ empty database. See [operations](operations.md) for an independent restore drill
 ## Browser behavior
 
 The dashboard retains selected dates, project and view in its URL. A reload
-reopens that view without storing tokens in browser storage. A failed refresh
+reopens that view without storing tokens in browser storage. Browser Back and
+Forward move between projects and views; refreshing or changing the dates updates
+the current entry. Additional investigation leads open in place with their source
+limits, keyboard focus and an explicit display cap. A failed refresh
 removes the old data from the export action; the UI never offers an old report as
 though the failed new request had succeeded. Collection plans in the browser are
 read-only previews. Actual collection remains an explicit CLI or scheduler action.

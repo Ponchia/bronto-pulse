@@ -84,7 +84,7 @@ JS
 [[ -n "$project" && -n "$from" && -n "$to" ]] || { echo 'Missing recovery report scope.' >&2; exit 1; }
 node "$cli" report "$project" --config "$tmp/pulse.config.json" --db "$tmp/recovered.db" --from "$from" --to "$to" --format json --out "$tmp/before.json" > "$tmp/report-before.log"
 node "$cli" export --config "$tmp/pulse.config.json" --db "$tmp/recovered.db" --out "$tmp/portable.json" > "$tmp/export.log"
-node "$cli" import --config "$tmp/pulse.config.json" --db "$tmp/imported.db" --input "$tmp/portable.json" > "$tmp/import.log"
+node "$cli" import --db "$tmp/imported.db" --input "$tmp/portable.json" > "$tmp/import.log"
 check_db "$tmp/imported.db"
 node "$cli" report "$project" --config "$tmp/pulse.config.json" --db "$tmp/imported.db" --from "$from" --to "$to" --format json --out "$tmp/after.json" > "$tmp/report-after.log"
 

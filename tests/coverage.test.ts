@@ -4,6 +4,10 @@ import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const loader = import.meta.resolve('tsx');
 import { parseConfig } from '../src/config.js';
 import { auditCoverage } from '../src/coverage.js';
 
@@ -108,25 +112,13 @@ test('coverage CLI reports gaps with exit 2 and never opens its database path', 
   try {
     const config = join(dir, 'config.json');
     const inventory = join(dir, 'inventory.json');
-    const db = join(dir, 'never-created.db');
+    const db = join(dir, '.pulse');
     writeFileSync(config, JSON.stringify(base()));
     writeFileSync(inventory, JSON.stringify(input));
     const result = spawnSync(
       process.execPath,
-      [
-        '--import',
-        'tsx',
-        'src/cli.ts',
-        'coverage',
-        '--config',
-        config,
-        '--input',
-        inventory,
-        '--db',
-        db,
-        '--json',
-      ],
-      { encoding: 'utf8', timeout: 10000 },
+      ['--import', loader, cli, 'coverage', '--config', config, '--input', inventory, '--json'],
+      { cwd: dir, encoding: 'utf8', timeout: 10000 },
     );
     assert.equal(result.status, 2, result.stderr);
     assert.equal(JSON.parse(result.stdout).configured, false);
@@ -141,26 +133,14 @@ test('coverage CLI bounds input bytes and rejects unsupported private output wit
   try {
     const config = join(dir, 'config.json');
     const inventory = join(dir, 'inventory.json');
-    const db = join(dir, 'never-created.db');
+    const db = join(dir, '.pulse');
     const out = join(dir, 'never-written.json');
     writeFileSync(config, JSON.stringify(base()));
     const run = (extra: string[] = []) =>
       spawnSync(
         process.execPath,
-        [
-          '--import',
-          'tsx',
-          'src/cli.ts',
-          'coverage',
-          '--config',
-          config,
-          '--input',
-          inventory,
-          '--db',
-          db,
-          ...extra,
-        ],
-        { encoding: 'utf8', timeout: 10000 },
+        ['--import', loader, cli, 'coverage', '--config', config, '--input', inventory, ...extra],
+        { cwd: dir, encoding: 'utf8', timeout: 10000 },
       );
     writeFileSync(inventory, JSON.stringify(input) + ' '.repeat(256 * 1024));
     const oversized = run();

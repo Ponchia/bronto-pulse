@@ -269,7 +269,10 @@ test('hash drift, inconsistent metadata, duplicates and contradictory manual lab
 });
 test('operator CLI works without project config/database, writes privately and refuses overwrites', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pulse-visibility-'));
+  const cwd = process.cwd();
+  process.chdir(dir);
   try {
+    await writeFile(join(dir, 'pulse.config.json'), 'not valid configuration JSON');
     const metadata = join(dir, 'session.json'),
       out = join(dir, 'runs.json'),
       report = join(dir, 'report.json');
@@ -285,15 +288,11 @@ test('operator CLI works without project config/database, writes privately and r
         metadata,
         '--out',
         out,
-        '--config',
-        join(dir, 'absent.json'),
-        '--db',
-        join(dir, 'absent.db'),
       ]),
       0,
     );
     assert.equal((await stat(out)).mode & 0o777, 0o600);
-    await assert.rejects(stat(join(dir, 'absent.db')), /ENOENT/);
+    await assert.rejects(stat(join(dir, '.pulse')), /ENOENT/);
     assert.equal(
       await main(['visibility', 'report', '--suite', suitePath, '--input', out, '--out', report]),
       0,
@@ -303,6 +302,7 @@ test('operator CLI works without project config/database, writes privately and r
       /EEXIST/,
     );
   } finally {
+    process.chdir(cwd);
     await rm(dir, { recursive: true, force: true });
   }
 });

@@ -50,6 +50,13 @@ not contain secret values. Treat them as private because page/query dimensions
 may still be sensitive. Files are created mode 0600 and never overwrite an
 existing export by default. Encrypt backups and test a restore off-box.
 
+Import reads at most 100 MiB of private JSON before opening its destination,
+allocating in bounded chunks rather than reserving the full allowance for a small
+file. Invalid UTF-8 is refused rather than silently replaced.
+Malformed JSON, unreadable files and oversized inputs fail without echoing their
+contents or creating the destination directory. The archive itself supplies its
+configuration: do not pass an ignored `--config` override to `import`.
+
 `pulse import --db restored.db --input export.json` validates the format,
 references and metric rules and imports transactionally into an empty database.
 `pulse compact` removes old unreachable staging/replaced observations, not
