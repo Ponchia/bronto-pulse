@@ -10,11 +10,11 @@ import { connectorCatalog, hasConnector } from './collectors/registry.js';
 import { PulseError, safeError } from './errors.js';
 import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
-import { sync, doctor, probe } from './sync.js';
+import { sync, doctor, probe, MAX_PROBE_DAYS } from './sync.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
 import { seedDemo, type DemoScenario } from './demo.js';
 import { startServer } from './server.js';
-import { dateInZone, reportRange } from './time.js';
+import { dateInZone, reportRange, range } from './time.js';
 import { planCollection, markdownPlan } from './plan.js';
 import { projectBrief, markdownBrief } from './brief.js';
 import { csvReport } from './report-export.js';
@@ -35,7 +35,7 @@ pulse connectors                     Offline built-in source capabilities; no cr
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --due-only for due jobs
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
-pulse probe                          Read-only provider capability and permission checks
+pulse probe [--from DATE --to DATE]  Read-only capability check; explicit windows up to 7 days
 pulse inspect --resource ID --input FILE  Inspect an explicit JSON list of 1–20 GSC URLs
 pulse visibility template|report|promptfoo  Offline benchmark; --suite FILE, --session FILE or --input FILE
 pulse doctor                         Check coverage, freshness and credential availability
@@ -166,6 +166,19 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     );
   if (v['chunk-days'] && !['plan', 'backfill'].includes(command))
     throw new PulseError('CONFIG', '--chunk-days applies only to plan or backfill.');
+  if (command === 'probe') {
+    if (v.days !== undefined || v.rotate)
+      throw new PulseError(
+        'CONFIG',
+        'Probe uses a source-local day or explicit --from and --to; --days and --rotate do not apply.',
+      );
+    if ((v.from === undefined) !== (v.to === undefined))
+      throw new PulseError('CONFIG', 'A dated probe requires both --from and --to.');
+  }
+  const probeWindow =
+    command === 'probe' && v.from !== undefined && v.to !== undefined
+      ? range(v.from, v.to, MAX_PROBE_DAYS)
+      : undefined;
   const now = new Date();
   const selection = {
     provider: v.provider as Provider | undefined,
@@ -231,6 +244,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       ...selection,
       now,
       maxJobs: planOptions.maxJobs,
+      window: probeWindow,
     });
     console.log(JSON.stringify(result, null, 2));
     return result.omittedJobs || result.results.some((x) => x.status === 'unavailable') ? 2 : 0;
