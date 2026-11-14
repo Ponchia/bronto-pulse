@@ -888,6 +888,8 @@ test('Worker: no pinned transport exists, so a self-hosted job fails before any 
       method: 'token-pinned-self-hosted',
       missing: ['node-pinned-transport'],
     });
+    // Neither the failed job nor any readiness report looked at the credential setting.
+    assert.equal(read.includes('TEST_TOKEN'), false);
   }
 });
 

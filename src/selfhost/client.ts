@@ -24,15 +24,15 @@ export function connectionStatus(
   secrets: Secrets,
   runtime: SelfHostedRuntime | undefined,
 ): { available: boolean; method: string; missing: string[] } {
-  const status = credentialStatus(connection, secrets);
-  if (!connection?.selfHosted) return status;
-  const missing = [...status.missing];
-  if (!runtime) missing.push('node-pinned-transport');
-  else {
-    const blocker = admissionBlocker(connection, runtime);
-    if (blocker) missing.push(blocker);
-  }
-  return { available: missing.length === 0, method: 'token-pinned-self-hosted', missing };
+  if (!connection?.selfHosted) return credentialStatus(connection, secrets);
+  const method = 'token-pinned-self-hosted';
+  // Without the transport nothing else matters: do not even look at whether
+  // the credential setting exists.
+  if (!runtime) return { available: false, method, missing: ['node-pinned-transport'] };
+  const missing = [...credentialStatus(connection, secrets).missing];
+  const blocker = admissionBlocker(connection, runtime);
+  if (blocker) missing.push(blocker);
+  return { available: missing.length === 0, method, missing };
 }
 
 /**
