@@ -12,6 +12,26 @@
   private graph API, without inferring ownership or package-to-repository links.
   Add mobile and text-escaping acceptance tests and a private live-pilot runbook. See
   [investigation leads](docs/investigation-leads.md).
+- Due-time scheduling accepts `refreshHoursByGroup`, a per-group minimum
+  refresh gap that falls back to the resource's `refreshHours` and then to 24
+  hours. A key that is not a group the resource collects is a configuration
+  error. Configurations without it parse and schedule as before.
+- A due-time run that hits a rate limit keeps the provider's stated wait
+  (`Retry-After`, or GitHub's quota reset) for that dataset and never
+  shortens it. It can only lengthen the fixed 60-minute delay, and it does
+  not defer other datasets of the same provider. `pulse doctor` shows it as
+  `retryNotBefore`; an explicit sync of the dataset lifts it. No schema
+  change; rotation, history and explicit windows write nothing new.
+  `pulse export` carries the wait with its failed run in a new optional
+  archive field, checked on import.
+- A `Retry-After` given as an HTTP date now ends the job like a numeric wait
+  above ten seconds, instead of being retried inside it.
+- Fix due-time selection for Search Console and Plausible: a newer explicit
+  window ending one or two days back could hide the last regular run, so the
+  dataset was collected again as if never collected. Selection now applies
+  the exact source calendar over a bounded read and reports a dataset it
+  cannot decide as skipped instead of collecting it.
+  See [scheduling](docs/scheduling.md).
 - The release workflow now owns the npm dist-tags. A separately approved
   `sync-dist-tags` job runs after registry verification, through the trusted
   publisher's new "Allow npm dist-tag" permission and the same audited

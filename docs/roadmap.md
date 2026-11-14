@@ -34,8 +34,12 @@ production deployment. That validation remains an explicit follow-up.
   timezones, missing days, imports, permissions and rate limits. The fixed
   hosted endpoints in the first adapters are not a self-hosted-provider
   integration.
-- Add due-time scheduling by dataset and provider, with bounded execution
-  budgets and retry backoff. Current regular Worker rotation remains unchanged.
+- Due-time scheduling is available as an opt-in mode with per-resource and
+  per-group intervals, fixed failure delays and a per-dataset
+  provider wait ([scheduling](scheduling.md)). Rotation stays the default and
+  the regular Worker rotation is unchanged. Still open: provider-wide quota
+  coordination, and qualifying the mode on a real installation before
+  recommending it over rotation.
 - Introduce explicit project/site/package/deployment relationships and a
   primary-source declaration for comparisons; never add duplicate measurements
   from analytics systems tracking the same site.

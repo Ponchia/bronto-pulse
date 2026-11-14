@@ -69,6 +69,13 @@ bindings inside the same project are rejected.
 A mapping beginning partway through a comparison window does not establish an
 equal-duration growth baseline. The report retains its actual applicable dates.
 
+## Refresh intervals
+
+`refreshHours` on a resource, and `refreshHoursByGroup` for single groups of
+it, set the minimum gap between completed refreshes. Both accept 1–720 and
+are read only by the opt-in due-time mode; rotation ignores them. See
+[scheduling](scheduling.md).
+
 ## Older history
 
 An npm, Search Console or Sense6 resource may declare

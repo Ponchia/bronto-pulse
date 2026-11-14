@@ -8,6 +8,7 @@ import type { Run } from './model.js';
 import { Store } from './storage/store.js';
 import { selectCollectionJobs } from './plan.js';
 import { dueJobs } from './due-schedule.js';
+import { retryNotBefore } from './retry-after.js';
 import { dateInZone, defaultRange, range, daysBetween, type DateRange } from './time.js';
 export interface SyncOptions {
   provider?: Provider;
@@ -37,6 +38,8 @@ export interface SyncResult {
   code?: string;
   message?: string;
   runId?: string;
+  /** Due-time only: the stored provider wait for this failed dataset. */
+  retryNotBefore?: string;
 }
 export function jobs(config: Config): { resource: Resource; group: string }[] {
   return config.resources
@@ -95,12 +98,28 @@ export async function sync(
     );
   await store.register(config, now);
   if (!selected.length) return [];
+  const results: SyncResult[] = [];
   if (options.dueOnly) {
     // Regular source-date-qualified heads keep old backfills from postponing
-    // fresh collection while honoring longer resource refresh intervals.
+    // fresh collection while honoring longer resource or group intervals and
+    // any stored provider wait.
     const heads = await store.regularRunHeads();
+    // Ambiguous history is reported, never collected as if it were absent.
+    const unresolved = new Set(heads.unresolved);
+    for (const { resource, group } of selected)
+      if (unresolved.has(`${resource.id}:${group}`))
+        results.push({
+          resourceId: resource.id,
+          group,
+          status: 'skipped',
+          rows: 0,
+          requests: 0,
+          code: 'CONFLICT',
+          message:
+            'Regular run history is ambiguous beyond the bounded scan; nothing was collected. Run an explicit sync for this dataset.',
+        });
     selected = dueJobs(selected, heads, now).map(({ resource, group }) => ({ resource, group }));
-    if (!selected.length) return [];
+    if (!selected.length) return results;
   }
   const collectionConfig =
     options.maximumRows === undefined
@@ -122,7 +141,6 @@ export async function sync(
     ];
   const total = selected.length;
   selected = selected.slice(0, options.maxJobs ?? selected.length);
-  const results: SyncResult[] = [];
   for (const { resource, group } of selected) {
     const window =
       options.window ??
@@ -198,7 +216,25 @@ export async function sync(
       });
     } catch (error) {
       const clean = safeError(error);
-      if (id) await store.fail(id, clean.code, clean.message, http.requests, new Date());
+      const failedAt = new Date();
+      // Only the opt-in due-time mode records a provider wait; rotation and
+      // history backfills keep their exact previous writes.
+      const wait =
+        options.dueOnly && error instanceof PulseError && error.code === 'RATE_LIMIT'
+          ? error.retryAfterSeconds
+          : undefined;
+      const notBefore =
+        id && wait !== undefined ? retryNotBefore(failedAt.getTime(), wait) : undefined;
+      if (id)
+        await store.fail(
+          id,
+          clean.code,
+          clean.message,
+          http.requests,
+          failedAt,
+          'failed',
+          notBefore && { dataset: key, notBefore },
+        );
       results.push({
         resourceId: resource.id,
         group,
@@ -207,6 +243,7 @@ export async function sync(
         requests: http.requests,
         ...clean,
         runId: id,
+        ...(notBefore ? { retryNotBefore: notBefore.toISOString() } : {}),
       });
     } finally {
       await store.release(key, owner);
@@ -227,6 +264,7 @@ export async function doctor(
 ) {
   const heads = await store.runHeads();
   const observed = await store.observedThrough();
+  const waits = await store.retryGuidance();
   const states = config.resources
     .flatMap((resource) => groups(resource).map((group) => ({ resource, group })))
     .map(({ resource, group }) => {
@@ -237,6 +275,10 @@ export async function doctor(
       const age = success
         ? (now.getTime() - Date.parse(success.finishedAt ?? success.startedAt)) / 3600000
         : null;
+      const wait =
+        latest?.status === 'failed' && latest.code === 'RATE_LIMIT'
+          ? waits.find((w) => w.dataset === `${resource.id}:${group}` && w.runId === latest.id)
+          : undefined;
       const credentials = nativeSense6(resource, bindings)
         ? { available: true, method: 'd1-binding', missing: [] }
         : resource.provider === 'npm' ||
@@ -304,6 +346,8 @@ export async function doctor(
             ? 'no_observations'
             : 'observations',
         nextAction: nextAction(resource.id, group, status, latest?.code ?? null),
+        // Present only while the latest run is the failure a provider wait belongs to.
+        ...(wait ? { retryNotBefore: wait.notBefore } : {}),
       };
     });
   return {

@@ -17,6 +17,8 @@ export class PulseError extends Error {
     public readonly code: ErrorCode,
     message: string,
     public readonly retryable = false,
+    /** Provider wait in whole seconds, possibly unbounded; set only for a rate limit that stated one. */
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'PulseError';
