@@ -69,3 +69,26 @@ signed session. Non-browser clients without either header retain their existing
 explicit-token behavior. This follows the
 [Fetch Origin-header algorithm](https://fetch.spec.whatwg.org/#origin-header)
 and [Fetch Metadata header semantics](https://www.w3.org/TR/fetch-metadata/).
+
+## Investigation and relationship views
+
+The authenticated project report now includes additive `investigation` and
+`resources` sections. Original metric cards and observations are unchanged.
+
+- `GET /api/v1/projects/<id>/investigation?from=2026-10-12&to=2026-10-13`
+  returns the project, exact requested window, generation time and deterministic
+  investigation leads. Each lead has source references, interpretation limits
+  and bounded next checks. A next check is an instruction to inspect evidence,
+  never an automatically executed collector or external request.
+- `GET /api/v1/projects/<id>/graph` returns the explicit configuration projection:
+  resources, declared websites and effective-dated relationships. It has no date
+  filters because the graph retains the declared binding intervals. No ownership,
+  deployment or package-to-repository link is inferred. Credentials, connection
+  environment names and private provider account identifiers are omitted.
+
+Both support JSON only, retain normal owner authentication and `no-store`, and
+expose no collection or configuration mutation. The graph also has an offline
+CLI equivalent: `pulse graph PROJECT --config /private/pulse.config.json --json`.
+That command reads only the configuration and opens no database or network.
+See the [pilot acceptance guide](pilot-acceptance.md) for live qualification;
+synthetic fixture success is not account access or a completed pilot.

@@ -1087,3 +1087,68 @@ code {
 .compare-difference {
   font-weight: 650;
 }
+
+/* Evidence leads stay readable with long source labels on narrow screens. */
+.investigation-panel {
+  margin-block: 1.5rem;
+  min-width: 0;
+}
+.investigation-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.investigation-item {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.investigation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.investigation-summary {
+  font-weight: 600;
+  line-height: 1.6;
+}
+.investigation-checks {
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+.investigation-checks li + li {
+  margin-top: 0.5rem;
+}
+.investigation-checks small {
+  display: block;
+}
+.investigation-evidence summary,
+.resource-graph-panel > summary {
+  cursor: pointer;
+  padding-block: 0.5rem;
+  font-weight: 600;
+}
+.investigation-evidence summary:focus-visible,
+.resource-graph-panel > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.investigation-facts {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+}
+.investigation-facts dt {
+  color: var(--muted);
+}
+.investigation-facts dd {
+  margin: 0 0 0.4rem;
+  overflow-wrap: anywhere;
+}
+.resource-graph-panel {
+  margin-block: 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

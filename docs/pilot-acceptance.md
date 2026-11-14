@@ -9,13 +9,13 @@ in a public issue or CI artifact.
 
 ## Choose the claim before running the test
 
-| Gate | Required evidence | What it does not prove |
-| --- | --- | --- |
-| Source contracts | Exact revision, ordinary tests and native runtime checks | Real provider permissions or semantics |
-| Account access | Consenting operator, named source and bounded successful probe | Complete history or recurring reliability |
-| Comparable observations | Actual same-site source mapping, matching dates and calendars, complete observed buckets | Equivalent measurement methods or true audience |
-| Portable recovery | Independent target host, verified private archive, matching report evidence | HA, multiple collectors or a production cutover |
-| Operator value | A specific finding, supporting evidence and the owner's next verification step | Verified adoption, causal conversion or general product-market fit |
+| Gate                    | Required evidence                                                                        | What it does not prove                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Source contracts        | Exact revision, ordinary tests and native runtime checks                                 | Real provider permissions or semantics                             |
+| Account access          | Consenting operator, named source and bounded successful probe                           | Complete history or recurring reliability                          |
+| Comparable observations | Actual same-site source mapping, matching dates and calendars, complete observed buckets | Equivalent measurement methods or true audience                    |
+| Portable recovery       | Independent target host, verified private archive, matching report evidence              | HA, multiple collectors or a production cutover                    |
+| Operator value          | A specific finding, supporting evidence and the owner's next verification step           | Verified adoption, causal conversion or general product-market fit |
 
 A synthetic demo can qualify the first gate. It cannot qualify the other gates.
 An incompatible comparison is a successful safety check, but not a demonstrated

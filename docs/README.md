@@ -38,3 +38,5 @@ belongs outside Git. Historical research is not a current operational contract.
 - [Source comparison](source-comparison.md): read-only investigation of overlapping website analytics.
 
 - [Website identity and authority](website-authority.md) — explicit site relationships, effective-dated pageview preferences and no cross-source totals.
+
+- [Private pilot acceptance](pilot-acceptance.md) — consented real-source checks, comparable windows, independent-host recovery and operator usefulness; separate from fixture success.

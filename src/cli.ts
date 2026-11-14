@@ -21,6 +21,7 @@ import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
 import { auditCoverage } from './coverage.js';
+import { projectGraph } from './project-graph.js';
 
 // The package manifest is the one version source for a checkout and the published archive.
 const VERSION: string = JSON.parse(
@@ -32,6 +33,7 @@ pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
 pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
 pulse connectors                     Offline built-in source capabilities; no credentials needed
+pulse graph PROJECT                  Explicit resource relationships; no DB, credentials or network
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --due-only for due jobs
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
@@ -120,6 +122,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     'validate',
     'coverage',
     'connectors',
+    'graph',
     'plan',
     'sync',
     'backfill',
@@ -216,6 +219,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   const configPath = resolve(v.config ?? 'pulse.config.json');
+  if (command === 'graph') {
+    if (positionals.length !== 2 || Object.keys(v).some((key) => !['config', 'json'].includes(key)))
+      throw new PulseError(
+        'CONFIG',
+        'Use pulse graph PROJECT --config FILE --json; graph reads configuration only.',
+      );
+    const config = await configFrom(configPath);
+    console.log(JSON.stringify(projectGraph(config, positionals[1]!), null, 2));
+    return 0;
+  }
   if (command === 'coverage') {
     if (!v.input || positionals.length !== 1)
       throw new PulseError('CONFIG', 'Use pulse coverage --input inventory.json.');
@@ -411,8 +424,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'brief') {
       const ids = positionals[1] ? [positionals[1]] : config.projects.map((p) => p.id);
       const briefs = [];
-      for (const id of ids)
-        briefs.push(projectBrief(await projectReport(config, store, id, period, now)));
+      for (const id of ids) {
+        const report = await projectReport(config, store, id, period, now);
+        briefs.push(projectBrief(report, 20, report.resources));
+      }
       await emit(
         positionals[1]
           ? briefs[0]
