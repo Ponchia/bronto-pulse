@@ -1,6 +1,7 @@
 import type { WebsitePolicy } from './config.js';
 import type { MetricCard } from './report.js';
 import { days, type DateRange } from './time.js';
+import { evaluateDailyCountEvidence } from './evidence-compatibility.js';
 import { compareWebsiteSources, type WebsiteSourceComparison } from './source-comparison.js';
 
 /**
@@ -40,35 +41,6 @@ export interface WebsiteAuthority {
 const PAGEVIEWS = new Set(['cloudflare.pageviews', 'plausible.pageviews', 'umami.pageviews']);
 const LIMITATION =
   'This is an operator-declared source preference, not independent verification of the website or its visitors. Alternative providers remain visible. Source values are never summed or silently substituted.';
-
-function isCompleteObservedDaily(card: MetricCard, dates: readonly string[]): boolean {
-  if (
-    card.value === null ||
-    !Number.isSafeInteger(card.value) ||
-    card.value < 0 ||
-    card.unit !== 'pageviews' ||
-    card.aggregation !== 'sum' ||
-    card.coverage.status !== 'complete' ||
-    card.coverage.observedDays !== dates.length ||
-    card.coverage.expectedDays !== dates.length ||
-    card.coverage.qualities.length !== 1 ||
-    card.coverage.qualities[0] !== 'observed' ||
-    card.points.length !== dates.length
-  )
-    return false;
-  const points = [...card.points].sort((a, b) => a.date.localeCompare(b.date));
-  return (
-    points.every(
-      (point, index) =>
-        point.date === dates[index] &&
-        point.from === point.date &&
-        point.to === point.date &&
-        point.quality === 'observed' &&
-        Number.isSafeInteger(point.value) &&
-        point.value >= 0,
-    ) && points.reduce((sum, point) => sum + point.value, 0) === card.value
-  );
-}
 
 export function websiteAuthorities(
   sites: readonly WebsitePolicy[],
@@ -170,14 +142,16 @@ export function websiteAuthorities(
         'The preferred source has no unambiguous pageview series. Alternatives are not automatically substituted.',
       );
     const preferred = matches[0]!;
-    if (!isCompleteObservedDaily(preferred, requestedDates))
+    const decision = evaluateDailyCountEvidence(preferred, requestedDates, 'pageviews');
+    if (!decision.eligible)
       return result(
         'unavailable',
         active.resource,
         active.effectiveFrom,
         preferred.metric,
         null,
-        'The preferred source lacks complete, exact observed daily pageviews for this period. A partial subtotal cannot become authoritative.',
+        'The preferred source lacks complete, exact observed daily pageviews for this period. A partial subtotal cannot become authoritative. ' +
+          decision.issues.map((issue) => issue.message).join(' '),
       );
     return result(
       'ready',

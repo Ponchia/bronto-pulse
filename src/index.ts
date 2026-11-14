@@ -32,3 +32,6 @@ export { assessEvidence, metricEvidenceClass } from './evidence.js';
 export type { EvidenceAssessment, EvidenceSignal, EvidenceClass } from './evidence.js';
 export { auditCoverage } from './coverage.js';
 export type { CoverageInventory, CoverageEntry, CoverageAudit } from './coverage.js';
+
+export { evaluateDailyCountEvidence } from './evidence-compatibility.js';
+export type { DailyCountDecision, DailyCountEvidence } from './evidence-compatibility.js';
