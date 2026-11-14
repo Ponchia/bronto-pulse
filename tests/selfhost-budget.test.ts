@@ -19,6 +19,18 @@ const rowLimit = (error: unknown) => {
   return true;
 };
 
+function boundedClient() {
+  return new HttpClient(
+    async () => {
+      throw new Error('Generic fetch is forbidden');
+    },
+    1000,
+    undefined,
+    64,
+    1,
+  );
+}
+
 test('self-hosted reads share the job request budget before reading another credential', async () => {
   const config = selfHostedConfig('umami');
   let exchanges = 0;
@@ -30,7 +42,7 @@ test('self-hosted reads share the job request budget before reading another cred
     },
   };
   const ctx = context(config, runtime);
-  ctx.http = new HttpClient(async () => { throw new Error('Generic fetch is forbidden'); }, 1000, undefined, 64, 1);
+  ctx.http = boundedClient();
   await selfHostedJson(ctx, config.connections[0], read);
   await assert.rejects(selfHostedJson(ctx, config.connections[0], read), rowLimit);
   assert.equal(exchanges, 1);
@@ -45,11 +57,15 @@ test('self-hosted reads enforce a smaller job byte budget at both transport and 
     exchange: async (request) => {
       transmittedLimit = request.maximumBytes;
       // The client must also reject oversized replies from an embedded transport.
-      return { status: 200, retryAfter: null, body: new TextEncoder().encode(JSON.stringify('x'.repeat(64))) };
+      return {
+        status: 200,
+        retryAfter: null,
+        body: new TextEncoder().encode(JSON.stringify('x'.repeat(64))),
+      };
     },
   };
   const ctx = context(config, runtime);
-  ctx.http = new HttpClient(async () => { throw new Error('Generic fetch is forbidden'); }, 1000, undefined, 64, 1);
+  ctx.http = boundedClient();
   await assert.rejects(selfHostedJson(ctx, config.connections[0], read), rowLimit);
   assert.equal(transmittedLimit, 64);
   assert.equal(ctx.http.requests, 1);

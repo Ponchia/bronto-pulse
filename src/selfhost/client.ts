@@ -59,12 +59,14 @@ export async function selfHostedJson(
   if (destination.variant !== read.variant)
     throw new PulseError('CONFIG', 'Self-hosted read does not match the instance variant.');
   wireRequest(read);
+  ctx.http.assertRequestBudget();
+  const maximumBytes = Math.min(SELF_HOSTED_MAXIMUM_BYTES, ctx.http.maximumResponseBytes);
   const token = await ctx.credentials.token(connection);
   // Visible ASCII without spaces: nothing that could split or extend a header.
   if (!/^[\x21-\x7e]{1,4096}$/.test(token))
     throw new PulseError('AUTH', 'Self-hosted provider credential has an invalid format.');
   // Share the per-job request accounting that runs and reports already read.
-  ctx.http.requests++;
+  ctx.http.reserveRequest();
   let reply: PinnedReply;
   try {
     reply = await runtime.exchange({
@@ -72,7 +74,7 @@ export async function selfHostedJson(
       read,
       token,
       timeoutMs: ctx.config.settings.requestTimeoutMs,
-      maximumBytes: SELF_HOSTED_MAXIMUM_BYTES,
+      maximumBytes,
     });
   } catch (error) {
     // The transport raises only fixed messages. Anything else is discarded:
@@ -121,7 +123,7 @@ export async function selfHostedJson(
     throw new PulseError('UNAVAILABLE', `Self-hosted provider returned HTTP ${status}.`);
   if (!(reply.body instanceof Uint8Array))
     throw new PulseError('SCHEMA', 'Self-hosted provider returned no JSON body.');
-  if (reply.body.byteLength > SELF_HOSTED_MAXIMUM_BYTES)
+  if (reply.body.byteLength > maximumBytes)
     throw new PulseError('ROW_LIMIT', 'Self-hosted provider response exceeds the byte budget.');
   try {
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(reply.body)) as unknown;

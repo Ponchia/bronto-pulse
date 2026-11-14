@@ -37,6 +37,26 @@ export class HttpClient {
     private readonly maximumRequests = 120,
     private readonly retryRateLimits = true,
   ) {}
+  /** A pinned adapter shares the same per-job response limit as fixed-origin fetch. */
+  get maximumResponseBytes(): number {
+    return this.maximumBytes;
+  }
+  /** Check before reading a credential for an exchange that cannot be admitted. */
+  assertRequestBudget(): void {
+    if (this.requests >= this.maximumRequests)
+      throw new PulseError(
+        'ROW_LIMIT',
+        'Per-job request budget exhausted. Narrow the collection window.',
+      );
+  }
+  /** Reserve one attempt, retaining the fixed-origin request counter semantics. */
+  reserveRequest(): void {
+    if (++this.requests > this.maximumRequests)
+      throw new PulseError(
+        'ROW_LIMIT',
+        'Per-job request budget exhausted. Narrow the collection window.',
+      );
+  }
   async json(url: string, init: RequestInit = {}): Promise<unknown> {
     const target = new URL(url);
     if (!ORIGINS.has(target.origin) || target.username || target.password)
@@ -72,11 +92,7 @@ export class HttpClient {
       );
     const failures: string[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (++this.requests > this.maximumRequests)
-        throw new PulseError(
-          'ROW_LIMIT',
-          'Per-job request budget exhausted. Narrow the collection window.',
-        );
+      this.reserveRequest();
       let response: Response;
       try {
         response = await this.fetcher(url, {
@@ -112,8 +128,8 @@ export class HttpClient {
       if (
         target.origin === 'https://api.github.com' &&
         [403, 429].includes(response.status) &&
-        (response.headers.get('x-ratelimit-remaining') === '0' ||
-          Number(response.headers.get('retry-after')) > 0)
+        (response.headers.get('x-ratelimit-remaining')?.trim() === '0' ||
+          retryAfterSeconds(response.headers, Date.now()) !== undefined)
       ) {
         await response.body?.cancel();
         throw new PulseError(
@@ -140,7 +156,7 @@ export class HttpClient {
         const stated = retryAfterSeconds(response.headers, Date.now());
         const seconds = Number.isFinite(numeric) ? numeric : (stated ?? NaN);
         // Long rate-limit waits must be retried by the scheduler, not occupy a worker.
-        if (Number.isFinite(seconds) && seconds > 10) {
+        if (seconds > 10) {
           await response.body?.cancel();
           throw new PulseError(
             'RATE_LIMIT',

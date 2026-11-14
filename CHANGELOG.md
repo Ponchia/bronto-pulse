@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve very large provider waits without an early in-job retry, recognize
+  GitHub HTTP-date quota waits, and apply configured per-job request/response
+  budgets to self-hosted transports as well as hosted providers.
+
 - Require the independent hostile-transport and evidence-browser acceptance
   suites in PR, main and release CI; regression tests reject optional or
   failure-suppressed execution.

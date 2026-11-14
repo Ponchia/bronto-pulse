@@ -192,3 +192,12 @@ With opt-in due-time scheduling, a self-hosted HTTP 429 also carries its bounded
 normalized `Retry-After` delay into the existing dataset retry guidance. The raw
 header is never retained. It does not trigger an in-job retry or activate a
 scheduler; explicit manual collection retains the documented operator override.
+
+## Shared collection budgets
+
+Pinned self-hosted reads use the job request budget and the smaller of the
+configured response-byte limit and the transport's 2 MiB ceiling. An exhausted
+request budget refuses before another credential read. The byte bound is passed
+to the socket transport and checked again on its returned bytes; embedding a
+custom transport does not disable it. Provider waits remain explicit scheduling
+evidence, not permission to retry early.
