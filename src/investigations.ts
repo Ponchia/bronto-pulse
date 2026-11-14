@@ -263,7 +263,9 @@ function lead(
     summary: summary.slice(0, 480),
     evidence: refs.slice(0, INVESTIGATION_LIMITS.evidence),
     omittedEvidence: Math.max(0, refs.length - INVESTIGATION_LIMITS.evidence),
+    // A metric without a caveat contributes no empty limitation.
     limitations: limitations
+      .filter((text) => text.trim())
       .slice(0, INVESTIGATION_LIMITS.limitations)
       .map((text) => text.slice(0, 320)),
     nextChecks: nextChecks.slice(0, INVESTIGATION_LIMITS.nextChecks),
