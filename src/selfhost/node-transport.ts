@@ -169,7 +169,8 @@ function exchange(call: PinnedCall, options: PinnedTransportOptions): Promise<Pi
         (response) => {
           const status = response.statusCode ?? 0;
           const header = response.headers['retry-after'];
-          const retryAfter = typeof header === 'string' ? header.slice(0, 64) : null;
+          // Reject over-bound guidance whole: truncating it can invent or shorten a wait.
+          const retryAfter = typeof header === 'string' && header.length <= 64 ? header : null;
           // Redirect targets and error bodies are never read or retained.
           if (status !== 200) {
             finish(undefined, { status, retryAfter, body: new Uint8Array() });

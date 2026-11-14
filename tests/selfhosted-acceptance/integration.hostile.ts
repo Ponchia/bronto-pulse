@@ -191,19 +191,19 @@ test('provider wait: a self-hosted 429 defers due-time collection, sends no cred
   }
 });
 
-// Open finding at 3f5fb42 (low): the transport cuts Retry-After to 64 characters and the
-// client then parses the cut text, so 64 digits followed by anything become an
-// indefinite wait. An over-long value should carry no guidance at all.
-test(
-  'provider wait: a Retry-After longer than the transport bound is ignored, not cut into a wait',
-  { todo: 'open low finding: over-long Retry-After is truncated before parsing' },
-  async () => {
-    const started = Date.now();
-    for (const header of ['9'.repeat(70), `${'9'.repeat(64)} seconds, or not`]) {
-      const server = await serve(respond.status(429, { 'Retry-After': header }, MARKER));
-      const config = installation(server.port);
-      const store = await database(config);
-      const bindings = { selfHosted: runtime().value };
+// Over-bound guidance must never be cut into a different numeric value.
+test('provider wait: reject overlong Retry-After without truncation', async () => {
+  const started = Date.now();
+  for (const header of [
+    '9'.repeat(70),
+    `${'9'.repeat(64)} seconds, or not`,
+    `${'0'.repeat(61)}500000`,
+  ]) {
+    const server = await serve(respond.status(429, { 'Retry-After': header }, MARKER));
+    const config = installation(server.port);
+    const store = await database(config);
+    const bindings = { selfHosted: runtime().value };
+    try {
       const first = await sync(config, store, secrets().proxy, {
         dueOnly: true,
         now: new Date(started),
@@ -217,10 +217,12 @@ test(
         bindings,
       });
       assert.equal(server.requests.length, 2, 'held past the fixed backoff by a cut header');
+    } finally {
+      store.driver.close?.();
       await server.close();
     }
-  },
-);
+  }
+});
 
 test('provider wait: only a 429 carries one; a 503 with Retry-After keeps the fixed backoff', async () => {
   const started = Date.now();

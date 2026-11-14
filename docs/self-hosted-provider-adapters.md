@@ -188,7 +188,7 @@ misleading host/address forms, TLS identity, redirects, proxy environment,
 request/response bounds, deadlines and production CLI admission. A passing run
 qualifies these tested boundaries, not a real provider account or production pilot.
 
-With opt-in due-time scheduling, a self-hosted HTTP 429 also carries its bounded,
+With opt-in due-time scheduling, a self-hosted HTTP 429 also carries its parsed,
 normalized `Retry-After` delay into the existing dataset retry guidance. The raw
 header is never retained. It does not trigger an in-job retry or activate a
 scheduler; explicit manual collection retains the documented operator override.
@@ -201,3 +201,9 @@ request budget refuses before another credential read. The byte bound is passed
 to the socket transport and checked again on its returned bytes; embedding a
 custom transport does not disable it. Provider waits remain explicit scheduling
 evidence, not permission to retry early.
+
+Retry guidance is accepted only as a complete ASCII header of at most 64
+characters. Longer or malformed values are ignored, never truncated into a
+different delay; the ordinary failure cooldown then applies. Accepted very
+large delays are retained as an explicit indefinite hold, visible in `doctor`
+and clearable by an explicit collection, as described in the scheduling guide.
