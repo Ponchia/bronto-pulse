@@ -124,12 +124,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     console.log(HELP);
     return 0;
   }
-  validateCliInput(
-    command,
-    positionals.slice(1),
-    v,
-    tokens.flatMap((token) => (token.kind === 'option' ? [token.name] : [])),
-  );
   if (v.format && !['json', 'markdown', 'csv'].includes(v.format))
     throw new PulseError('CONFIG', 'Output format must be json, markdown or csv.');
   if (v.json && v.format && v.format !== 'json')
@@ -166,6 +160,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if ((v.from === undefined) !== (v.to === undefined))
       throw new PulseError('CONFIG', 'A dated probe requires both --from and --to.');
   }
+  if (v.out && !['report', 'brief', 'export', 'inspect', 'visibility'].includes(command))
+    throw new PulseError(
+      'CONFIG',
+      '--out applies to report, brief, export, inspect or visibility.',
+    );
+  validateCliInput(
+    command,
+    positionals.slice(1),
+    v,
+    tokens.flatMap((token) => (token.kind === 'option' ? [token.name] : [])),
+  );
   const probeWindow =
     command === 'probe' && v.from !== undefined && v.to !== undefined
       ? range(v.from, v.to, MAX_PROBE_DAYS)
@@ -199,11 +204,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           )
         : undefined,
   });
-  if (v.out && !['report', 'brief', 'export', 'inspect', 'visibility'].includes(command))
-    throw new PulseError(
-      'CONFIG',
-      '--out applies to report, brief, export, inspect or visibility.',
-    );
   if (command === 'visibility') return visibilityCli(positionals[1], v);
   if (command === 'connectors') {
     if (
@@ -303,6 +303,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   // Read bounded bytes and parse before creating a restore destination. An invalid
   // private JSON file must not create a database or echo its contents.
   const archive = command === 'import' ? await privateJson(v.input, 100 * 1024 * 1024) : undefined;
+  let inspectionInput: string[] | undefined;
+  if (command === 'inspect') {
+    const input = await privateJson(v.input, 65536);
+    if (!Array.isArray(input) || input.some((url) => typeof url !== 'string'))
+      throw new PulseError('CONFIG', 'Inspection input must be a JSON array of URL strings.');
+    inspectionInput = input;
+  }
   const store = new Store(new SqliteDriver(dbPath));
   await store.migrate();
   let hold = false;
@@ -330,10 +337,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'inspect') {
       if (!v.resource)
         throw new PulseError('CONFIG', 'Inspection requires --resource ID and --input FILE.');
-      const input = await privateJson(v.input, 65536);
-      if (!Array.isArray(input) || input.some((url) => typeof url !== 'string'))
-        throw new PulseError('CONFIG', 'Inspection input must be a JSON array of URL strings.');
-      const results = await inspectUrls(config, v.resource, input, process.env);
+      const results = await inspectUrls(config, v.resource, inspectionInput!, process.env);
       await store.addInspections(results);
       const output =
         JSON.stringify({ schemaVersion: 1, resourceId: v.resource, results }, null, 2) + '\n';

@@ -22,6 +22,24 @@ for (const args of [
   ['annotate', '--resource', 'source'],
   ['report', 'project', '--days', '0x10'],
   ['report', 'project', '--days', '2', '--days', '3'],
+  ['coverage', '--input', 'inventory.json', '--db', 'ignored.db'],
+  [
+    'visibility',
+    'template',
+    '--suite',
+    'suite.json',
+    '--session',
+    'session.json',
+    '--config',
+    'ignored.json',
+  ],
+  ['plan', '--resource='],
+  ['plan', '--provider='],
+  ['plan', '--group='],
+  ['sync', '--resource=', '--dry-run'],
+  ['plan', '--from='],
+  ['report', 'project', '--out='],
+  ['report', 'project', '--format='],
 ]) {
   test(`CLI rejects ineffective or incomplete input before database access: ${args.join(' ')}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'pulse-input-contract-'));
@@ -94,3 +112,33 @@ test('documented command shapes retain their effective options', () => {
       command,
     );
 });
+
+for (const input of ['not JSON', '{"unexpected":"shape"}', '[null]']) {
+  test(`inspection input is validated before opening a destination: ${input}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pulse-invalid-inspection-'));
+    try {
+      writeFileSync(join(dir, 'urls.json'), input);
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          loader,
+          cli,
+          'inspect',
+          '--resource',
+          'source',
+          '--input',
+          'urls.json',
+          '--db',
+          'new/pulse.db',
+        ],
+        { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir }, timeout: 15000 },
+      );
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /CONFIG:/);
+      assert.equal(existsSync(join(dir, 'new')), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
