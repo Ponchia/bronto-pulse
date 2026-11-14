@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { PulseError } from './errors.js';
 import {
   parseVisibilitySuite,
@@ -17,7 +18,9 @@ export async function privateJson(
   try {
     // Read at most the declared budget even for unexpectedly large files.
     const { open } = await import('node:fs/promises');
-    const file = await open(path, 'r');
+    // A POSIX FIFO must not block before fstat can reject non-regular input.
+    // O_NONBLOCK is unavailable on Windows; ordinary files retain read-only mode.
+    const file = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
     try {
       const info = await file.stat();
       if (!info.isFile())
