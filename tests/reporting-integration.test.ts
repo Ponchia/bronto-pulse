@@ -181,7 +181,7 @@ test('Markdown reports retain per-lead interpretation limits and structured next
         ...finding,
         limitations: [
           'A difference does not estimate missing traffic.',
-          '<script>unsafe()</script>',
+          '<ScRiPt >unsafe()</ScRiPt><img src=x onerror=unsafe()>',
         ],
       },
       {
@@ -195,7 +195,8 @@ test('Markdown reports retain per-lead interpretation limits and structured next
     assert.match(markdown, /\n  - Evidence: /);
     assert.match(markdown, /\n  - Limit: A difference does not estimate missing traffic\./);
     assert.equal(markdown.split('A difference does not estimate missing traffic.').length - 1, 1);
-    assert.doesNotMatch(markdown, /<script>/);
+    // No raw HTML delimiter may survive, regardless of tag name, case or attributes.
+    assert.doesNotMatch(markdown, /[<>]/);
     assert.doesNotMatch(markdown, /\n  Next check: /);
   } finally {
     store.driver.close?.();
