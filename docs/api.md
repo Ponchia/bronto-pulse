@@ -25,6 +25,9 @@ Additional authenticated endpoints:
 | `GET /api/v1/projects/:id/brief?from=...&to=...` | One project briefing with evidence                            |
 | `GET /api/v1/plan?from=...&to=...`               | Offline date plan, capped at 64 jobs; never invokes providers |
 
+A briefing also has an `investigation` object with `findings`,
+`omittedFindings` and `limitation`. See [investigation leads](investigation-leads.md).
+
 Project reports accept `format=json`, `format=markdown` or `format=csv`.
 Brief endpoints accept JSON or Markdown. Downloads carry `no-store`, attachment
 filenames and the same authentication boundary. Invalid formats fail rather than

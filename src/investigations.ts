@@ -687,7 +687,7 @@ export interface SupportedChange {
  * Whether a card's recorded comparison may be restated. The comparison must
  * agree with the card that carries it: both values finite, their difference
  * exactly the recorded change, a dated baseline and only observed values. A
- * summed daily count must also pass the shared strict daily-count gate, so a
+ * summed daily count must also pass the shared strict daily count gate, so a
  * sampled, partial or inconsistent series cannot keep a stale comparison.
  * Snapshots and weighted ratios keep the report's own comparison rules.
  */

@@ -10,8 +10,8 @@
   original metric findings and never execute a suggested check automatically.
 - Expose explicit resource relationships through `pulse graph PROJECT` and the
   private graph API, without inferring ownership or package-to-repository links.
-  Add mobile and text-escaping acceptance tests and a private live-pilot runbook.
-
+  Add mobile and text-escaping acceptance tests and a private live-pilot runbook. See
+  [investigation leads](docs/investigation-leads.md).
 - The release workflow now owns the npm dist-tags. A separately approved
   `sync-dist-tags` job runs after registry verification, through the trusted
   publisher's new "Allow npm dist-tag" permission and the same audited

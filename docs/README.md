@@ -11,6 +11,7 @@ Lifecycle: current
 | [Coverage](coverage.md)                                           | Offline inventory gaps, permissions and collection boundaries |
 | [Reporting](reporting.md)                                         | Evidence briefings, quality rules and private exports         |
 | [Adoption quality](adoption-quality.md)                           | Interpretation limits, review signals and external evidence   |
+| [Investigation leads](investigation-leads.md)                     | Reason catalogue, next checks and the project resource map    |
 | [Releasing](releasing.md)                                         | Maintainer gates, clean consumers and CI trust                |
 | [Architecture](architecture.md)                                   | Data flow, transaction model, portable boundaries             |
 | [Metric contracts](metrics.md)                                    | Aggregation semantics, attribution, coverage                  |
