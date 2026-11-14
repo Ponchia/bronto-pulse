@@ -189,9 +189,7 @@ test('bundles: the Worker graph has no socket-capable module; the Node CLI graph
       .filter(
         (entry) =>
           entry.external &&
-          /^(?:node:)?(?:tls|net|http|https|http2|dns|dgram|child_process|fs)$/.test(
-            entry.path.replace(/^node:/, 'node:'),
-          ),
+          /^(?:node:)?(?:tls|net|http|https|http2|dns|dgram|child_process|fs)$/.test(entry.path),
       )
       .map((entry) => `${file} -> ${entry.path}`),
   );

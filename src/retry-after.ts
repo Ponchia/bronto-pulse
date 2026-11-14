@@ -18,7 +18,10 @@ export interface RetryGuidance {
 
 /** Digits only. Beyond exact integer range the count is unbounded, not dropped. */
 function count(digits: string): number {
-  return digits.length <= 15 ? Number(digits) : Number.POSITIVE_INFINITY;
+  // HTTP delay-seconds permits leading zeroes. Only significant digits
+  // determine overflow; zero padding must never create an indefinite hold.
+  const significant = digits.replace(/^0+/, '');
+  return significant.length <= 15 ? Number(significant) : Number.POSITIVE_INFINITY;
 }
 
 /** A positive wait rounded up to whole seconds, possibly unbounded; else no guidance. */

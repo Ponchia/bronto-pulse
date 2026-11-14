@@ -38,6 +38,20 @@ files. A credential failure is a reported outcome, not a reason to claim that
 an integration works. Initial deployment evidence and remaining activation
 requirements should be reported separately from code completion.
 
+## Required combined acceptance
+
+Every pull request, main-branch push and release verification runs the ordinary
+repository checks, the independent `npm run test:selfhost:hostile` suite and
+both browser scenarios (`test:browser` and `test:browser:evidence`). These steps
+are mandatory, with no conditional or failure-suppression escape. A workflow
+contract test rejects removal or weakening of either additional gate.
+
+The hostile suite needs OpenSSL and generates temporary local TLS identities.
+Its fixture, policy, transport, CLI and Worker checks use only synthetic inputs
+and loopback servers. The evidence-browser scenario has its own database and
+port and verifies independent source comparisons without external requests.
+Neither suite establishes access to a real provider account.
+
 ## Bounded provider probes
 
 `pulse probe` checks access without opening the installation database or publishing

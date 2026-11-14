@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Require the independent hostile-transport and evidence-browser acceptance
+  suites in PR, main and release CI; regression tests reject optional or
+  failure-suppressed execution.
+- Parse zero-padded retry delays and GitHub reset timestamps by their numeric
+  value rather than raw header length, avoiding accidental indefinite holds.
+
 - Share strict daily-count evidence validation between website comparisons and
   preferred-source reporting, including contradictory coverage and numeric
   overflow rejection without changing underlying observations.
