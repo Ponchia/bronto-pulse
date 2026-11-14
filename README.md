@@ -25,6 +25,9 @@ npm install @ponchia/pulse@beta
 npx pulse --help
 ```
 
+Keep the `@beta` suffix: the historical `latest` alias currently points to an
+older beta. See [channel status and protected recovery](docs/releasing.md#recovering-a-previously-published-version).
+
 Use 0.2.0-beta.1 or later: the `pulse` command in 0.2.0-beta.0 exits without
 running. The demo below and the development checks use a source checkout.
 
