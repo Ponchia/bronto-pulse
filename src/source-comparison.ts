@@ -1,28 +1,13 @@
 import { PulseError } from './errors.js';
-import type { MetricCard, ProjectReport } from './report.js';
+import type { ProjectReport } from './report.js';
 import { days } from './time.js';
+import { evaluateDailyCountEvidence } from './evidence-compatibility.js';
 
 const PAGEVIEW_METRICS = new Set([
   'cloudflare.pageviews',
   'plausible.pageviews',
   'umami.pageviews',
 ]);
-
-type Candidate = Pick<
-  MetricCard,
-  | 'resourceId'
-  | 'provider'
-  | 'metric'
-  | 'methodology'
-  | 'timezone'
-  | 'scope'
-  | 'dimensions'
-  | 'unit'
-  | 'aggregation'
-  | 'value'
-  | 'coverage'
-  | 'points'
->;
 
 export interface WebsiteSourceComparison {
   schemaVersion: 1;
@@ -51,40 +36,6 @@ function canonical(obj: unknown) {
   return JSON.stringify(
     Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))),
   );
-}
-
-function exactObserved(card: Candidate, requestedDates: string[]): boolean {
-  if (
-    card.value === null ||
-    !Number.isSafeInteger(card.value) ||
-    card.value < 0 ||
-    card.unit !== 'pageviews' ||
-    card.aggregation !== 'sum' ||
-    card.coverage.status !== 'complete' ||
-    card.coverage.expectedDays !== requestedDates.length ||
-    card.coverage.observedDays !== requestedDates.length ||
-    card.coverage.qualities.length !== 1 ||
-    card.coverage.qualities[0] !== 'observed' ||
-    card.points.length !== requestedDates.length
-  )
-    return false;
-
-  const points = [...card.points].sort((a, b) => a.date.localeCompare(b.date));
-  if (
-    points.some(
-      (point, i) =>
-        point.date !== requestedDates[i] ||
-        point.from !== point.date ||
-        point.to !== point.date ||
-        point.quality !== 'observed' ||
-        !Number.isSafeInteger(point.value) ||
-        point.value < 0,
-    )
-  )
-    return false;
-
-  // Do not trust an aggregate value that does not match its daily evidence.
-  return points.reduce((sum, point) => sum + point.value, 0) === card.value;
 }
 
 /** Require explicit user assertion of same-site identity; never infer it from project membership. */
@@ -151,9 +102,15 @@ export function compareWebsiteSources(
       'The sources have different explicit scope/dimensions. Partial-page and whole-property counts are not comparable.',
     ]);
   const dates = days(report.window);
-  if (!exactObserved(primary, dates) || !exactObserved(secondary, dates))
+  const decisions = [primary, secondary].map((card) =>
+    evaluateDailyCountEvidence(card, dates, 'pageviews'),
+  );
+  if (decisions.some((decision) => !decision.eligible))
     return result('incompatible', [
       'Both series require complete, observed, non-sampled daily buckets for identical dates. Missing values are not zero.',
+      ...decisions.flatMap((decision, i) =>
+        decision.issues.map((issue) => `${sources[i]!.resourceId}: ${issue.message}`),
+      ),
     ]);
   const difference = secondary.value! - primary.value!;
   return result(
