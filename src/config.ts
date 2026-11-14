@@ -1,4 +1,5 @@
 import * as z from 'zod/mini';
+import { groups } from './collectors/context.js';
 import { PulseError } from './errors.js';
 import { day, addDays } from './time.js';
 z.config(z.locales.en());
@@ -34,6 +35,8 @@ const common = {
   connection: z.optional(id),
   enabled: z._default(z.boolean(), true),
   refreshHours: z.optional(z.int().check(z.gte(1), z.lte(720))),
+  // Due-time only: a per-group minimum gap that overrides refreshHours.
+  refreshHoursByGroup: z.optional(z.record(id, z.int().check(z.gte(1), z.lte(720)))),
 };
 // Older dates a history schedule may collect, one bounded chunk per invocation.
 // Only daily sources whose provider serves past dates on request accept it.
@@ -274,6 +277,12 @@ export function parseConfig(input: unknown): Config {
     }
     if ('groups' in r && new Set(r.groups).size !== r.groups.length)
       throw new PulseError('CONFIG', 'Duplicate collection group.');
+    // A misspelt or uncollected group would otherwise be silently ignored.
+    if (Object.keys(r.refreshHoursByGroup ?? {}).some((name) => !groups(r).includes(name)))
+      throw new PulseError(
+        'CONFIG',
+        'Per-group refresh intervals must name groups this resource collects.',
+      );
   }
   const bindings: { project: string; b: Binding }[] = [];
   for (const p of c.projects) {

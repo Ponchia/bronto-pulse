@@ -17,6 +17,8 @@ import {
 } from '../model.js';
 import { days, range, type DateRange, day, dateInZone, previous } from '../time.js';
 import { validateCollected } from '../validation.js';
+import { RETRY_HOLD_INSTANT, type RetryGuidance } from '../retry-after.js';
+import { isRegularRun, sourceZone } from '../due-schedule.js';
 import type { SqlDriver, Statement } from './driver.js';
 import { SCHEMA } from './schema.js';
 import { validateInspection, type Inspection } from '../inspection.js';
@@ -33,6 +35,8 @@ export interface Archive {
   observations: Row[];
   annotations: Row[];
   inspections?: Row[];
+  /** Provider waits of exported failed runs; absent when there are none. */
+  retryGuidance?: RetryGuidance[];
 }
 const json = (v: unknown) => JSON.stringify(v);
 async function digest(value: string): Promise<string> {
@@ -76,6 +80,48 @@ function run(row: Row): Run {
     notes: JSON.parse(String(row.notes_json)),
     completeness: row.completeness as Run['completeness'],
   };
+}
+/** Exact-calendar scan of a non-UTC dataset: first page inside the read snapshot, then pages. */
+const REGULAR_FIRST_PAGE = 16;
+const REGULAR_PAGE = 80;
+const REGULAR_SCAN_ROWS = 256;
+const RETRY_GUIDANCE_PREFIX = 'scheduler_retry:';
+// ';' follows ':' in ASCII, so this is the exact key prefix as a range.
+const RETRY_GUIDANCE_ROWS: Statement = {
+  sql: 'SELECT key,value FROM metadata WHERE key>=? AND key<?',
+  params: [RETRY_GUIDANCE_PREFIX, RETRY_GUIDANCE_PREFIX.slice(0, -1) + ';'],
+};
+/**
+ * A wait is portable only with its own run: a rate-limited failure of that
+ * dataset, and a representable instant after it.
+ */
+function guidedRun(hint: RetryGuidance, run: Row | undefined): boolean {
+  if (!run || run.status !== 'failed' || run.error_code !== 'RATE_LIMIT') return false;
+  if (hint.dataset !== `${String(run.resource_id)}:${String(run.group_id)}`) return false;
+  const failedAt = Date.parse(String(run.finished_at ?? run.started_at)),
+    until = Date.parse(hint.notBefore);
+  return (
+    Number.isFinite(failedAt) &&
+    Number.isFinite(until) &&
+    new Date(until).toISOString() === hint.notBefore &&
+    until > failedAt &&
+    until <= RETRY_HOLD_INSTANT
+  );
+}
+/** Advisory scheduler state: a malformed row is dropped, leaving the default backoff. */
+function storedRetryGuidance(row: Row): RetryGuidance[] {
+  try {
+    const value: unknown = JSON.parse(String(row.value));
+    if (!value || typeof value !== 'object') return [];
+    const { run, notBefore } = value as Record<string, unknown>;
+    if (typeof run !== 'string' || typeof notBefore !== 'string') return [];
+    if (!Number.isFinite(Date.parse(notBefore))) return [];
+    return [
+      { dataset: String(row.key).slice(RETRY_GUIDANCE_PREFIX.length), runId: run, notBefore },
+    ];
+  } catch {
+    return [];
+  }
 }
 const OBS_FIELDS = [
   'run_id',
@@ -268,8 +314,25 @@ export class Store {
     requests: number,
     now: Date,
     status: Run['status'] = 'failed',
+    /** Due-time only: the provider's bounded wait for this dataset's failed run. */
+    retry?: { dataset: string; notBefore: Date },
   ): Promise<void> {
     await this.driver.batch([
+      // Evaluated before the update in the same atomic batch, so the row is
+      // written only by the call that fails a still-running run. One row per
+      // dataset, replaced by its next guided failure: no schema change.
+      ...(retry
+        ? [
+            {
+              sql: "INSERT INTO metadata(key,value) SELECT ?,? WHERE EXISTS (SELECT 1 FROM runs WHERE id=? AND status='running') ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+              params: [
+                RETRY_GUIDANCE_PREFIX + retry.dataset,
+                JSON.stringify({ run: id, notBefore: retry.notBefore.toISOString() }),
+                id,
+              ],
+            },
+          ]
+        : []),
       {
         sql: "UPDATE runs SET status=?,finished_at=?,error_code=?,error_message=?,requests_count=? WHERE id=? AND status='running'",
         params: [status, now.toISOString(), code, message, requests, id],
@@ -403,22 +466,97 @@ export class Store {
     return { latest: (latest ?? []).map(run), successful: (successful ?? []).map(run) };
   }
   /**
-   * Due-time only: distinguish scheduled current-day fetches from older
-   * historical backfills by their source end date at execution time.
-   * This preserves refresh intervals longer than one day, including across
+   * Due-time only: the newest *regular* run of each dataset, any status and
+   * successful, where regular means the window ended on or after the last
+   * complete source day when the run started. Older historical backfills are
+   * thereby excluded, and refresh intervals longer than one day survive
    * midnight. Existing runHeads() and health semantics are unchanged.
+   *
+   * SQLite has no IANA calendar. UTC sources are matched exactly in SQL. For
+   * Pacific and site-timezone sources SQL selects a two-day superset, newest
+   * first, and the exact source calendar is applied here, reading further
+   * pages while a newer borderline window is in the way. The scan is bounded
+   * to REGULAR_SCAN_ROWS rows per dataset: beyond that the dataset is listed
+   * as unresolved rather than guessed.
    */
-  async regularRunHeads(): Promise<{ latest: Run[]; successful: Run[] }> {
-    const query = (successOnly: boolean): Statement => ({
+  async regularRunHeads(): Promise<{
+    latest: Run[];
+    successful: Run[];
+    retryGuidance: RetryGuidance[];
+    unresolved: string[];
+  }> {
+    const band = "r.to_day>=date(substr(r.started_at,1,10),'-2 day')";
+    const first = (successOnly: boolean): Statement => ({
       sql:
-        'SELECT * FROM (SELECT r.*,ROW_NUMBER() OVER (PARTITION BY r.resource_id,r.group_id ORDER BY r.started_at DESC,r.rowid DESC) AS rank ' +
+        "SELECT * FROM (SELECT r.*,r.rowid AS row_order,z.provider AS source_provider,json_extract(z.config_json,'$.timezone') AS source_zone,z.provider IN ('gsc','plausible') AS zoned,ROW_NUMBER() OVER (PARTITION BY r.resource_id,r.group_id ORDER BY r.started_at DESC,r.rowid DESC) AS rank " +
         'FROM runs r JOIN resources z ON z.id=r.resource_id ' +
-        "WHERE r.to_day>=date(substr(r.started_at,1,10),CASE WHEN z.provider IN ('gsc','plausible') THEN '-2 day' ELSE '-1 day' END)" +
+        `WHERE CASE WHEN z.provider IN ('gsc','plausible') THEN ${band} ELSE r.to_day>=date(substr(r.started_at,1,10),'-1 day') END` +
         (successOnly ? " AND r.status='success'" : '') +
-        ') WHERE rank=1',
+        ') WHERE rank<=CASE WHEN zoned THEN ? ELSE 1 END ORDER BY resource_id,group_id,rank',
+      params: [REGULAR_FIRST_PAGE],
     });
-    const [latest, successful] = await this.driver.readBatch([query(false), query(true)]);
-    return { latest: (latest ?? []).map(run), successful: (successful ?? []).map(run) };
+    const [latest, successful, guidance] = await this.driver.readBatch([
+      first(false),
+      first(true),
+      RETRY_GUIDANCE_ROWS,
+    ]);
+    const unresolved = new Set<string>();
+    const heads = async (rows: Row[], successOnly: boolean): Promise<Run[]> => {
+      const datasets = new Map<string, Row[]>();
+      for (const row of rows) {
+        const key = `${String(row.resource_id)}:${String(row.group_id)}`;
+        datasets.set(key, [...(datasets.get(key) ?? []), row]);
+      }
+      const found: Run[] = [];
+      for (const [key, firstPage] of datasets) {
+        const { source_provider, source_zone, zoned, resource_id, group_id } = firstPage[0]!;
+        const zone = sourceZone(String(source_provider), source_zone as string | null);
+        let page = firstPage,
+          size = REGULAR_FIRST_PAGE,
+          scanned = 0;
+        for (;;) {
+          const head = page.map(run).find((candidate) => isRegularRun(zone, candidate));
+          if (head) {
+            found.push(head);
+            break;
+          }
+          scanned += page.length;
+          // A short page is the end of the band: no regular run exists.
+          if (!Number(zoned) || page.length < size) break;
+          if (scanned >= REGULAR_SCAN_ROWS) {
+            unresolved.add(key);
+            break;
+          }
+          const last = page.at(-1)!;
+          size = Math.min(REGULAR_PAGE, REGULAR_SCAN_ROWS - scanned);
+          page = await this.driver.all({
+            sql:
+              `SELECT r.*,r.rowid AS row_order FROM runs r WHERE r.resource_id=? AND r.group_id=? AND ${band}` +
+              (successOnly ? " AND r.status='success'" : '') +
+              ' AND (r.started_at<? OR (r.started_at=? AND r.rowid<?)) ORDER BY r.started_at DESC,r.rowid DESC LIMIT ?',
+            params: [
+              String(resource_id),
+              String(group_id),
+              String(last.started_at),
+              String(last.started_at),
+              Number(last.row_order),
+              size,
+            ],
+          });
+        }
+      }
+      return found;
+    };
+    return {
+      latest: await heads(latest ?? [], false),
+      successful: await heads(successful ?? [], true),
+      retryGuidance: (guidance ?? []).flatMap(storedRetryGuidance),
+      unresolved: [...unresolved].sort(),
+    };
+  }
+  /** Stored provider waits, for operator visibility; scheduling reads them with its heads. */
+  async retryGuidance(): Promise<RetryGuidance[]> {
+    return (await this.driver.all(RETRY_GUIDANCE_ROWS)).flatMap(storedRetryGuidance);
   }
   async observedThrough(): Promise<{ resourceId: string; group: string; date: string }[]> {
     const rows = await this.driver.all({
@@ -599,6 +737,7 @@ export class Store {
       observations = [],
       annotations = [],
       inspections = [],
+      guidance = [],
     ] = await this.driver.readBatch([
       { sql: 'SELECT key FROM leases WHERE expires_at>unixepoch()*1000' },
       { sql: "SELECT value FROM metadata WHERE key='config'" },
@@ -610,6 +749,7 @@ export class Store {
       { sql: RAW_OBS_SELECT + ' LIMIT ?', params: [maxRows + 1] },
       { sql: 'SELECT * FROM annotations' },
       { sql: 'SELECT * FROM url_inspections LIMIT ?', params: [maxRows + 1] },
+      RETRY_GUIDANCE_ROWS,
     ]);
     if (locks.length)
       throw new PulseError('CONFLICT', 'Wait for active collection jobs before exporting.');
@@ -620,6 +760,12 @@ export class Store {
         'ROW_LIMIT',
         'Export exceeds the bounded row limit. Use an encrypted database backup for a larger installation.',
       );
+    // A provider wait travels only with the failed run it belongs to, so a
+    // restore cannot retry before the provider's stated time.
+    const failed = new Map(runs.map((r) => [String(r.id), r]));
+    const retryGuidance = guidance
+      .flatMap(storedRetryGuidance)
+      .filter((hint) => guidedRun(hint, failed.get(hint.runId)));
     // Abandoned running jobs have no published partitions; omit them rather than
     // producing a backup our own importer cannot restore.
     return {
@@ -633,6 +779,7 @@ export class Store {
       observations,
       annotations,
       inspections,
+      ...(retryGuidance.length ? { retryGuidance } : {}),
     };
   }
   async import(input: unknown): Promise<void> {
@@ -769,6 +916,24 @@ export class Store {
         'Archive observation key mismatch.',
       );
     }
+    const waits = a.retryGuidance === undefined ? [] : a.retryGuidance;
+    invariant(
+      Array.isArray(waits) && waits.length <= a.runs.length,
+      'Invalid archived retry guidance budget.',
+    );
+    for (const hint of waits)
+      invariant(
+        hint &&
+          typeof hint.dataset === 'string' &&
+          typeof hint.runId === 'string' &&
+          typeof hint.notBefore === 'string' &&
+          guidedRun(hint, runMap.get(hint.runId)),
+        'Invalid archived retry guidance.',
+      );
+    invariant(
+      new Set(waits.map((hint) => hint.dataset)).size === waits.length,
+      'Duplicate archived retry guidance.',
+    );
     // Restore all tables in one atomic driver batch. SQL identifiers below are constants.
     const statements: Statement[] = [];
     const tables: [string, Row[], string[]][] = [
@@ -817,6 +982,14 @@ export class Store {
       sql: "INSERT OR REPLACE INTO metadata(key,value) VALUES('config',?)",
       params: [json(config)],
     });
+    for (const hint of waits)
+      statements.push({
+        sql: 'INSERT INTO metadata(key,value) VALUES(?,?)',
+        params: [
+          RETRY_GUIDANCE_PREFIX + hint.dataset,
+          json({ run: hint.runId, notBefore: hint.notBefore }),
+        ],
+      });
     await this.driver.batch(statements);
   }
   /** Delete only unreachable staging/replaced observations; never prune active source history. */

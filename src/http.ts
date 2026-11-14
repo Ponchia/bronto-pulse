@@ -1,4 +1,5 @@
 import { PulseError } from './errors.js';
+import { retryAfterSeconds } from './retry-after.js';
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 const ORIGINS = new Set([
   'https://api.github.com',
@@ -119,15 +120,25 @@ export class HttpClient {
           'RATE_LIMIT',
           'GitHub quota is exhausted. Retry in a later collection run.',
           true,
+          retryAfterSeconds(response.headers, Date.now(), true),
         );
       }
       if (response.status === 429 && !this.retryRateLimits) {
         await response.body?.cancel();
-        throw new PulseError('RATE_LIMIT', 'Provider quota requires a later collection run.', true);
+        throw new PulseError(
+          'RATE_LIMIT',
+          'Provider quota requires a later collection run.',
+          true,
+          retryAfterSeconds(response.headers, Date.now()),
+        );
       }
       if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
         const raw = response.headers.get('retry-after');
-        const seconds = raw ? Number(raw) : NaN;
+        const numeric = raw ? Number(raw) : NaN;
+        // An HTTP-date wait is normalized first, so it defers like a numeric one
+        // instead of being retried inside this job.
+        const stated = retryAfterSeconds(response.headers, Date.now());
+        const seconds = Number.isFinite(numeric) ? numeric : (stated ?? NaN);
         // Long rate-limit waits must be retried by the scheduler, not occupy a worker.
         if (Number.isFinite(seconds) && seconds > 10) {
           await response.body?.cancel();
@@ -135,6 +146,7 @@ export class HttpClient {
             'RATE_LIMIT',
             'Provider rate limit requires a later collection run.',
             true,
+            stated,
           );
         }
         await response.body?.cancel();
@@ -153,7 +165,12 @@ export class HttpClient {
             'Provider denied this dataset. Verify account and least-privilege permissions.',
           );
         if (response.status === 429)
-          throw new PulseError('RATE_LIMIT', 'Provider rate limit exceeded.', true);
+          throw new PulseError(
+            'RATE_LIMIT',
+            'Provider rate limit exceeded.',
+            true,
+            retryAfterSeconds(response.headers, Date.now()),
+          );
         if (response.status === 404)
           throw new PulseError('NOT_FOUND', 'Provider resource or dataset is unavailable.');
         throw new PulseError('UNAVAILABLE', `Provider returned HTTP ${response.status}.`);
