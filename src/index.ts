@@ -11,6 +11,8 @@ export { handle } from './api/handler.js';
 export { PulseError } from './errors.js';
 
 export { projectBrief, markdownBrief } from './brief.js';
+export { ownerReview, markdownReview } from './review.js';
+export type { OwnerReview, ReviewedProject, ReviewFocus, ReviewLane } from './review.js';
 export { csvReport } from './report-export.js';
 export { planCollection, markdownPlan } from './plan.js';
 export type { Brief, Finding } from './brief.js';

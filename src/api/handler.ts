@@ -1,4 +1,5 @@
 import { investigateProject } from '../investigations.js';
+import { ownerReview, markdownReview } from '../review.js';
 import { projectGraph } from '../project-graph.js';
 import type { AggregateBindings } from '../collectors/bindings.js';
 import type { Config } from '../config.js';
@@ -86,6 +87,9 @@ function validateQuery(url: URL, now: Date): void {
   else if (tail === 'plan' || tail === 'portfolio') {
     allowed = dateKeys;
     dated = true;
+  } else if (tail === 'review') {
+    allowed = [...dateKeys, 'format'];
+    dated = true;
   } else if (tail === 'brief' || /^projects\/[a-z][a-z0-9_-]{0,63}\/(report|brief)$/.test(tail)) {
     allowed = [...dateKeys, 'format'];
     dated = true;
@@ -109,7 +113,7 @@ function validateQuery(url: URL, now: Date): void {
   if (format !== null) {
     const formats = tail.endsWith('/report')
       ? ['json', 'markdown', 'csv']
-      : tail === 'brief' || tail.endsWith('/brief')
+      : tail === 'review' || tail === 'brief' || tail.endsWith('/brief')
         ? ['json', 'markdown']
         : ['json'];
     if (!formats.includes(format))
@@ -320,6 +324,21 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           demo: data.config.demo,
         }),
       );
+    if (url.pathname === root + '/review') {
+      const reports = await portfolio(data.config, data.store, windowFor(url, now), now);
+      const review = ownerReview(reports);
+      const format = url.searchParams.get('format') ?? 'json';
+      if (format === 'markdown')
+        return secure(
+          new Response(markdownReview(review), {
+            headers: {
+              'Content-Type': 'text/markdown; charset=utf-8',
+              'Content-Disposition': 'attachment; filename="pulse-private-owner-review.md"',
+            },
+          }),
+        );
+      return secure(json(review));
+    }
     if (url.pathname === root + '/brief') {
       const reports = await portfolio(data.config, data.store, windowFor(url, now), now);
       const briefs = reports.reports.map((r) => projectBrief(r, 20, r.resources));

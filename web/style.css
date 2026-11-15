@@ -1181,3 +1181,83 @@ code {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Owner review groups verification leads by project rather than ranking incomparable metrics. */
+.review-entrance {
+  margin: 0 0 1.25rem;
+}
+.review-limitation {
+  max-width: 72rem;
+  line-height: 1.7;
+  margin: 0.5rem 0 1.2rem;
+}
+.owner-review-projects {
+  display: grid;
+  gap: 0.9rem;
+  margin-block: 1.5rem;
+}
+.owner-review-project {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.owner-review-project > summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding: 1rem 1.2rem;
+  min-height: 48px;
+}
+.owner-review-project > summary::marker {
+  color: var(--accent);
+}
+.owner-review-project > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.owner-review-body {
+  padding: 0 1.2rem 1.15rem;
+}
+.owner-review-focus {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr));
+  gap: 0.8rem;
+}
+.owner-review-item {
+  padding: 0.9rem;
+  background: var(--wash);
+  border-radius: 9px;
+  min-width: 0;
+}
+.owner-review-item h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+}
+.owner-review-summary {
+  line-height: 1.6;
+  font-weight: 550;
+}
+.owner-review-checks {
+  padding-left: 1.2rem;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.owner-review-checks li + li {
+  margin-top: 0.55rem;
+}
+.owner-review-item .text-button,
+.owner-review-body > .text-button {
+  min-height: 36px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.owner-review-body > .text-button {
+  margin-top: 0.45rem;
+}

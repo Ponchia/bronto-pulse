@@ -113,15 +113,25 @@ monthly unique people or combined with Cloudflare counts. See the
 
 ## Operator workflow
 
-Preview a bounded sync before making provider requests, then read an evidence-based
-briefing or export a source-aware CSV:
+Preview a bounded sync before making provider requests, then review which
+published evidence deserves attention across projects before drilling into a
+briefing or exporting a source-aware CSV:
 
 ```sh
 node dist/cli.js plan --provider github --json
 node dist/cli.js sync --provider github --dry-run --json
+node dist/cli.js review --days 30
+node dist/cli.js review --days 30 --json --out /private/owner-review.json
 node dist/cli.js brief --days 30
 node dist/cli.js report pulse --format csv --out /private/pulse-report.csv
 ```
+
+The private **Owner review** dashboard uses those same source-aware
+investigation contracts. It shows one bounded example of a supported change,
+an interpretation to investigate and missing evidence to qualify per project,
+with next checks linked to existing reporting screens. It neither ranks
+incompatible metrics nor claims independent adopters. See the
+[owner-review contract](docs/reporting.md#owner-review-what-deserves-attention).
 
 For multiple source groups, an opt-in [due-time scheduler](docs/scheduling.md)
 selects only refreshes whose interval or bounded retry window has elapsed.
@@ -146,7 +156,7 @@ and [reporting contracts](docs/reporting.md) before connecting live sources.
 | Search Console | Separate totals/page/query scopes, bounded pagination, Pacific dates, partial-data metadata, weighted CTR/position, OAuth refresh                                   |
 | Sense6         | Optional fixed aggregate-only D1 query; no arbitrary SQL, participant or result reads                                                                               |
 | Storage        | SQLite and D1 drivers, fenced leases, staged atomic publication, coverage, run history, portable private export/import                                              |
-| Interfaces     | CLI, authenticated read-only API, dashboard, offline collection plans, evidence briefings and private JSON/Markdown/CSV reports                                     |
+| Interfaces     | CLI, authenticated read-only API, dashboard, portfolio owner review with next checks, offline plans, evidence briefings and private JSON/Markdown/CSV reports       |
 | Deployment     | Local process, container, or bounded scheduled Cloudflare Worker with D1 and private assets                                                                         |
 
 Provider adapters are integration-tested with strict fixtures. Live account

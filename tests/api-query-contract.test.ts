@@ -61,3 +61,31 @@ test('API days selection uses the same completed-day window as the CLI', async (
     store.driver.close?.();
   }
 });
+
+for (const path of [
+  '/api/v1/review?resource=unselected',
+  '/api/v1/review?from=2026-10-11&from=2026-10-12',
+  '/api/v1/review?format=csv',
+  '/api/v1/review?days=367',
+]) {
+  test(
+    'review rejects ignored or repeated selectors before private data access: ' + path,
+    async () => {
+      let loads = 0;
+      const c: LazyApiContext = {
+        apiToken: token,
+        secrets: {},
+        asset: async () => new Response('static'),
+        now: () => now,
+        loadData: async () => {
+          loads++;
+          throw Error('must not read the private database');
+        },
+      };
+      assert.equal((await handle(request(path, false), c)).status, 401);
+      const response = await handle(request(path), c);
+      assert.equal(response.status, 400);
+      assert.equal(loads, 0);
+    },
+  );
+}

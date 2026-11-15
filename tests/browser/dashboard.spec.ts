@@ -133,3 +133,48 @@ for (const width of [320, 1440])
     );
     await page.screenshot({ path: `artifacts/pulse-evidence-${width}.png`, fullPage: true });
   });
+
+test('owner review is a keyboard-navigable, project-scoped agenda with private Markdown', async ({
+  page,
+}) => {
+  const external: string[] = [];
+  page.on('request', (request) => {
+    if (!request.url().startsWith('http://127.0.0.1:4177')) external.push(request.url());
+  });
+  await page.getByRole('button', { name: 'Owner review', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'What deserves a closer look.' })).toBeVisible();
+  await expect(page.locator('.owner-review-project')).toHaveCount(4);
+  await expect(
+    page.getByText('An operator agenda, not a priority score', { exact: false }),
+  ).toBeVisible();
+  const first = page.locator('.owner-review-project').first();
+  await expect(first).toHaveAttribute('open', '');
+  await first.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(first).not.toHaveAttribute('open', '');
+  await page.keyboard.press('Enter');
+  await expect(first).toHaveAttribute('open', '');
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download private Markdown review' }).click();
+  expect((await download).suggestedFilename()).toBe('pulse-private-owner-review.md');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'What deserves a closer look.' })).toBeVisible();
+  await first.getByRole('button', { name: /Inspect .* in detail/ }).click();
+  await expect(page.getByRole('heading', { name: 'Project timeline' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'What deserves a closer look.' })).toBeVisible();
+  expect(external).toEqual([]);
+});
+
+test('owner review fits phone width without concealing project navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.getByRole('button', { name: 'Owner review', exact: true }).click();
+  await expect(page.locator('.loading')).toHaveCount(0);
+  await expect(page.locator('.owner-review-project')).toHaveCount(4);
+  await expect(page.locator('.owner-review-project').first().locator('summary')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+    false,
+  );
+});

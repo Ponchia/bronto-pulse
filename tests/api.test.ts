@@ -246,3 +246,29 @@ test('lazy authenticated data access retains the normal project response and doe
     c.store.driver.close?.();
   }
 });
+
+test('portfolio owner review is authenticated, source-bound and exportable as private Markdown', async () => {
+  const c = await setup();
+  try {
+    assert.equal((await handle(request('/api/v1/review', false), c)).status, 401);
+    const api = await handle(request('/api/v1/review?days=2'), c);
+    assert.equal(api.status, 200);
+    assert.equal(api.headers.get('cache-control'), 'no-store');
+    assert.equal(api.headers.get('x-robots-tag'), 'noindex, nofollow');
+    const review = await api.json();
+    assert.equal(review.schemaVersion, 1);
+    assert.deepEqual(review.window, { from: '2026-10-12', to: '2026-10-13' });
+    assert.equal(review.projects.length, 1);
+    assert.equal(review.projects[0].project.id, 'project');
+    assert.ok(review.projects[0].focus.length);
+    assert.equal(review.totals.projects, 1);
+    const markdown = await handle(request('/api/v1/review?days=2&format=markdown'), c);
+    assert.equal(markdown.status, 200);
+    assert.match(markdown.headers.get('content-disposition')!, /pulse-private-owner-review/);
+    const body = await markdown.text();
+    assert.match(body, /Owner review/i);
+    assert.ok(!body.includes('never-expose-me'), 'credentials must never enter the owner review');
+  } finally {
+    c.store.driver.close?.();
+  }
+});
