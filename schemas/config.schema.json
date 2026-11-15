@@ -148,6 +148,18 @@
                   "maximum": 720
                 }
               },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "github"
@@ -231,6 +243,18 @@
                   "maximum": 720
                 }
               },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "npm"
@@ -303,6 +327,18 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 720
+                }
+              },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
                 }
               },
               "provider": {
@@ -394,6 +430,18 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 720
+                }
+              },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
                 }
               },
               "provider": {
@@ -492,6 +540,18 @@
                   "maximum": 720
                 }
               },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "plausible"
@@ -556,6 +616,18 @@
                   "maximum": 720
                 }
               },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
+                }
+              },
               "provider": {
                 "type": "string",
                 "const": "umami"
@@ -613,6 +685,18 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 720
+                }
+              },
+              "lookbackDaysByGroup": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 366
                 }
               },
               "provider": {

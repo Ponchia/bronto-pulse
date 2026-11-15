@@ -111,7 +111,13 @@ export function planCollection(
           ? resource.timezone
           : 'UTC';
     const today = dateInZone(now, timezone);
-    const requested = options.window ?? defaultRange(now, config.settings.lookbackDays, timezone);
+    const requested =
+      options.window ??
+      defaultRange(
+        now,
+        resource.lookbackDaysByGroup?.[group] ?? config.settings.lookbackDays,
+        timezone,
+      );
     if (
       resource.provider === 'github' &&
       ['repository', 'releases', 'referrers', 'paths'].includes(group)

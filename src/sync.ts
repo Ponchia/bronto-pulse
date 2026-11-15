@@ -147,7 +147,7 @@ export async function sync(
       options.window ??
       defaultRange(
         now,
-        config.settings.lookbackDays,
+        resource.lookbackDaysByGroup?.[group] ?? config.settings.lookbackDays,
         resource.provider === 'gsc'
           ? 'America/Los_Angeles'
           : resource.provider === 'plausible'
