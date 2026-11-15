@@ -1261,3 +1261,32 @@ code {
 .owner-review-body > .text-button {
   margin-top: 0.45rem;
 }
+
+/* A review link retains exact resource identity and dates; clear remains explicit. */
+.focus-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-block: 0.75rem 1.25rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--wash);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.focus-notice .text-button {
+  min-height: 36px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.investigation-checks .text-button {
+  display: block;
+  min-height: 36px;
+  text-decoration: underline;
+  text-align: left;
+  text-underline-offset: 3px;
+  margin-top: 0.4rem;
+}

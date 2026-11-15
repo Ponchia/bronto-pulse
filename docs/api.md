@@ -19,12 +19,12 @@ liveness check with no project information.
 
 Additional authenticated endpoints:
 
-| Route                                            | Result                                                        |
-| ------------------------------------------------ | ------------------------------------------------------------- |
-| `GET /api/v1/brief?from=...&to=...`              | Deterministic portfolio briefings                             |
-| `GET /api/v1/review?from=...&to=...`             | Read-only owner agenda across independent projects            |
-| `GET /api/v1/projects/:id/brief?from=...&to=...` | One project briefing with evidence                            |
-| `GET /api/v1/plan?from=...&to=...`               | Offline date plan, capped at 64 jobs; never invokes providers |
+| Route                                                     | Result                                                                       |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /api/v1/brief?from=...&to=...`                       | Deterministic portfolio briefings                                            |
+| `GET /api/v1/review?from=...&to=...`                      | Read-only owner agenda across independent projects                           |
+| `GET /api/v1/projects/:id/brief?from=...&to=...`          | One project briefing with evidence                                           |
+| `GET /api/v1/plan?resource=id&group=name&from=...&to=...` | Offline focused collection plan; 64-job default cap, never invokes providers |
 
 The owner review returns `projects` with one source-backed example per
 investigation, supported-change and evidence-qualification lane, and exact
@@ -105,6 +105,14 @@ That command reads only the configuration and opens no database or network.
 See the [pilot acceptance guide](pilot-acceptance.md) for live qualification;
 synthetic fixture success is not account access or a completed pilot.
 
+Next-check buttons from the owner review or project investigation preserve the
+stated source and period in a browser deep link. A link to collection health is
+filtered locally using the authenticated health result; a link to the collection
+plan uses the read-only resource/group API selector; a source-report link keeps
+the full report but focuses its metric cards. None of these links executes a
+provider request, backfills unavailable history, or requests a new permission.
+The browser can clear the selection, reload it, and navigate Back/Forward.
+
 The current access boundary is installation-owner access, not per-project access.
 The graph can therefore name other projects explicitly sharing a resource. A future
 per-project authorization model must filter those relationships before returning them.
@@ -128,11 +136,17 @@ provider-native calendars remain attached to each metric.
 | Portfolio/project brief                               | `format=json` or `markdown`                  |
 | Owner review                                          | `format=json` or `markdown`                  |
 | Investigation                                         | `limit=1..100`, `format=json`                |
+| Collection plan                                       | `resource`, `group`; dates                   |
 | Source comparison                                     | `primary`, `secondary`, `same_site`          |
 | Configuration graph                                   | `format=json`; no date filters               |
 | Runs                                                  | `resource`, `limit=1..1000`; no date filters |
 | Projects, connectors, health, metrics, private export | None                                         |
 
-The plan and portfolio endpoints accept dates only. In particular,
+The plan endpoint additionally accepts `resource` and `group`, matching the
+already-supported CLI selection. Both are optional validated identifiers.
+Unknown or disabled resource selections and unmatched groups return HTTP 400
+rather than expanding to all collection jobs. The selected preview is still
+read-only: it neither authenticates to a provider nor collects missing history.
+The portfolio endpoint continues to accept dates only. In particular,
 `/api/v1/export?resource=...` is rejected: the backup endpoint does not implement
 partial export. A selector or misspelling must not silently return broader data.
