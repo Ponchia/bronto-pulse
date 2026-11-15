@@ -56,10 +56,19 @@ const order: readonly ReviewLane[] = ['investigate', 'change', 'qualify'];
 /** No I/O. Reuses precisely the same deterministic investigation implementation. */
 export function ownerReview(snapshot: PortfolioSnapshot): OwnerReview {
   const projects = snapshot.reports.map((report): ReviewedProject => {
-    // The reporting API embeds the first twenty leads, which can be saturated
-    // by coverage barriers. Recompute from this same in-memory report, not
-    // another provider request or D1 read, to consider later supported changes.
-    const investigation = investigateProject(report, 100, report.resources);
+    // Normal reports already include a deterministic investigation with up to
+    // twenty leads. Reuse it when complete; source-backed reasons and next
+    // checks must not be recomputed for a typical portfolio request.
+    // If truncated, expand from the same in-memory report (never a new read)
+    // so early coverage barriers cannot hide later supported changes.
+    const cached = report.investigation;
+    const investigation =
+      cached?.schemaVersion === 1 &&
+      cached.omittedFindings === 0 &&
+      Array.isArray(cached.findings) &&
+      cached.findings.length <= 100
+        ? cached
+        : investigateProject(report, 100, report.resources);
     const grouped: Record<ReviewLane, InvestigationFinding[]> = {
       investigate: [],
       change: [],
@@ -80,7 +89,9 @@ export function ownerReview(snapshot: PortfolioSnapshot): OwnerReview {
         (kind === 'investigate'
           ? grouped[kind].find((f) => f.evidenceState === 'observed')
           : undefined) ?? grouped[kind][0];
-      if (example) focus.push({ lane: kind, lead: example });
+      if (example)
+        // Do not expose mutable aliases of the project report's cached leads.
+        focus.push({ lane: kind, lead: structuredClone(example) });
     }
     return {
       project: report.project,
