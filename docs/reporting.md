@@ -71,6 +71,13 @@ reason, published-evidence summary and prescribed next checks:
 - **Qualify evidence** — missing dates, provisional/source-limited values or
   unavailable comparable baselines that should be inspected before decisions.
 
+A normal project report already contains a complete 20-lead investigation.
+The owner review reuses that result rather than calculating it twice. Only
+projects whose investigation was truncated are expanded from the same
+in-memory report up to the bounded 100-lead analysis ceiling. Selected
+lead objects are independent copies, so a consumer cannot mutate the
+original project's investigation through an owner-review result.
+
 The review lists counts of qualifying leads **per project**; those counts are
 not scores, estimates of severity or distinct people. One project showing
 three examples is not automatically more important than another with one.

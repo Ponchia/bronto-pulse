@@ -112,6 +112,10 @@ test('review surfaces a supported change buried under more than 20 coverage lead
     unavailable('r' + String(index).padStart(2, '0')),
   );
   const r = report('project', [...gaps, card('reviewed-package')]);
+  // Match a real project report: it already embeds twenty investigated leads,
+  // which are insufficient to represent all source-backed findings.
+  r.investigation = projectBrief(r, 20).investigation;
+  assert.ok(r.investigation.omittedFindings > 0);
   const clipped = projectBrief(r);
   assert.ok(clipped.findings.every((f) => f.kind === 'coverage'));
   const before = structuredClone(r);
@@ -216,6 +220,25 @@ test('large evidence portfolios disclose leads beyond the 100-per-project inspec
   assert.equal(p.omittedLeads, 12);
   assert.equal(result.totals.omittedLeads, 12);
   assert.match(markdownReview(result), /12 additional leads beyond/);
+});
+
+test('a complete cached investigation yields the same owner agenda as recomputation', () => {
+  const reportWithCache = report('cached', [card('resource')]);
+  reportWithCache.investigation = projectBrief(reportWithCache).investigation;
+  assert.equal(reportWithCache.investigation.omittedFindings, 0);
+  const cached = ownerReview(snapshot([reportWithCache]));
+  const withoutCache = ownerReview(snapshot([{ ...reportWithCache, investigation: undefined }]));
+  assert.deepEqual(cached, withoutCache);
+  const first = cached.projects[0]?.focus[0]?.lead;
+  if (first && reportWithCache.investigation.findings[0]) {
+    const original = reportWithCache.investigation.findings[0].summary;
+    first.summary = 'User-facing selection was changed';
+    assert.equal(
+      reportWithCache.investigation.findings[0].summary,
+      original,
+      'owner review must not leak mutable aliases to cached source findings',
+    );
+  }
 });
 
 test('review of a real Store portfolio does not collect or alter published history', async () => {
