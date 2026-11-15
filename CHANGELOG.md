@@ -43,6 +43,12 @@
   refresh gap that falls back to the resource's `refreshHours` and then to 24
   hours. A key that is not a group the resource collects is a configuration
   error. Configurations without it parse and schedule as before.
+- Add an opt-in `lookbackDaysByGroup` for regular collection of high-cardinality
+  daily datasets, such as Search Console queries. Implicit rotation and due-time
+  windows use the selected group's source-local calendar; explicit dates and
+  historical backfill remain unchanged. Unknown, disabled and non-daily groups
+  are rejected, and the Free observation cap is never relaxed. Narrower windows
+  require an operator decision about late provider corrections.
 - A due-time run that hits a rate limit keeps the provider's stated wait
   (`Retry-After`, or GitHub's quota reset) for that dataset and never
   shortens it. It can only lengthen the fixed 60-minute delay, and it does
