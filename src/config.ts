@@ -59,6 +59,8 @@ const common = {
   refreshHours: z.optional(z.int().check(z.gte(1), z.lte(720))),
   // Due-time only: a per-group minimum gap that overrides refreshHours.
   refreshHoursByGroup: z.optional(z.record(id, z.int().check(z.gte(1), z.lte(720)))),
+  // Opt-in implicit sync windows; explicit date ranges and history remain unchanged.
+  lookbackDaysByGroup: z.optional(z.record(id, z.int().check(z.gte(1), z.lte(366)))),
 };
 // Older dates a history schedule may collect, one bounded chunk per invocation.
 // Only daily sources whose provider serves past dates on request accept it.
@@ -349,6 +351,17 @@ export function parseConfig(input: unknown): Config {
       throw new PulseError(
         'CONFIG',
         'Per-group refresh intervals must name groups this resource collects.',
+      );
+    if (
+      Object.keys(r.lookbackDaysByGroup ?? {}).some(
+        (name) =>
+          !groups(r).includes(name) ||
+          (r.provider === 'github' && !['views', 'clones'].includes(name)),
+      )
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Per-group lookback days must name a collected daily dataset.',
       );
   }
   const bindings: { project: string; b: Binding }[] = [];

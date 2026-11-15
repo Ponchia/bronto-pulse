@@ -81,6 +81,40 @@ it, set the minimum gap between completed refreshes. Both accept 1–720 and
 are read only by the opt-in due-time mode; rotation ignores them. See
 [scheduling](scheduling.md).
 
+## Per-group regular collection windows
+
+A resource may declare `lookbackDaysByGroup` to shorten one high-cardinality
+**implicit** collection window while preserving `settings.lookbackDays` for
+the other datasets. For example:
+
+```json
+{
+  "id": "search",
+  "provider": "gsc",
+  "siteUrl": "sc-domain:example.org",
+  "connection": "gsc-read",
+  "collectQueries": true,
+  "lookbackDaysByGroup": { "queries": 2 }
+}
+```
+
+Values are whole days between 1 and 366, inclusive, and keys must name
+collected daily groups; unknown groups, disabled query groups and GitHub
+snapshots/rolling groups are rejected. Both rotating and due-time regular
+syncs use this narrower source-local lookback; an explicitly supplied date
+window, history scheduling and manual backfill keep their exact requested
+dates. `pulse plan --resource search --group queries --json` shows the selected
+implicit window without querying the provider.
+
+This is an **operator tradeoff**, not an automatic remedy. A shorter lookback
+can keep daily query observation counts within a Free-profile limit, but it also
+reduces how often delayed or corrected older dates are refetched. The setting
+neither increases the 250-normalized-observation cap nor guarantees that even
+one day fits. Check actual per-day provider cardinality and data freshness first.
+Keep historical collection appropriately bounded and probe explicit older dates
+when checking revisions; a failed or too-large window still preserves prior
+published history. No existing installation changes without opting in.
+
 ## Older history
 
 An npm, Search Console or Sense6 resource may declare
