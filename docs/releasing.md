@@ -149,25 +149,34 @@ reconciliation are separate outcomes. Inspect the **actual jobs in that release
 run** before retrying. A rerun uses the workflow from its original commit;
 changes later merged to `main` do not add jobs to a historical run.
 
-On **14 November 2026**, the public registry reports `beta: 0.2.0-beta.2` and
-`latest: 0.2.0-beta.1`. Keep the documented `@beta` install suffix, or pin the
-exact published version. The [beta.2 release run](https://github.com/Ponchia/bronto-pulse/actions/runs/42036737324)
-completed publication and registry verification on 5 November, before the
-`sync-dist-tags` job was added. It contains no channel job to rerun. The live
-mismatch is tracked separately in [#71](https://github.com/Ponchia/bronto-pulse/issues/71);
-this status note does not repair the alias.
+As of **15 November 2026**, the registry reports `beta: 0.2.0-beta.3` and
+`latest: 0.2.0-beta.1`. The tagged [beta.3 release run](https://github.com/Ponchia/bronto-pulse/actions/runs/43713340556)
+passed `verify`, `preflight`, `publish-npm` and `verify-registry`,
+including the immutable package bytes, integrity and provenance. Both protected
+GitHub `npm-publish` environment approvals were accepted.
 
-For a release that includes `sync-dist-tags`, retry only that job after reviewing
-fresh registry state and completing its protected environment approval. An npm
-`Allow npm dist-tag` denial is a package-owner permission decision, not a failed
-immutable upload. Do not retry the publishing job to repair metadata.
+The final `sync-dist-tags` job failed with an npm `E403` that specifically
+denied dist-tag management to the trusted publisher. This is not a failed or
+missing package release. npm requires the package maintainer to enable
+**Allow npm dist-tag** for the exact `Ponchia / bronto-pulse / release.yml /
+npm-publish` trusted publisher under the package's npmjs.com **Settings →
+Trusted publishing**. The configuration change needs the maintainer's
+authenticated npm account and 2FA when prompted; a GitHub environment approval
+cannot grant npm account permissions. See npm's
+[trusted publisher guidance](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing).
 
-For the older beta.2 publication, the next independently justified and explicitly
-approved release through the current workflow can reconcile its channels. A
-metadata-only recovery instead needs a maintainer-reviewed execution path
-compatible with the existing tag-only environment and trusted publisher. Do not
-move the old tag, manufacture a release for alias cleanup, broaden the environment
-to `main`, or switch to a local credential to bypass that boundary.
+Only **after** npm reports that permission enabled, review the current registry
+tags and use GitHub's **Re-run failed jobs** on the
+[original beta.3 run](https://github.com/Ponchia/bronto-pulse/actions/runs/43713340556)
+(or `gh run rerun 43713340556 --failed`). Honor its protected environment
+review again if prompted. Confirm the resulting `latest` and `beta` aliases
+from the registry, then close [issue #71](https://github.com/Ponchia/bronto-pulse/issues/71).
+Do not rerun `publish-npm`, reuse an immutable version, replace the publisher
+with a long-lived token or bypass npm's account-level 2FA check.
+
+The [beta.2 release run](https://github.com/Ponchia/bronto-pulse/actions/runs/42036737324)
+predated `sync-dist-tags` and has no channel job to rerun. Its completed,
+immutable publication is unchanged by this recovery.
 
 Before any approved change, use `scripts/sync-dist-tags.mjs --dry-run` with the
 audited source-locked publisher and an already published `--version` to review
