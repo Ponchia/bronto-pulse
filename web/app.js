@@ -2,6 +2,9 @@ const content = document.querySelector('#content');
 const state = {
   view: 'portfolio',
   project: null,
+  // An explicit resource focus belongs to this URL/view, not the saved catalog.
+  focusResource: null,
+  focusGroup: null,
   data: null,
   health: null,
   projectIndex: [],
@@ -242,6 +245,74 @@ function heading(title, note = '') {
 }
 function empty(text) {
   return el('div', { class: 'empty', text });
+}
+const reviewCheckSurface = {
+  pulse_health: { view: 'health', label: 'Open source health' },
+  pulse_plan: { view: 'plan', label: 'Inspect collection plan' },
+  pulse_report: { view: 'portfolio', label: 'Inspect source report' },
+};
+/** One inspectable next step from an actual published lead; never executes it. */
+function checkAction(check, projectId) {
+  const destination = Object.hasOwn(reviewCheckSurface, check.surface)
+    ? reviewCheckSurface[check.surface]
+    : null;
+  if (!destination || (check.surface === 'pulse_report' && !projectId)) return null;
+  const scoped = /^[a-z][a-z0-9_-]{0,63}$/.test(check.resourceId ?? '');
+  // A plan that lacks an unambiguous source could show unrelated jobs while
+  // looking like an exact next check. Keep the check text, but offer no link.
+  if (check.surface === 'pulse_plan' && !scoped) return null;
+  const label = scoped
+    ? destination.label
+    : check.surface === 'pulse_health'
+      ? 'Open collection health'
+      : 'Open project report';
+  const button = el('button', {
+    type: 'button',
+    class: 'text-button',
+    text: label,
+  });
+  button.addEventListener('click', () => {
+    const requested = check.window;
+    if (
+      requested &&
+      /^\d{4}-\d{2}-\d{2}$/.test(requested.from) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(requested.to)
+    ) {
+      $('from').value = requested.from;
+      $('to').value = requested.to;
+    }
+    state.view = destination.view;
+    state.project = destination.view === 'portfolio' ? projectId : null;
+    state.focusResource = scoped ? check.resourceId : null;
+    state.focusGroup = null;
+    void load({ push: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
+  return button;
+}
+function focusedNotice() {
+  if (!state.focusResource) return;
+  const notice = el('div', { class: 'focus-notice', role: 'status' }, [
+    el('span', {
+      text:
+        'Showing source ' +
+        state.focusResource +
+        (state.focusGroup ? ' / ' + state.focusGroup : '') +
+        '. Dates and provider semantics are preserved.',
+    }),
+  ]);
+  const clear = el('button', {
+    class: 'text-button',
+    type: 'button',
+    text: 'Show all sources',
+  });
+  clear.addEventListener('click', () => {
+    state.focusResource = null;
+    state.focusGroup = null;
+    void load({ push: true });
+  });
+  notice.append(clear);
+  content.append(notice);
 }
 function renderPortfolio(data) {
   const all = data.reports.flatMap((x) => x.cards),
@@ -538,7 +609,7 @@ function websitePolicyPanel(report) {
 // The investigation API returns at most this many leads; the rest stay counted.
 const LEAD_VIEW_LIMIT = 100;
 let leadPanels = 0;
-function leadItem(finding, id, open) {
+function leadItem(finding, id, open, source) {
   const item = el('article', {
     class: 'investigation-item',
     // Named by its own summary and focusable by script, so newly shown leads can be reached.
@@ -554,13 +625,16 @@ function leadItem(finding, id, open) {
     el('p', { class: 'investigation-summary', id, text: finding.summary }),
   );
   const checks = el('ol', { class: 'investigation-checks', 'aria-label': 'Next checks' });
-  for (const check of finding.nextChecks)
+  for (const check of finding.nextChecks) {
+    const action = checkAction(check, source?.projectId);
     checks.append(
       el('li', {}, [
         el('span', { text: check.text }),
         el('small', { class: 'muted', text: 'Where: ' + check.surface.replaceAll('_', ' ') }),
+        ...(action ? [action] : []),
       ]),
     );
+  }
   item.append(checks);
   const evidence = el('details', { class: 'investigation-evidence' }, [
     el('summary', { text: 'Source evidence and limits' }),
@@ -636,7 +710,7 @@ function investigationPanel(investigation, source, maximum = 5) {
     list.replaceChildren(
       ...findings
         .slice(0, shown)
-        .map((finding, index) => leadItem(finding, prefix + index, open.has(finding.id))),
+        .map((finding, index) => leadItem(finding, prefix + index, open.has(finding.id), source)),
     );
     const total = findings.length + unlisted;
     const reachable = canLoad() ? Math.min(total, LEAD_VIEW_LIMIT) : findings.length;
@@ -801,8 +875,18 @@ function renderProject(report) {
   if (resourceMap) content.append(resourceMap);
   const websitePanel = websitePolicyPanel(report);
   if (websitePanel) content.append(websitePanel);
+  focusedNotice();
   const grid = el('section', { class: 'metric-grid', 'aria-label': 'Project metrics' });
-  for (const c of sortedCards(report.cards).slice(0, 12)) grid.append(metric(c, report.window));
+  const selected = sortedCards(report.cards).filter(
+    (card) => !state.focusResource || card.resourceId === state.focusResource,
+  );
+  for (const c of selected.slice(0, 12)) grid.append(metric(c, report.window));
+  if (state.focusResource && !selected.length)
+    content.append(
+      empty(
+        'This source has no metric cards in the selected project and period. Check the source map and collection health.',
+      ),
+    );
   content.append(
     report.cards.length
       ? grid
@@ -870,7 +954,14 @@ function renderProject(report) {
   }
 }
 function renderHealth(data) {
-  const states = data.resources;
+  const states = state.focusResource
+    ? data.resources.filter((resource) => resource.resourceId === state.focusResource)
+    : data.resources;
+  focusedNotice();
+  if (state.focusResource && !states.length)
+    content.append(
+      empty('No collection groups were returned for this source. Check its configuration.'),
+    );
   content.append(
     stats([
       [
@@ -1052,22 +1143,10 @@ function renderOwnerReview(data) {
         checkList.append(el('li', { text: next.text }));
       item.append(checkList);
       const supported = lead.nextChecks.find((next) =>
-        ['pulse_health', 'pulse_plan', 'pulse_report'].includes(next.surface),
+        Object.hasOwn(reviewCheckSurface, next.surface),
       );
-      if (supported) {
-        const name = {
-          pulse_health: 'Open collection health',
-          pulse_plan: 'Open collection plan',
-          pulse_report: 'Open project report',
-        }[supported.surface];
-        const button = el('button', { class: 'text-button', type: 'button', text: name });
-        button.addEventListener('click', () =>
-          supported.surface === 'pulse_report'
-            ? selectProject(project.project.id)
-            : selectView(supported.surface === 'pulse_health' ? 'health' : 'plan'),
-        );
-        item.append(button);
-      }
+      const action = supported ? checkAction(supported, project.project.id) : null;
+      if (action) item.append(action);
       list.append(item);
     }
     body.append(list);
@@ -1105,6 +1184,7 @@ function renderOwnerReview(data) {
     );
 }
 function renderPlan(data) {
+  focusedNotice();
   content.append(
     el('aside', { class: 'callout' }, [
       el('strong', { text: 'Preview only — no provider requests, writes or scheduled jobs.' }),
@@ -1142,6 +1222,13 @@ function saveView(push = false) {
     to: $('to').value,
   });
   if (state.project) params.set('project', state.project);
+  if (
+    (state.focusResource && ['plan', 'health'].includes(state.view)) ||
+    (state.view === 'portfolio' && state.project && state.focusResource)
+  ) {
+    params.set('resource', state.focusResource);
+    if (state.view === 'plan' && state.focusGroup) params.set('group', state.focusGroup);
+  }
   const url = '/?' + params;
   // Choosing a view or project adds a history entry; refreshing or changing dates rewrites it.
   if (push && url !== location.pathname + location.search) history.pushState(null, '', url);
@@ -1156,6 +1243,18 @@ function restoreView(params) {
   state.project =
     state.view === 'portfolio' && /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('project') ?? '')
       ? params.get('project')
+      : null;
+  const validResource = /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('resource') ?? '');
+  state.focusResource =
+    validResource &&
+    (['plan', 'health'].includes(state.view) || (state.view === 'portfolio' && state.project))
+      ? params.get('resource')
+      : null;
+  state.focusGroup =
+    state.view === 'plan' &&
+    state.focusResource &&
+    /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('group') ?? '')
+      ? params.get('group')
       : null;
   for (const id of ['from', 'to'])
     if (/^\d{4}-\d{2}-\d{2}$/.test(params.get(id) ?? '')) $(id).value = params.get(id);
@@ -1191,7 +1290,14 @@ async function load({ push = false } = {}) {
           : state.view === 'brief'
             ? await api('/brief?' + query())
             : state.view === 'plan'
-              ? await api('/plan?' + query())
+              ? await api(
+                  '/plan?' +
+                    query() +
+                    (state.focusResource
+                      ? '&resource=' + encodeURIComponent(state.focusResource)
+                      : '') +
+                    (state.focusGroup ? '&group=' + encodeURIComponent(state.focusGroup) : ''),
+                )
               : state.view === 'definitions'
                 ? await api('/metrics')
                 : state.project
@@ -1288,11 +1394,15 @@ async function load({ push = false } = {}) {
 function selectView(view) {
   state.view = view;
   state.project = null;
+  state.focusResource = null;
+  state.focusGroup = null;
   void load({ push: true });
 }
 function selectProject(id) {
   state.view = 'portfolio';
   state.project = id;
+  state.focusResource = null;
+  state.focusGroup = null;
   void load({ push: true });
   window.scrollTo({ top: 0, behavior: 'instant' });
 }

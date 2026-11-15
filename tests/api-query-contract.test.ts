@@ -89,3 +89,32 @@ for (const path of [
     },
   );
 }
+
+for (const path of [
+  '/api/v1/plan?resource=../foreign',
+  '/api/v1/plan?group=views;sync',
+  '/api/v1/plan?resource=source&resource=other',
+  '/api/v1/plan?group=',
+  '/api/v1/plan?limit=100',
+]) {
+  test(
+    'focused plan refuses unsafe or ambiguous selectors before reading private data: ' + path,
+    async () => {
+      let loads = 0;
+      const context: LazyApiContext = {
+        apiToken: token,
+        secrets: {},
+        asset: async () => new Response('static'),
+        now: () => now,
+        loadData: async () => {
+          loads++;
+          throw Error('private data must not be accessed');
+        },
+      };
+      assert.equal((await handle(request(path, false), context)).status, 401);
+      const response = await handle(request(path), context);
+      assert.equal(response.status, 400);
+      assert.equal(loads, 0);
+    },
+  );
+}

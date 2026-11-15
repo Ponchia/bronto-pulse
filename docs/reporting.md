@@ -80,6 +80,18 @@ leads per project from the already loaded reports, and discloses any additional
 leads it could not enumerate. This prevents twenty repetitive missing-data
 warnings from hiding a supported change in an unrelated series.
 
+Next checks with an internal destination can now open that source's exact
+collection health, read-only collection plan or project report. For a dated
+check, the selected from/to dates follow into the target; a resource focus
+is part of the URL, survives reload/Back/Forward and can be cleared without
+changing data. The health view filters its already-authenticated result,
+while the plan API validates the requested resource/group and refuses
+unknown, disabled or unmatched selections rather than showing an unrelated
+portfolio-wide plan. A project source report highlights the focused source
+in the metric cards while retaining the original full metric contract.
+Historical snapshots that cannot be recovered are **not** linked to a
+backfill plan: their next check is health or configuration.
+
 Next checks identify Pulse's existing health, plan and report screens, or
 the provider's own console or configuration when there is no internal page
 to open. They are instructions to inspect evidence; no check runs automatically,

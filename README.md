@@ -129,8 +129,9 @@ node dist/cli.js report pulse --format csv --out /private/pulse-report.csv
 The private **Owner review** dashboard uses those same source-aware
 investigation contracts. It shows one bounded example of a supported change,
 an interpretation to investigate and missing evidence to qualify per project,
-with next checks linked to existing reporting screens. It neither ranks
-incompatible metrics nor claims independent adopters. See the
+with source-and-date-specific checks linked to existing reporting screens,
+and keeps the selected context in the URL for browser navigation. It neither
+starts collection, ranks incompatible metrics nor claims independent adopters. See the
 [owner-review contract](docs/reporting.md#owner-review-what-deserves-attention).
 
 For multiple source groups, an opt-in [due-time scheduler](docs/scheduling.md)

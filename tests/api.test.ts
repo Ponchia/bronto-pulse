@@ -272,3 +272,38 @@ test('portfolio owner review is authenticated, source-bound and exportable as pr
     c.store.driver.close?.();
   }
 });
+
+test('collection plan focuses resource and group without fetching, publishing or changing dates', async () => {
+  const c = await setup();
+  try {
+    const before = await c.store.runs();
+    const result = await handle(
+      request('/api/v1/plan?resource=source&group=views&from=2026-10-12&to=2026-10-13'),
+      c,
+    );
+    assert.equal(result.status, 200);
+    const data = await result.json();
+    assert.equal(data.readOnly, true);
+    assert.ok(data.jobs.length > 0);
+    assert.ok(
+      data.jobs.every(
+        (job: { resourceId: string; group: string }) =>
+          job.resourceId === 'source' && job.group === 'views',
+      ),
+    );
+    assert.ok(
+      data.jobs.every(
+        (job: { window: { from: string; to: string } }) =>
+          job.window.from >= '2026-10-12' && job.window.to <= '2026-10-13',
+      ),
+    );
+    assert.deepEqual(await c.store.runs(), before);
+    assert.equal((await handle(request('/api/v1/plan?resource=unknown'), c)).status, 400);
+    assert.equal(
+      (await handle(request('/api/v1/plan?resource=source&group=unconfigured'), c)).status,
+      400,
+    );
+  } finally {
+    c.store.driver.close?.();
+  }
+});

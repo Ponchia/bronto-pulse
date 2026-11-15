@@ -178,3 +178,186 @@ test('owner review fits phone width without concealing project navigation', asyn
     false,
   );
 });
+
+test('owner review preserves source and exact dates when opening a targeted collection plan', async ({
+  page,
+}) => {
+  // The first demo project's missing GitHub snapshots cannot be backfilled,
+  // so they correctly offer a health check instead of a fictitious plan.
+  // Supply a legitimate bounded plan check in the controlled API fixture.
+  await page.route('**/api/v1/review?**', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    const project = payload.projects.find(
+      (p: { project: { id: string } }) => p.project.id === 'bronto-ui',
+    );
+    const qualified = project.focus.find((f: { lane: string }) => f.lane === 'qualify');
+    qualified.lead.nextChecks = [
+      {
+        id: 'plan.window_coverage',
+        surface: 'pulse_plan',
+        resourceId: 'ui-package',
+        window: { from: '2026-10-20', to: '2026-10-21' },
+        text: 'Inspect these source-local dates before requesting explicit collection.',
+      },
+    ];
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    });
+  });
+  await page.getByRole('button', { name: 'Owner review', exact: true }).click();
+  const first = page.locator('.owner-review-project').first();
+  await expect(first).toHaveAttribute('open', '');
+  const button = first.getByRole('button', { name: 'Inspect collection plan' });
+  await expect(button).toBeVisible();
+  await button.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Know what a sync will do.' })).toBeVisible();
+  const current = new URL(page.url());
+  assertRequestedSource(current.searchParams.get('resource'));
+  expect(current.searchParams.get('view')).toBe('plan');
+  expect(current.searchParams.get('from')).toBe('2026-10-20');
+  expect(current.searchParams.get('to')).toBe('2026-10-21');
+  const focused = current.searchParams.get('resource');
+  expect(focused).toBe('ui-package');
+  await expect(page.locator('.focus-notice')).toContainText(focused!);
+  await expect(page.locator('.table-wrap tbody tr').first()).toContainText(focused!);
+  const api = await page.request.get(
+    '/api/v1/plan?' +
+      new URLSearchParams({ from: '2026-10-20', to: '2026-10-21', resource: focused! }),
+  );
+  expect(api.status()).toBe(200);
+  const data = await api.json();
+  expect(data.jobs.length).toBeGreaterThan(0);
+  expect(data.jobs.every((job: { resourceId: string }) => job.resourceId === focused)).toBe(true);
+  await page.reload();
+  await expect(page.locator('.focus-notice')).toContainText(focused!);
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'What deserves a closer look.' })).toBeVisible();
+  await page.goForward();
+  await expect(page.locator('.focus-notice')).toContainText(focused!);
+  await page.getByRole('button', { name: 'Show all sources' }).click();
+  await expect(page.locator('.focus-notice')).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.has('resource')).toBe(false);
+});
+
+function assertRequestedSource(resource: string | null) {
+  expect(resource).toMatch(/^[a-z][a-z0-9_-]{0,63}$/);
+}
+
+test('project investigation links to exact source health and can return via browser history', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Bronto UI', exact: true }).click();
+  // GitHub snapshots absent in the fixture cannot be reconstructed historically.
+  await expect(
+    page.locator('.investigation-panel').getByRole('button', { name: 'Inspect collection plan' }),
+  ).toHaveCount(0);
+  const healthLink = page
+    .locator('.investigation-panel')
+    .getByRole('button', {
+      name: 'Open source health',
+    })
+    .first();
+  await expect(healthLink).toBeVisible();
+  await healthLink.click();
+  await expect(page.getByRole('heading', { name: 'Know what is collecting.' })).toBeVisible();
+  const resource = new URL(page.url()).searchParams.get('resource');
+  assertRequestedSource(resource);
+  await expect(page.locator('.focus-notice')).toContainText(resource!);
+  const rows = page.locator('.table-wrap tbody tr');
+  await expect(rows).not.toHaveCount(0);
+  for (const label of await rows.locator('td:first-child').allTextContents())
+    expect(label).toContain(resource!);
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Bronto UI', exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('resource')).toBe(null);
+});
+
+test('focused source panels remain readable on 320px and do not leak navigation targets', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 780 });
+  await page.goto('/?view=health&resource=source');
+  await expect(page.locator('.focus-notice')).toContainText('source');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(
+    false,
+  );
+  await page.getByRole('button', { name: 'Collection plan' }).click();
+  expect(new URL(page.url()).searchParams.has('resource')).toBe(false);
+  await expect(page.locator('.focus-notice')).toHaveCount(0);
+});
+
+test('a supported comparison opens the relevant source report rather than an unrelated card', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Owner review', exact: true }).click();
+  const first = page.locator('.owner-review-project').first();
+  await expect(first).toHaveAttribute('open', '');
+  await first.getByRole('button', { name: 'Inspect source report' }).click();
+  await expect(page.getByRole('heading', { name: 'Bronto UI', exact: true })).toBeVisible();
+  const params = new URL(page.url()).searchParams;
+  expect(params.get('view')).toBe('portfolio');
+  expect(params.get('project')).toBe('bronto-ui');
+  expect(params.get('resource')).toBe('ui-package');
+  await expect(page.locator('.focus-notice')).toContainText('ui-package');
+  const metricCards = page.locator('.metric-grid .metric-card');
+  await expect(metricCards).not.toHaveCount(0);
+  for (const label of await metricCards.locator('.resource').allTextContents())
+    expect(label).toBe('ui-package');
+  await expect(page.getByRole('heading', { name: 'Metric contract' })).toBeVisible();
+  await page.getByRole('button', { name: 'Show all sources' }).click();
+  expect(new URL(page.url()).searchParams.has('resource')).toBe(false);
+});
+
+test('an explicit plan deep link stays constrained to its resource/group across reload and back', async ({
+  page,
+}) => {
+  await page.goto('/?view=plan&resource=ui-package&group=downloads&from=2026-10-20&to=2026-10-21');
+  await expect(page.getByRole('heading', { name: 'Know what a sync will do.' })).toBeVisible();
+  await expect(page.locator('.focus-notice')).toContainText('ui-package / downloads');
+  const rows = page.locator('.table-wrap tbody tr');
+  await expect(rows).not.toHaveCount(0);
+  for (const label of await rows.locator('td:first-child').allTextContents())
+    expect(label).toContain('ui-package / downloads');
+  await page.reload();
+  await expect(page.locator('.focus-notice')).toContainText('ui-package / downloads');
+  await page.getByRole('button', { name: 'Show all sources' }).click();
+  await expect(page.locator('.focus-notice')).toHaveCount(0);
+  const params = new URL(page.url()).searchParams;
+  expect(params.has('resource')).toBe(false);
+  expect(params.has('group')).toBe(false);
+  await page.goBack();
+  await expect(page.locator('.focus-notice')).toContainText('ui-package / downloads');
+});
+
+test('a plan next check without a specific resource stays text-only', async ({ page }) => {
+  await page.route('**/api/v1/review?**', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    const focus = payload.projects
+      .find((p: { project: { id: string } }) => p.project.id === 'bronto-ui')
+      .focus.find((f: { lane: string }) => f.lane === 'qualify');
+    focus.lead.nextChecks = [
+      {
+        id: 'plan.window_coverage',
+        surface: 'pulse_plan',
+        resourceId: null,
+        window: { from: '2026-10-20', to: '2026-10-21' },
+        text: 'The source has not been selected; inspect configuration before planning.',
+      },
+    ];
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    });
+  });
+  await page.getByRole('button', { name: 'Owner review', exact: true }).click();
+  const first = page.locator('.owner-review-project').first();
+  await expect(first).toHaveAttribute('open', '');
+  await expect(first).toContainText('The source has not been selected');
+  await expect(first.getByRole('button', { name: 'Inspect collection plan' })).toHaveCount(0);
+});

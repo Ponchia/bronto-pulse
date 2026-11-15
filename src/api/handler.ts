@@ -84,7 +84,10 @@ function validateQuery(url: URL, now: Date): void {
   let dated = false;
   if (plain.has(tail)) allowed = [];
   else if (tail === 'runs') allowed = ['limit', 'resource'];
-  else if (tail === 'plan' || tail === 'portfolio') {
+  else if (tail === 'plan') {
+    allowed = [...dateKeys, 'resource', 'group'];
+    dated = true;
+  } else if (tail === 'portfolio') {
     allowed = dateKeys;
     dated = true;
   } else if (tail === 'review') {
@@ -120,6 +123,13 @@ function validateQuery(url: URL, now: Date): void {
       throw new PulseError('CONFIG', 'Unsupported format for this endpoint.');
   }
   if (dated) windowFor(url, now);
+  if (tail === 'plan') {
+    for (const key of ['resource', 'group']) {
+      const value = url.searchParams.get(key);
+      if (value !== null && !/^[a-z][a-z0-9_-]{0,63}$/.test(value))
+        throw new PulseError('CONFIG', 'Invalid collection selection.');
+    }
+  }
   if (tail === 'runs') {
     limitFor(url);
     const resource = url.searchParams.get('resource');
@@ -320,7 +330,12 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
     if (url.pathname === root + '/plan')
       return secure(
         json({
-          ...planCollection(data.config, { now, window: windowFor(url, now) }),
+          ...planCollection(data.config, {
+            now,
+            window: windowFor(url, now),
+            resourceId: url.searchParams.get('resource') ?? undefined,
+            group: url.searchParams.get('group') ?? undefined,
+          }),
           demo: data.config.demo,
         }),
       );
