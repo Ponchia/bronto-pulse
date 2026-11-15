@@ -59,15 +59,13 @@ async function context(env: WorkerEnv) {
     const config = parseConfig(JSON.parse(env.PULSE_CONFIG));
     const store = new Store(new D1Driver(env.DB));
     if (env.PULSE_EXECUTION_PROFILE === 'free') {
-      // Provision schema once through migrations rather than on every cold start.
-      if (
-        (await store.getSetting('schema_version')) !== '1' ||
-        !(
-          await store.driver.all({
-            sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='url_inspections'",
-          })
-        ).length
-      )
+      // One snapshot checks both migration markers without two sequential D1 round trips.
+      // Provision schema through migrations, never during a Free-profile cold start.
+      const [versions, inspections] = await store.driver.readBatch([
+        { sql: "SELECT value FROM metadata WHERE key='schema_version'" },
+        { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='url_inspections'" },
+      ]);
+      if (versions?.[0]?.value !== '1' || !inspections?.length)
         throw new PulseError(
           'SCHEMA',
           'Apply supported database migrations before enabling the Free profile.',
