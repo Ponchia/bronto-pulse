@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0-beta.3 — 2026-11-15
+
 - Expand investigation leads in the dashboard, preserving keyboard focus, evidence
   limits and explicit truncation counts. Improve Back/Forward navigation, current
   view and period accessibility, and readable proxy-error states.
