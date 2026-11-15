@@ -22,14 +22,22 @@ Additional authenticated endpoints:
 | Route                                            | Result                                                        |
 | ------------------------------------------------ | ------------------------------------------------------------- |
 | `GET /api/v1/brief?from=...&to=...`              | Deterministic portfolio briefings                             |
+| `GET /api/v1/review?from=...&to=...`             | Read-only owner agenda across independent projects            |
 | `GET /api/v1/projects/:id/brief?from=...&to=...` | One project briefing with evidence                            |
 | `GET /api/v1/plan?from=...&to=...`               | Offline date plan, capped at 64 jobs; never invokes providers |
+
+The owner review returns `projects` with one source-backed example per
+investigation, supported-change and evidence-qualification lane, and exact
+`nextChecks` from the existing investigation contract. `totals` counts
+projects, not people, while `omittedLeads` discloses investigation truncation.
+There is no new source read, provider call or score. See
+[owner review](reporting.md#owner-review-what-deserves-attention).
 
 A briefing also has an `investigation` object with `findings`,
 `omittedFindings` and `limitation`. See [investigation leads](investigation-leads.md).
 
 Project reports accept `format=json`, `format=markdown` or `format=csv`.
-Brief endpoints accept JSON or Markdown. Downloads carry `no-store`, attachment
+Brief and owner-review endpoints accept JSON or Markdown. Downloads carry `no-store`, attachment
 filenames and the same authentication boundary. Invalid formats fail rather than
 silently producing another representation. HEAD requests authenticate normally
 and return headers without a body. Streaming login bodies are bounded to 8 KiB.
@@ -108,7 +116,7 @@ HTTP 400 before loading private configuration or storage. Authentication is stil
 checked first. An unrecognized endpoint returns 404; neither case starts a
 collector or broadens an access grant.
 
-Date-aware reports, briefs, portfolio, plans, investigations and source comparisons
+Date-aware reports, briefs, owner review, portfolio, plans, investigations and source comparisons
 accept `from`, `to` or `days`. `days` is a decimal integer from 1 to 366, ends on the
 last completed UTC date by default, and may combine with `to`. An explicit `from`
 cannot combine with `days`. These are the same report windows used by the CLI;
@@ -118,6 +126,7 @@ provider-native calendars remain attached to each metric.
 | ----------------------------------------------------- | -------------------------------------------- |
 | Project report                                        | `format=json`, `markdown` or `csv`           |
 | Portfolio/project brief                               | `format=json` or `markdown`                  |
+| Owner review                                          | `format=json` or `markdown`                  |
 | Investigation                                         | `limit=1..100`, `format=json`                |
 | Source comparison                                     | `primary`, `secondary`, `same_site`          |
 | Configuration graph                                   | `format=json`; no date filters               |

@@ -13,6 +13,9 @@ const loader = import.meta.resolve('tsx');
 for (const args of [
   ['report', 'project', '--provider', 'npm'],
   ['brief', 'project', 'ignored-project'],
+  ['review', 'project'],
+  ['review', '--provider', 'npm'],
+  ['review', '--days', '0'],
   ['compact', '--resource', 'source'],
   ['export', '--resource', 'source', '--out', 'partial.json'],
   ['validate', '--db', 'ignored.db'],
@@ -94,6 +97,7 @@ test('documented command shapes retain their effective options', () => {
     ['doctor', [], { db: 'private.db', json: true }],
     ['report', ['project'], { days: '7', to: '2026-10-13', format: 'csv', out: 'private.csv' }],
     ['brief', [], { json: true }],
+    ['review', [], { days: '30', format: 'markdown', out: 'private.md' }],
     ['compare', ['one', 'two'], { days: '30', json: true }],
     ['portfolio', [], { json: true }],
     ['export', [], { out: 'private.json' }],

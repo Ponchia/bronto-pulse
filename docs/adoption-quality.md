@@ -66,6 +66,16 @@ These checks use only existing published referrer breakdowns. No
 request-level identifiers, fingerprints, addresses, new sensors or
 automatic block rules are added.
 
+## Portfolio owner review
+
+The optional [owner review](reporting.md#owner-review-what-deserves-attention)
+groups existing, source-backed investigation leads by project, with one
+representative per investigation, supported-change and data-qualification lane.
+It does not introduce a new detector or a cross-project score. Highlighted
+changes still require complete, compatible evidence, while missing or sampled
+values stay evidence barriers. The project counts are counts of listed
+investigation leads, not independent users or an urgency ranking.
+
 ## Check independent usage separately
 
 Keep a private, dated evidence log with the search scope, exact query, result

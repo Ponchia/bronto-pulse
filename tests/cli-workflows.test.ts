@@ -42,6 +42,7 @@ for (const args of [
   ['nonsense'],
   ['report', 'project', '--format', 'xml'],
   ['brief', '--format', 'csv'],
+  ['review', '--format', 'csv'],
   ['report', 'project', '--json', '--format', 'csv'],
   ['sync', '--chunk-days', '2'],
   ['validate', '--out', 'ignored.md'],
@@ -74,6 +75,48 @@ test('report and briefing file output is private, exclusive and machine-readable
     assert.equal(brief.project.id, 'project');
     assert.deepEqual(brief.window, { from: '2026-10-12', to: '2026-10-13' });
     assert.ok(brief.findings.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('owner review CLI supports bounded private JSON and Markdown output', () => {
+  const dir = setup();
+  try {
+    const output = join(dir, 'owner-review.md');
+    let result = run(dir, [
+      'review',
+      '--days',
+      '2',
+      '--to',
+      '2026-10-13',
+      '--format',
+      'markdown',
+      '--out',
+      output,
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(output, 'utf8'), /Bronto Pulse — owner review/);
+    if (process.platform !== 'win32') assert.equal(statSync(output).mode & 0o777, 0o600);
+    const preserved = readFileSync(output, 'utf8');
+    result = run(dir, [
+      'review',
+      '--days',
+      '2',
+      '--to',
+      '2026-10-13',
+      '--format',
+      'json',
+      '--out',
+      output,
+    ]);
+    assert.equal(result.status, 1, 'private output is exclusive; no silent overwrite');
+    assert.equal(readFileSync(output, 'utf8'), preserved);
+    result = run(dir, ['review', '--days', '2', '--to', '2026-10-13', '--json']);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.projects.length, 1);
+    assert.equal(parsed.projects[0].project.id, 'project');
+    assert.deepEqual(parsed.window, { from: '2026-10-12', to: '2026-10-13' });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

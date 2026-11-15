@@ -50,6 +50,45 @@ A change is restated, as a finding or as a lead, only when the comparison
 agrees with the series that carries it. A summed daily count must be complete,
 observed and equal to the sum of its daily values.
 
+## Owner review: what deserves attention
+
+The read-only **Owner review** navigation view combines the existing project
+investigation leads into one portfolio agenda. It is also available as
+`GET /api/v1/review?from=YYYY-MM-DD&to=YYYY-MM-DD` or
+`pulse review --days 30`, with optional private JSON/Markdown export.
+The exact same published reports, snapshot and source definitions are reused:
+there are no extra provider calls, collector writes or externally generated
+scores.
+
+Each project has up to **one example per lane**, with the exact source
+reason, published-evidence summary and prescribed next checks:
+
+- **Investigate** — an existing concentration, attribution, interpretation or
+  comparable website-source-difference lead; this does not infer a cause.
+- **Supported comparison** — a change already accepted by the existing
+  source-aware comparison gates. Counts and ratios are never ranked against
+  each other, and a net star change is never called gross adoption.
+- **Qualify evidence** — missing dates, provisional/source-limited values or
+  unavailable comparable baselines that should be inspected before decisions.
+
+The review lists counts of qualifying leads **per project**; those counts are
+not scores, estimates of severity or distinct people. One project showing
+three examples is not automatically more important than another with one.
+The full project report and investigation API retain the underlying evidence;
+the owner review never replaces them. It evaluates at most 100 deterministic
+leads per project from the already loaded reports, and discloses any additional
+leads it could not enumerate. This prevents twenty repetitive missing-data
+warnings from hiding a supported change in an unrelated series.
+
+Next checks identify Pulse's existing health, plan and report screens, or
+the provider's own console or configuration when there is no internal page
+to open. They are instructions to inspect evidence; no check runs automatically,
+and a provider link is not fabricated. The view respects URL date selection,
+browser Back/Forward and authentication and supports keyboard disclosure of
+individual projects. Both API and CLI outputs preserve the same interpretation
+limits as a briefing. A project with no qualifying lead is _not_ a project
+proven to have no audience or problems.
+
 ## Export formats
 
 ```sh

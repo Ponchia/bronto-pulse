@@ -18,6 +18,7 @@ import { startServer } from './server.js';
 import { dateInZone, reportRange, range } from './time.js';
 import { planCollection, markdownPlan } from './plan.js';
 import { projectBrief, markdownBrief } from './brief.js';
+import { ownerReview, markdownReview } from './review.js';
 import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
@@ -45,6 +46,7 @@ pulse visibility template|report|promptfoo  Offline benchmark; --suite FILE, --s
 pulse doctor                         Check coverage, freshness and credential availability
 pulse report PROJECT [--days 30]      Source-aware report; --format json|markdown|csv
 pulse brief [PROJECT]                Evidence-based summary; omitting ID covers portfolio
+pulse review [--days 30]              Read-only portfolio agenda and next checks
 pulse compare PROJECT...             Side-by-side reports, never a universal adoption score
 pulse export --out private.json      Portable private snapshot; refuses active collectors
 pulse import --input private.json    Restore into an EMPTY database, transactionally
@@ -128,12 +130,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     throw new PulseError('CONFIG', 'Output format must be json, markdown or csv.');
   if (v.json && v.format && v.format !== 'json')
     throw new PulseError('CONFIG', '--json conflicts with the selected output format.');
-  if (v.format && !['report', 'brief'].includes(command))
-    throw new PulseError('CONFIG', '--format applies only to report and brief.');
-  if (command === 'brief' && v.format === 'csv')
+  if (v.format && !['report', 'brief', 'review'].includes(command))
+    throw new PulseError('CONFIG', '--format applies only to report, brief or review.');
+  if (['brief', 'review'].includes(command) && v.format === 'csv')
     throw new PulseError(
       'CONFIG',
-      'Brief supports json or markdown. Use report --format csv for metric rows.',
+      'Brief and review support json or markdown. Use report --format csv for metric rows.',
     );
   if (v.scenario && command !== 'demo')
     throw new PulseError('CONFIG', '--scenario applies only to the synthetic demo.');
@@ -160,10 +162,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if ((v.from === undefined) !== (v.to === undefined))
       throw new PulseError('CONFIG', 'A dated probe requires both --from and --to.');
   }
-  if (v.out && !['report', 'brief', 'export', 'inspect', 'visibility'].includes(command))
+  if (v.out && !['report', 'brief', 'review', 'export', 'inspect', 'visibility'].includes(command))
     throw new PulseError(
       'CONFIG',
-      '--out applies to report, brief, export, inspect or visibility.',
+      '--out applies to report, brief, review, export, inspect or visibility.',
     );
   validateCliInput(
     command,
@@ -444,6 +446,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           : { schemaVersion: 1, demo: config.demo, window: period, briefs },
         briefs.map(markdownBrief).join('\n---\n'),
       );
+      return 0;
+    }
+    if (command === 'review') {
+      const result = ownerReview(await portfolio(config, store, period, now));
+      await emit(result, markdownReview(result));
       return 0;
     }
     if (command === 'compare') {

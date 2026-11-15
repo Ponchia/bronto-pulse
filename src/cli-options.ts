@@ -56,6 +56,7 @@ const contracts: Readonly<Record<string, Contract>> = {
   doctor: { options: [...installation, 'json'], minimum: 0, maximum: 0 },
   report: { options: [...reports, 'format', 'out'], minimum: 1, maximum: 1 },
   brief: { options: [...reports, 'format', 'out'], minimum: 0, maximum: 1 },
+  review: { options: [...reports, 'format', 'out'], minimum: 0, maximum: 0 },
   compare: { options: reports, minimum: 2, maximum: 100 },
   portfolio: { options: reports, minimum: 0, maximum: 0 },
   export: { options: [...installation, 'out'], minimum: 0, maximum: 0, required: ['out'] },

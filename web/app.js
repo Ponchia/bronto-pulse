@@ -257,6 +257,13 @@ function renderPortfolio(data) {
       ],
     ]),
   );
+  const next = el('button', {
+    type: 'button',
+    class: 'button secondary',
+    text: 'Review what deserves attention',
+  });
+  next.addEventListener('click', () => selectView('review'));
+  content.append(el('div', { class: 'review-entrance' }, [next]));
   content.append(heading('Projects', 'Select a project to inspect its sources'));
   const grid = el('div', { class: 'project-grid' });
   for (const report of data.reports) {
@@ -976,6 +983,127 @@ function renderBrief(data) {
     content.append(panel);
   }
 }
+const ownerReviewLabels = {
+  investigate: 'Evidence to investigate',
+  change: 'Supported comparison',
+  qualify: 'Evidence to qualify',
+};
+function renderOwnerReview(data) {
+  content.append(
+    heading('Portfolio review', 'A starting point for decisions, not a ranking of projects'),
+    el('p', { class: 'small muted review-limitation', text: data.limitation }),
+    stats([
+      ['Projects', data.totals.projects, 'Each source portfolio stays separate'],
+      ['Investigate', data.totals.withInvestigation, 'Projects with published evidence to check'],
+      ['Data limits', data.totals.withEvidenceLimits, 'Projects with missing or limited evidence'],
+    ]),
+    el('a', {
+      class: 'button quiet',
+      text: 'Download private Markdown review',
+      href: '/api/v1/review?' + query() + '&format=markdown',
+    }),
+  );
+  const projects = el('div', { class: 'owner-review-projects' });
+  const ordered = [...data.projects].sort(
+    (a, b) => Number(b.counts.investigate > 0) - Number(a.counts.investigate > 0),
+  );
+  for (const [index, project] of ordered.entries()) {
+    const article = el('details', { class: 'owner-review-project' });
+    // Keep the first project visible as an immediate example, with native
+    // keyboard-expandable details for the rest of a larger portfolio.
+    if (index === 0) article.open = true;
+    article.append(
+      el('summary', {}, [
+        el('strong', { text: project.project.label }),
+        el('span', {
+          class: 'small muted',
+          text:
+            String(project.counts.investigate) +
+            ' investigate · ' +
+            String(project.counts.change) +
+            ' changes · ' +
+            String(project.counts.qualify) +
+            ' limits',
+        }),
+      ]),
+    );
+    const body = el('div', { class: 'owner-review-body' });
+    if (!project.focus.length)
+      body.append(
+        el('p', {
+          class: 'muted',
+          text: 'No qualifying examples among the listed evidence. This does not establish zero activity or independent adoption.',
+        }),
+      );
+    const list = el('div', { class: 'owner-review-focus' });
+    for (const focus of project.focus) {
+      const lead = focus.lead;
+      const item = el('section', { class: 'owner-review-item', 'data-lane': focus.lane });
+      item.append(
+        el('h3', { text: ownerReviewLabels[focus.lane] }),
+        el('p', { class: 'owner-review-summary', text: lead.summary }),
+        el('p', {
+          class: 'small muted',
+          text: lead.resourceId + (lead.resourceId ? ' · ' : '') + lead.evidenceState + ' evidence',
+        }),
+      );
+      const checkList = el('ol', { class: 'owner-review-checks' });
+      for (const next of lead.nextChecks.slice(0, 2))
+        checkList.append(el('li', { text: next.text }));
+      item.append(checkList);
+      const supported = lead.nextChecks.find((next) =>
+        ['pulse_health', 'pulse_plan', 'pulse_report'].includes(next.surface),
+      );
+      if (supported) {
+        const name = {
+          pulse_health: 'Open collection health',
+          pulse_plan: 'Open collection plan',
+          pulse_report: 'Open project report',
+        }[supported.surface];
+        const button = el('button', { class: 'text-button', type: 'button', text: name });
+        button.addEventListener('click', () =>
+          supported.surface === 'pulse_report'
+            ? selectProject(project.project.id)
+            : selectView(supported.surface === 'pulse_health' ? 'health' : 'plan'),
+        );
+        item.append(button);
+      }
+      list.append(item);
+    }
+    body.append(list);
+    const omitted = project.omittedLeads;
+    body.append(
+      el('p', {
+        class: 'small muted',
+        text:
+          'One example per evidence lane. ' +
+          (omitted
+            ? String(omitted) + ' additional leads beyond the per-project analysis ceiling. '
+            : '') +
+          'The full project report retains the underlying evidence.',
+      }),
+    );
+    const inspect = el('button', {
+      type: 'button',
+      class: 'text-button',
+      text: 'Inspect ' + project.project.label + ' in detail',
+    });
+    inspect.addEventListener('click', () => selectProject(project.project.id));
+    body.append(inspect);
+    article.append(body);
+    projects.append(article);
+  }
+  content.append(projects);
+  if (data.totals.omittedLeads)
+    content.append(
+      el('p', {
+        class: 'notice',
+        text:
+          String(data.totals.omittedLeads) +
+          ' additional leads were beyond the per-project analysis ceiling; inspect the full reports.',
+      }),
+    );
+}
 function renderPlan(data) {
   content.append(
     el('aside', { class: 'callout' }, [
@@ -1022,7 +1150,7 @@ function saveView(push = false) {
 /** Read a view from the address: on first load and when the reader goes back or forward. */
 function restoreView(params) {
   const view = params.get('view');
-  state.view = ['portfolio', 'brief', 'plan', 'health', 'definitions'].includes(view)
+  state.view = ['portfolio', 'review', 'brief', 'plan', 'health', 'definitions'].includes(view)
     ? view
     : 'portfolio';
   state.project =
@@ -1058,15 +1186,19 @@ async function load({ push = false } = {}) {
     const data =
       state.view === 'health'
         ? await api('/health')
-        : state.view === 'brief'
-          ? await api('/brief?' + query())
-          : state.view === 'plan'
-            ? await api('/plan?' + query())
-            : state.view === 'definitions'
-              ? await api('/metrics')
-              : state.project
-                ? await api('/projects/' + encodeURIComponent(state.project) + '/report?' + query())
-                : await api('/portfolio?' + query());
+        : state.view === 'review'
+          ? await api('/review?' + query())
+          : state.view === 'brief'
+            ? await api('/brief?' + query())
+            : state.view === 'plan'
+              ? await api('/plan?' + query())
+              : state.view === 'definitions'
+                ? await api('/metrics')
+                : state.project
+                  ? await api(
+                      '/projects/' + encodeURIComponent(state.project) + '/report?' + query(),
+                    )
+                  : await api('/portfolio?' + query());
     if (generation !== state.loading) return;
     state.data = data;
     content.replaceChildren();
@@ -1093,6 +1225,12 @@ async function load({ push = false } = {}) {
           'definitions',
         ),
       );
+    } else if (state.view === 'review') {
+      renderOwnerReview(data);
+      $('page-title').textContent = 'What deserves a closer look.';
+      $('page-description').textContent =
+        'One source-aware example per project and evidence lane, with concrete next checks.';
+      $('breadcrumb').textContent = 'OWNER REVIEW';
     } else if (state.view === 'brief') {
       renderBrief(data);
       $('page-title').textContent = 'What changed, and what did not.';
