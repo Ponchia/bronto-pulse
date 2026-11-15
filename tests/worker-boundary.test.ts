@@ -164,7 +164,15 @@ test('a failed old initialization cannot discard a newer successful cached conte
     },
     async batch(statements) {
       nextCalls++;
-      return statements.map(() => ({ results: [] }));
+      return statements.map((statement) => {
+        const sql =
+          statement === undefined ? '' : String((statement as { sql?: string }).sql ?? '');
+        if (sql.includes('metadata') && sql.includes('schema_version'))
+          return { results: [{ value: '1' }] };
+        if (sql.includes('sqlite_master') && sql.includes('url_inspections'))
+          return { results: [{ name: 'url_inspections' }] };
+        return { results: [] };
+      });
     },
   };
   const request = () =>
@@ -183,5 +191,58 @@ test('a failed old initialization cannot discard a newer successful cached conte
     nextCalls,
     completedCalls,
     'failed old context must not force healthy migrations again',
+  );
+});
+
+test('Free schema checks share one consistent native D1 read batch', async () => {
+  const { env } = environment();
+  env.PULSE_EXECUTION_PROFILE = 'free';
+  let schemaBatches = 0;
+  let writes = 0;
+  const statements: string[][] = [];
+  env.DB = {
+    prepare(sql) {
+      return {
+        bind(...params) {
+          return {
+            sql,
+            params,
+            async all<T>() {
+              const schema =
+                sql === 'SELECT value FROM metadata WHERE key=?' && params[0] === 'schema_version';
+              return { results: (schema ? [{ value: '1' }] : []) as T[] };
+            },
+          };
+        },
+      };
+    },
+    async batch(batch) {
+      statements.push(
+        batch.map((entry) => String((entry as { sql?: string }).sql ?? '<unidentified-statement>')),
+      );
+      if (batch.length === 2 && statements.at(-1)?.[0]?.includes('schema_version')) {
+        schemaBatches++;
+        return [{ results: [{ value: '1' }] }, { results: [{ name: 'url_inspections' }] }];
+      }
+      writes++;
+      return batch.map(() => ({ results: [] }));
+    },
+  };
+  const request = () =>
+    new Request('https://pulse.example/api/v1/projects', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+  assert.equal((await worker.fetch(request(), env)).status, 200);
+  assert.equal(schemaBatches, 1, 'a cold Free request must use one schema snapshot');
+  assert.equal(
+    statements.filter((batch) => batch.length === 2 && batch[0]?.includes('schema_version')).length,
+    1,
+  );
+  assert.ok(writes > 0, 'the normal private catalog still initializes for an authorized request');
+  assert.equal((await worker.fetch(request(), env)).status, 200);
+  assert.equal(
+    schemaBatches,
+    1,
+    'same isolate and private configuration reuses the qualified context',
   );
 });

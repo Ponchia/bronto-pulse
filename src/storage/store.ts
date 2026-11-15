@@ -285,15 +285,11 @@ export class Store {
     return value ? parseConfig(JSON.parse(value)) : undefined;
   }
   async acquire(key: string, owner: string, ttlMs = 600000): Promise<boolean> {
-    await this.driver.batch([
-      {
-        sql: 'INSERT INTO leases(key,owner,expires_at) VALUES(?,?,unixepoch()*1000+?) ON CONFLICT(key) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE leases.expires_at<=unixepoch()*1000',
-        params: [key, owner, ttlMs],
-      },
-    ]);
+    // One atomic statement both fences a live owner and confirms ownership.
+    // No separate read can race with the upsert, and D1 needs one round trip.
     const rows = await this.driver.all({
-      sql: 'SELECT owner FROM leases WHERE key=?',
-      params: [key],
+      sql: 'INSERT INTO leases(key,owner,expires_at) VALUES(?,?,unixepoch()*1000+?) ON CONFLICT(key) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE leases.expires_at<=unixepoch()*1000 RETURNING owner',
+      params: [key, owner, ttlMs],
     });
     return rows[0]?.owner === owner;
   }
