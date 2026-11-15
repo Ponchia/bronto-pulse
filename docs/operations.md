@@ -29,6 +29,15 @@ run coverage and provisional flags. Run a second overlapping refresh and verify
 that counts do not double. Confirm zero buckets remain distinct from absent
 buckets. A failed refresh must retain the earlier successful report.
 
+For a recurring Free-profile GSC `ROW_LIMIT` on the optional `queries`
+group, inspect exact source-local dates and normalized row counts before
+changing the collector. When a shorter window really fits, a
+`lookbackDaysByGroup.queries` override narrows **only** that group's regular
+refreshes, and `pulse plan` previews the selection. It does not increase
+Worker limits or promise complete query population. Explicit bounded backfill
+remains necessary for omitted older dates and later provider revisions; do not
+silently treat an uncollected date as zero.
+
 ### Rollback
 
 Stop the collector. Restore a private export into an **empty** database and
