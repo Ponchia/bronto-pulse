@@ -64,7 +64,8 @@
     "test:compose:tls": "bash scripts/compose-tls-smoke.sh",
     "test:browser:evidence": "playwright test --config playwright.evidence.config.ts",
     "test:selfhost:hostile": "node --import tsx --test tests/selfhosted-acceptance/*.hostile.ts tests/selfhosted-acceptance/fixture.selftest.ts",
-    "test:upstream:umami": "bash scripts/upstream-umami-acceptance.sh"
+    "test:upstream:umami": "bash scripts/upstream-umami-acceptance.sh",
+    "sites:audit": "node scripts/site-audit.mjs"
   },
   "dependencies": {
     "jose": "6.2.15",

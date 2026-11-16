@@ -9,6 +9,7 @@ Lifecycle: current
 | [Evidence demo](evidence-demo.md)                                 | Credential-free cross-source website reconciliation scenario  |
 | [Configuration](configuration.md)                                 | Connections, resources, scopes and historical changes         |
 | [Coverage](coverage.md)                                           | Offline inventory gaps, permissions and collection boundaries |
+| [Public-site audit](site-audit.md)                                | Free, bounded SEO checks without credentials or paid APIs     |
 | [Reporting](reporting.md)                                         | Evidence briefings, quality rules and private exports         |
 | [Adoption quality](adoption-quality.md)                           | Interpretation limits, review signals and external evidence   |
 | [Investigation leads](investigation-leads.md)                     | Reason catalogue, next checks and the project resource map    |
