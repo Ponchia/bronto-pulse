@@ -139,6 +139,22 @@ test('invalid public origins, duplicated identities, paths and extra fields refu
   );
 });
 
+test('sitemap entity decoding applies exactly once, never converting an escaped entity into markup', async () => {
+  const encoded = origin + '/path&amp;lt;safe/';
+  const literal = origin + '/path&lt;safe/';
+  const { get, counts } = responses({
+    [origin + '/sitemap.xml']: '<urlset><url><loc>' + encoded + '</loc></url></urlset>',
+    [literal]: page(literal),
+  });
+  const result = await auditSite({ id: 'site', origin }, { get });
+  assert.ok(counts.includes(literal), 'single-unescaped URL was audited');
+  assert.ok(
+    !counts.some((x) => x.includes('%3C') || x.includes('<safe')),
+    'double-decoded markup was never constructed',
+  );
+  assert.equal(result.checkedPages, 2);
+});
+
 test('only global unicast public DNS addresses are accepted', () => {
   for (const ip of [
     '127.0.0.1',

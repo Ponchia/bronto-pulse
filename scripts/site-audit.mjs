@@ -204,7 +204,11 @@ function headTags(html, name) {
 }
 
 function unescapeXml(s) {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  // Decode only one XML entity layer. Consecutive replacements would turn
+  // "&amp;lt;" into "<" even though XML semantics require the literal "&lt;".
+  // That is both misleading for URL validation and a double-unescape hazard.
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+  return s.replace(/&(amp|lt|gt|quot|apos);/g, (_entity, name) => entities[name]);
 }
 
 function addCheck(checks, severity, code, url, reason) {
