@@ -1,5 +1,8 @@
 # Private deployment
 
+For Free deployments with configuration beyond the per-variable limit, see
+[staged, integrity-checked Worker configuration parts](worker-config-chunks.md).
+
 Lifecycle: current
 
 ## Local CLI and dashboard
