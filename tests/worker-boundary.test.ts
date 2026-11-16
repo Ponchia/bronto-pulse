@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import worker, { type WorkerEnv } from '../src/worker.js';
 import { fixture } from './helpers.js';
@@ -245,4 +246,31 @@ test('Free schema checks share one consistent native D1 read batch', async () =>
     1,
     'same isolate and private configuration reuses the qualified context',
   );
+});
+
+test('split Worker configuration is ignored before authorization and fails closed on mixed secrets', async () => {
+  const raw = JSON.stringify(fixture());
+  const digest = createHash('sha256').update(raw).digest('hex');
+  const base = environment('invalid-legacy-source');
+  const midpoint = Math.floor(raw.length / 2);
+  base.env.PULSE_CONFIG_PART_1 = raw.slice(0, midpoint);
+  base.env.PULSE_CONFIG_PART_2 = raw.slice(midpoint);
+  base.env.PULSE_CONFIG_MANIFEST = JSON.stringify({ version: 1, parts: 2, sha256: digest });
+  const req = (auth: boolean) =>
+    new Request('https://pulse.example/api/v1/projects', {
+      headers: auth ? { Authorization: 'Bearer ' + token } : {},
+    });
+  assert.equal((await worker.fetch(req(false), base.env)).status, 401);
+  assert.equal(base.counts().databaseCalls, 0);
+  const allowed = await worker.fetch(req(true), base.env);
+  assert.equal(allowed.status, 503, 'the synthetic DB fixture is deliberately unavailable');
+  assert.ok(base.counts().databaseCalls > 0, 'valid hashed source reached DB initialization');
+  const mixed = environment('invalid-legacy-source');
+  mixed.env.PULSE_CONFIG_PART_1 = raw.slice(0, midpoint) + 'sensitive-unique-marker';
+  mixed.env.PULSE_CONFIG_PART_2 = raw.slice(midpoint);
+  mixed.env.PULSE_CONFIG_MANIFEST = JSON.stringify({ version: 1, parts: 2, sha256: digest });
+  const rejected = await worker.fetch(req(true), mixed.env);
+  assert.equal(rejected.status, 503);
+  assert.equal(mixed.counts().databaseCalls, 0, 'digest failure precedes all DB access');
+  assert.doesNotMatch(await rejected.text(), /sensitive-unique-marker|invalid-legacy-source/);
 });

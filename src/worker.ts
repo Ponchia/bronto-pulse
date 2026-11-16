@@ -1,5 +1,10 @@
 import { workerBindings, type AggregateEnvironment } from './collectors/bindings.js';
 import { parseConfig } from './config.js';
+import {
+  workerConfigSource,
+  verifyWorkerConfigSource,
+  type WorkerConfigEnvironment,
+} from './worker-config.js';
 import { D1Driver, type D1Like } from './storage/driver.js';
 import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
@@ -9,10 +14,10 @@ import { scheduleOptions } from './worker-schedule.js';
 import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
 import { workerAccess, type AccessEnvironment } from './api/access.js';
-export interface WorkerEnv extends AccessEnvironment, AggregateEnvironment {
+export interface WorkerEnv
+  extends AccessEnvironment, AggregateEnvironment, WorkerConfigEnvironment {
   DB: D1Like;
   ASSETS: { fetch(request: Request): Promise<Response> };
-  PULSE_CONFIG: string;
   PULSE_API_TOKEN?: string;
   GITHUB_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
@@ -34,6 +39,7 @@ let cached:
   | {
       db: D1Like;
       raw: string;
+      configDigest: string | null;
       profile: string | undefined;
       ready: Promise<{
         store: Store;
@@ -49,14 +55,17 @@ function environmentSecrets(env: WorkerEnv): Secrets {
   );
 }
 async function context(env: WorkerEnv) {
+  const source = workerConfigSource(env);
   if (
     cached?.db === env.DB &&
-    cached.raw === env.PULSE_CONFIG &&
+    cached.raw === source.raw &&
+    cached.configDigest === source.expectedSha256 &&
     cached.profile === env.PULSE_EXECUTION_PROFILE
   )
     return cached.ready;
   const ready = (async () => {
-    const config = parseConfig(JSON.parse(env.PULSE_CONFIG));
+    await verifyWorkerConfigSource(source);
+    const config = parseConfig(JSON.parse(source.raw));
     const store = new Store(new D1Driver(env.DB));
     if (env.PULSE_EXECUTION_PROFILE === 'free') {
       // One snapshot checks both migration markers without two sequential D1 round trips.
@@ -73,7 +82,13 @@ async function context(env: WorkerEnv) {
     } else await store.migrate();
     return { store, config, reporting: undefined as Promise<void> | undefined };
   })();
-  cached = { db: env.DB, raw: env.PULSE_CONFIG, profile: env.PULSE_EXECUTION_PROFILE, ready };
+  cached = {
+    db: env.DB,
+    raw: source.raw,
+    configDigest: source.expectedSha256,
+    profile: env.PULSE_EXECUTION_PROFILE,
+    ready,
+  };
   try {
     return await ready;
   } catch (error) {
