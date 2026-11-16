@@ -158,3 +158,221 @@ test('coverage CLI bounds input bytes and rejects unsupported private output wit
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('website coverage distinguishes Cloudflare host groups and exact Search Console property', () => {
+  const config = parseConfig({
+    version: 1,
+    resources: [
+      {
+        id: 'pages',
+        provider: 'cloudflare',
+        accountId: 'a'.repeat(32),
+        siteTag: 'b'.repeat(32),
+        hostname: 'example.org',
+        groups: ['totals', 'pages', 'referrers'],
+      },
+      {
+        id: 'search',
+        provider: 'gsc',
+        siteUrl: 'https://example.org/',
+        collectPages: true,
+        collectQueries: false,
+      },
+    ],
+    projects: [
+      {
+        id: 'website',
+        label: 'Website',
+        resources: [{ resource: 'pages' }, { resource: 'search' }],
+      },
+    ],
+  });
+  const report = auditCoverage(config, {
+    version: 1,
+    resources: [
+      { provider: 'cloudflare', hostname: 'EXAMPLE.ORG' },
+      { provider: 'gsc', siteUrl: 'https://example.org' },
+      { provider: 'gsc', siteUrl: 'sc-domain:example.org', groups: ['totals'] },
+    ],
+  });
+  assert.equal(report.configured, false);
+  assert.deepEqual(
+    report.resources.map((r) => r.state),
+    ['partial', 'partial', 'missing'],
+  );
+  assert.deepEqual(report.resources[0]?.missingGroups, ['vitals', 'performance']);
+  assert.deepEqual(report.resources[1]?.missingGroups, ['queries']);
+  assert.deepEqual(report.resources[1]?.projectIds, ['website']);
+  assert.deepEqual(report.resources[2]?.resourceIds, []);
+});
+
+test('website audits respect explicit asOf dates without inventing historical coverage', () => {
+  const config = parseConfig({
+    version: 1,
+    resources: [
+      { id: 'old', provider: 'gsc', siteUrl: 'https://old.example.org/' },
+      { id: 'new', provider: 'gsc', siteUrl: 'https://new.example.org/' },
+    ],
+    projects: [
+      {
+        id: 'website',
+        label: 'Website',
+        resources: [
+          { resource: 'old', effectiveTo: '2026-11-13' },
+          { resource: 'new', effectiveFrom: '2026-11-14' },
+        ],
+      },
+    ],
+  });
+  const input = {
+    version: 1 as const,
+    resources: [
+      { provider: 'gsc' as const, siteUrl: 'https://new.example.org/', groups: ['totals'] },
+      { provider: 'gsc' as const, siteUrl: 'https://old.example.org/', groups: ['totals'] },
+    ],
+  };
+  assert.deepEqual(
+    auditCoverage(config, { ...input, asOf: '2026-11-13' }).resources.map((r) => r.state),
+    ['unbound', 'configured'],
+  );
+  assert.deepEqual(
+    auditCoverage(config, { ...input, asOf: '2026-11-14' }).resources.map((r) => r.state),
+    ['configured', 'unbound'],
+  );
+  assert.deepEqual(
+    auditCoverage(config, input).resources.map((r) => r.state),
+    ['configured', 'configured'],
+  );
+});
+
+test('website coverage fails closed on unsafe properties, duplicate groups and untrusted fields', () => {
+  const config = parseConfig(base());
+  const invalid = [
+    { provider: 'cloudflare', hostname: 'http://example.org' },
+    { provider: 'cloudflare', hostname: 'localhost' },
+    { provider: 'cloudflare', hostname: 'example..org' },
+    { provider: 'gsc', siteUrl: 'sc-domain:' },
+    { provider: 'gsc', siteUrl: 'sc-domain:example..org' },
+    { provider: 'cloudflare', hostname: 'example.org', groups: ['pages', 'pages'] },
+    { provider: 'gsc', siteUrl: 'http://example.org/' },
+    { provider: 'gsc', siteUrl: 'https://user:secret@example.org/' },
+    { provider: 'gsc', siteUrl: 'https://example.org/?token=secret' },
+    { provider: 'gsc', siteUrl: 'https://example.org/', token: 'secret' },
+    { provider: 'gsc', siteUrl: 'sc-domain:example.org', groups: ['queries', 'queries'] },
+  ];
+  for (const resource of invalid)
+    assert.throws(() => auditCoverage(config, { version: 1, resources: [resource] }), {
+      code: 'CONFIG',
+    });
+  assert.throws(
+    () =>
+      auditCoverage(config, {
+        version: 1,
+        resources: [
+          { provider: 'cloudflare', hostname: 'example.org' },
+          { provider: 'cloudflare', hostname: 'EXAMPLE.ORG' },
+        ],
+      }),
+    { code: 'CONFIG' },
+  );
+  assert.throws(
+    () =>
+      auditCoverage(config, {
+        version: 1,
+        asOf: '2026-02-30',
+        resources: [{ provider: 'npm', package: '@example/library' }],
+      }),
+    { code: 'CONFIG' },
+  );
+});
+
+test('shared documentation hostname needs an exact path-bound project', () => {
+  const config = parseConfig({
+    version: 1,
+    resources: [
+      {
+        id: 'docs-rum',
+        provider: 'cloudflare',
+        accountId: 'a'.repeat(32),
+        siteTag: 'b'.repeat(32),
+        hostname: 'ponchia.github.io',
+        groups: ['pages', 'referrers'],
+      },
+    ],
+    projects: [
+      {
+        id: 'bronto-ui',
+        label: 'Bronto UI',
+        resources: [
+          {
+            resource: 'docs-rum',
+            scope: {
+              hostname: 'ponchia.github.io',
+              pathPrefix: '/bronto-ui/',
+            },
+          },
+        ],
+      },
+      {
+        id: 'bronto-annotations',
+        label: 'Bronto Annotations',
+        resources: [
+          {
+            resource: 'docs-rum',
+            scope: {
+              hostname: 'ponchia.github.io',
+              pathPrefix: '/bronto-annotations/',
+            },
+          },
+        ],
+      },
+    ],
+  });
+  const report = auditCoverage(config, {
+    version: 1,
+    resources: [
+      {
+        provider: 'cloudflare',
+        hostname: 'ponchia.github.io',
+        projectId: 'bronto-ui',
+        pathPrefix: '/bronto-ui',
+        groups: ['pages', 'referrers'],
+      },
+      {
+        provider: 'cloudflare',
+        hostname: 'ponchia.github.io',
+        projectId: 'bronto-annotations',
+        pathPrefix: '/bronto-annotations/',
+        groups: ['pages'],
+      },
+      {
+        provider: 'cloudflare',
+        hostname: 'ponchia.github.io',
+        projectId: 'bronto-visual-models',
+        pathPrefix: '/bronto-visual-models/',
+        groups: ['pages'],
+      },
+    ],
+  });
+  assert.deepEqual(
+    report.resources.map((r) => r.state),
+    ['configured', 'configured', 'unbound'],
+  );
+  assert.deepEqual(report.resources[0]?.projectIds, ['bronto-ui']);
+  assert.equal(report.resources[0]?.pathPrefix, '/bronto-ui');
+  assert.deepEqual(report.resources[2]?.projectIds, []);
+  assert.throws(
+    () =>
+      auditCoverage(config, {
+        version: 1,
+        resources: [
+          {
+            provider: 'cloudflare',
+            hostname: 'ponchia.github.io',
+            pathPrefix: '/bronto-ui/',
+          },
+        ],
+      }),
+    { code: 'CONFIG' },
+  );
+});

@@ -34,7 +34,7 @@ const HELP = `Bronto Pulse ${VERSION} — private project analytics, not a visit
 
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
-pulse coverage --input FILE         Offline GitHub/npm inventory coverage; no DB or API access
+pulse coverage --input FILE         Offline GitHub/npm and website-source coverage; no DB or API access
 pulse connectors                     Offline built-in source capabilities; no credentials needed
 pulse graph PROJECT                  Explicit resource relationships; no DB, credentials or network
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
