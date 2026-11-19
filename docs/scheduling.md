@@ -178,6 +178,39 @@ failure delay or a provider wait. Any newer regular collection of that
 dataset, such as an explicit `pulse sync --resource <id> --group
 <group>`, resolves it.
 
+## Bounded Search Console reconciliation
+
+A resource's optional `reconcileDaysByGroup` map enables a correction pass for
+selected Search Console datasets. Unlike history backfill, it revisits recent
+published dates, including days previously returned without observations.
+Normal regular collection still uses its own implicit lookback.
+
+The opt-in Worker variable `PULSE_RECONCILE_CRON` identifies a dedicated,
+distinct Cron Trigger. Each invocation executes exactly one dataset/day with
+the same execution profile limits and atomic publication contract as regular
+sync. Keep `PULSE_MAX_JOBS=1` and `PULSE_EXECUTION_PROFILE=free` for the Free
+profile. The expression must differ from `PULSE_HISTORY_CRON`; source code does
+not install either trigger.
+
+For one dataset with a 14-day horizon, an hourly trigger takes about 14 hours
+per pass when every invocation runs. More datasets, held leases, missing
+credentials, outages or delayed invocations extend that interval. This is a
+capacity calculation, not a collection SLA or evidence of Worker CPU compliance.
+
+The `reconciliation_days` metadata records each dataset's last attempted
+source date; `reconciliation_cursor` rotates across opted-in datasets. Dates
+outside the rolling horizon restart at its oldest date. A failed request
+advances to the next date so one overfull day cannot block all later dates,
+while preserving its failure and earlier published evidence. It is revisited
+on the next pass. Skipped collection does not advance that dataset's date.
+
+The outer `reconciliation-scheduler` lease serializes this scheduler separately
+from regular/history scheduling; per-dataset leases still prevent concurrent
+publication. Regular refresh, manual explicit windows and history do not modify
+the reconciliation cursor. A rollback to a version without this configuration
+field requires removing `reconcileDaysByGroup` and the dedicated trigger first;
+retained observations are compatible and must not be deleted.
+
 ## Limitations
 
 This is a small-installation scheduler, not a durable distributed queue.

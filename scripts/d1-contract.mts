@@ -8,6 +8,7 @@ import { doctor } from '../src/sync.js';
 import { projectBrief } from '../src/brief.js';
 import { parseConfig } from '../src/config.js';
 import { dueJobs } from '../src/due-schedule.js';
+import { recordReview, readReviewRecord } from '../src/journal.js';
 // Wrangler installs Miniflare for local Workers; this tests the actual D1 binding.
 const require = createRequire(import.meta.url);
 const { Miniflare } = require('miniflare');
@@ -98,6 +99,33 @@ try {
     [await projectReport(config, store, 'project', window, now)],
     'native D1 compact report projection and latest-group heads must preserve exact reports',
   );
+  const savedReview = await recordReview(
+    config,
+    store,
+    {
+      id: 'd1-review-proof-0001',
+      projectId: 'project',
+      window,
+      question: 'What does the synthetic source correction support?',
+      conclusion: 'Retain the evidence; no causal claim is justified.',
+    },
+    now,
+  );
+  assert.deepEqual(
+    await recordReview(
+      config,
+      store,
+      {
+        id: savedReview.id,
+        projectId: 'project',
+        window,
+        question: savedReview.question,
+        conclusion: savedReview.conclusion,
+      },
+      new Date(now.getTime() + 1000),
+    ),
+    savedReview,
+  );
   const exported = await store.export();
   const recovery = new Store(new D1Driver(await mf.getD1Database('RESTORE', 'pulse')));
   await recovery.migrate();
@@ -105,6 +133,10 @@ try {
   assert.deepEqual(
     await projectReport(config, recovery, 'project', window, now),
     await projectReport(config, store, 'project', window, now),
+  );
+  assert.deepEqual(
+    await readReviewRecord(config, recovery, 'project', savedReview.id),
+    savedReview,
   );
   // Due-time reads and writes after the recovery proof, so the export above is
   // unchanged: the exact regular head of a Pacific source behind newer
@@ -172,7 +204,7 @@ try {
   assert.deepEqual(portable.retryGuidance, scheduled.retryGuidance);
   assert.ok(portable.runs.some((r) => r.id === guided));
   console.log(
-    'REAL D1 CONTRACT PASSED: schema, JSON1, fenced publication, correction, replacement, reporting, normalized URL inspection history, transactional snapshot, independent recovery, exact paged due-time heads and provider wait.',
+    'REAL D1 CONTRACT PASSED: schema, JSON1, fenced publication, correction, replacement, reporting, normalized URL inspection history, frozen review recovery, transactional snapshot, independent recovery, exact paged due-time heads and provider wait.',
   );
 } finally {
   await mf.dispose();

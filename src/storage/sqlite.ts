@@ -4,16 +4,18 @@ import { dirname, resolve } from 'node:path';
 import type { SqlDriver, Statement } from './driver.js';
 export class SqliteDriver implements SqlDriver {
   readonly database: DatabaseSync;
-  constructor(path: string) {
-    if (path !== ':memory:') {
+  constructor(path: string, options: { readOnly?: boolean } = {}) {
+    if (!options.readOnly && path !== ':memory:') {
       const parent = dirname(resolve(path));
       mkdirSync(parent, { recursive: true, mode: 0o700 });
     }
-    this.database = new DatabaseSync(path, { timeout: 5000 });
+    this.database = new DatabaseSync(path, { timeout: 5000, readOnly: options.readOnly ?? false });
     this.database.exec(
-      'PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;',
+      options.readOnly
+        ? 'PRAGMA query_only=ON; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;'
+        : 'PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;',
     );
-    if (path !== ':memory:') chmodSync(path, 0o600);
+    if (!options.readOnly && path !== ':memory:') chmodSync(path, 0o600);
   }
   async all<T extends Record<string, unknown>>(s: Statement): Promise<T[]> {
     return this.database.prepare(s.sql).all(...(s.params ?? [])) as T[];

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pulse Project Review'
+  short_description: 'Review project evidence and useful next checks'
+  default_prompt: 'Use $pulse-project-review to review my project evidence and identify a useful next check.'

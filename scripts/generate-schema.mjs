@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { configSchema } from '../dist/config.js';
 import { z } from 'zod';
-import { INITIAL_SCHEMA, INSPECTION_SCHEMA } from '../dist/storage/schema.js';
+import { INITIAL_SCHEMA, INSPECTION_SCHEMA, REVIEW_SCHEMA } from '../dist/storage/schema.js';
 import { visibilitySuiteSchema, visibilityRunsSchema } from '../dist/visibility.js';
 await mkdir('schemas', { recursive: true });
 await mkdir('migrations', { recursive: true });
@@ -20,6 +20,12 @@ await writeFile(
   '-- Generated from src/storage/schema.ts; run npm run schema:generate.\n' +
     INSPECTION_SCHEMA +
     ';\n',
+);
+await writeFile(
+  'migrations/0003_review_records.sql',
+  '-- Generated from src/storage/schema.ts; run npm run schema:generate.\n' +
+    REVIEW_SCHEMA.map((sql) => sql + ';').join('\n') +
+    '\n',
 );
 console.log('Configuration JSON Schema and D1 migration regenerated.');
 for (const [name, schema] of [

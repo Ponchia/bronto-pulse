@@ -1,12 +1,18 @@
 # Bronto Pulse
 
-**Open-source project analytics. Private history. No additional visitor tracker.**
+**Review your software projects with evidence from repositories, packages and websites.**
 
-Bronto Pulse keeps a source-aware history of how software and websites are
-discovered, distributed and used. A project can reference GitHub repositories,
-npm packages, Cloudflare Web Analytics, Search Console and existing Sense6
-anonymous counters. Related projects can share a website property without
-silently double-counting each other's paths.
+Bronto Pulse helps a maintainer answer what changed, what the available
+measurements support and what deserves a closer look. It keeps a private,
+source-aware history across GitHub, npm, Cloudflare Web Analytics, Search
+Console, existing Plausible or Umami installations and Sense6 anonymous counters.
+A project can connect its repository, package and documentation site while
+retaining each source's dates, coverage and limitations.
+
+Use it for a routine portfolio review, a release or website change, or a focused
+question. The dashboard, CLI and read-only agent tools expose the same evidence.
+No additional visitor tracker is required. Related projects can share a website
+property without silently double-counting each other's paths.
 
 **Status: public source preview.** The code is MIT-licensed; collected analytics,
 provider credentials and deployments remain **private** by default. This is not
@@ -46,6 +52,13 @@ npm run demo -- --serve
 Open the loopback address printed by the CLI and enter its one-session token.
 All demo values are **synthetic** and clearly labeled. The demo cannot be
 mixed into a live database and does not make provider API requests.
+
+Choose **Bronto UI** for a first review: it has a repository, npm package and
+scoped documentation site. Ask what changed over the last 30 completed days,
+inspect the cited observations and choose one useful next check. The sampled
+documentation measurement must remain qualified. Then inspect **Bronto
+Annotations**, whose missing repository dates deliberately prevent an
+unsupported comparison. Follow the [project-review walkthrough](docs/project-reviews.md).
 
 ### Demonstrate why source-aware analytics matters
 
@@ -111,6 +124,19 @@ monthly unique people or combined with Cloudflare counts. See the
 [connector guide](docs/connectors.md) and the
 [product direction](docs/product-strategy.md).
 
+## Review in Codex or Claude
+
+The source includes a portable **Bronto Pulse Review** plugin, a project-review
+skill and seven read-only MCP tools. They expose project briefs, exact evidence,
+collection health, resource mappings and saved conclusions. Use local stdio
+with an existing SQLite installation, or connect directly to a private hosted
+`/mcp` endpoint with the owner's reporting token.
+
+Start with the [agent setup guide](docs/agent-review.md). The repository package
+is a source-preview integration; it is not an installed account plugin or a
+public directory listing. Use a checkout or release that contains the new
+commands. Reading evidence never starts collection or writes a review.
+
 ## Operator workflow
 
 Preview a bounded sync before making provider requests, then review which
@@ -144,21 +170,29 @@ explicit date chunks and budgets. Briefings keep coverage problems, limited
 measurements and missing baselines visible; snapshot changes are net changes,
 not gross new users. No tracker or LLM service is added.
 
+An optional `review-record` command keeps a question and conclusion with a
+frozen evidence snapshot and an existing issue/PR link. Follow-ups append a new
+record; “no action justified” is a valid conclusion. See
+[keeping a conclusion](docs/project-reviews.md#keep-a-conclusion-when-it-helps).
+This is a review history, not a task queue.
+
 Read the [quickstart](docs/quickstart.md), [configuration guide](docs/configuration.md)
 and [reporting contracts](docs/reporting.md) before connecting live sources.
+The [pilot evaluation](docs/pilot-evaluation.md) describes how to test usefulness
+with independent owners; the maintainer's own use is not that validation.
 
 ## Implemented capabilities
 
-| Area           | Behavior                                                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub         | Daily views/clones, non-additive uniques, top-ten rolling referrers/paths, stars/forks snapshots, release annotations and asset totals                              |
-| npm            | Daily scoped or unscoped package downloads, bounded historical chunks, response-window validation                                                                   |
-| Cloudflare     | Account RUM totals, page attribution, referrer groups, performance/CWV adapters with sampling and no-sample semantics; capabilities must be tested for your account |
-| Search Console | Separate totals/page/query scopes, bounded pagination, Pacific dates, partial-data metadata, weighted CTR/position, OAuth refresh                                   |
-| Sense6         | Optional fixed aggregate-only D1 query; no arbitrary SQL, participant or result reads                                                                               |
-| Storage        | SQLite and D1 drivers, fenced leases, staged atomic publication, coverage, run history, portable private export/import                                              |
-| Interfaces     | CLI, authenticated read-only API, dashboard, portfolio owner review with next checks, offline plans, evidence briefings and private JSON/Markdown/CSV reports       |
-| Deployment     | Local process, container, or bounded scheduled Cloudflare Worker with D1 and private assets                                                                         |
+| Area           | Behavior                                                                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GitHub         | Daily views/clones, non-additive uniques, top-ten rolling referrers/paths, stars/forks snapshots, release annotations and asset totals                                   |
+| npm            | Daily scoped or unscoped package downloads, bounded historical chunks, response-window validation                                                                        |
+| Cloudflare     | Account RUM totals, page attribution, referrer groups, performance/CWV adapters with sampling and no-sample semantics; capabilities must be tested for your account      |
+| Search Console | Separate totals/page/query scopes, bounded pagination, Pacific dates, partial-data metadata, weighted CTR/position, OAuth refresh                                        |
+| Sense6         | Optional fixed aggregate-only D1 query; no arbitrary SQL, participant or result reads                                                                                    |
+| Storage        | SQLite and D1 drivers, fenced leases, staged atomic publication, coverage, run history, portable private export/import                                                   |
+| Interfaces     | CLI, authenticated read-only API and MCP, Codex/Claude review plugin, dashboard, portfolio review with next checks, private review history and JSON/Markdown/CSV reports |
+| Deployment     | Local process, container, or bounded scheduled Cloudflare Worker with D1 and private assets                                                                              |
 
 Provider adapters are integration-tested with strict fixtures. Live account
 validation is distinct from a passing fixture test. No provider token or Google

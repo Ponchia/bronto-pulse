@@ -11,6 +11,9 @@ import { connectorCatalog, hasConnector } from './collectors/registry.js';
 import { PulseError, safeError } from './errors.js';
 import { Store } from './storage/store.js';
 import { SqliteDriver } from './storage/sqlite.js';
+import { d1OperatorDriver } from './storage/d1-http.js';
+import { recordReview, readReviewHistory, readReviewRecord, reviewSummary } from './journal.js';
+import { validateReviewInput } from './review-record.js';
 import { sync, doctor, probe, MAX_PROBE_DAYS } from './sync.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
 import { seedDemo, type DemoScenario } from './demo.js';
@@ -23,6 +26,7 @@ import { csvReport } from './report-export.js';
 import { visibilityCli, privateJson } from './visibility-cli.js';
 import { inspectUrls } from './inspection.js';
 import { auditCoverage } from './coverage.js';
+import { observedCoverage } from './coverage-report.js';
 import { projectGraph } from './project-graph.js';
 import { nodeSelfHosted } from './selfhost/node-transport.js';
 
@@ -35,6 +39,7 @@ const HELP = `Bronto Pulse ${VERSION} — private project analytics, not a visit
 pulse init                           Create a validated example configuration
 pulse validate                       Validate project mappings and credential references
 pulse coverage --input FILE         Offline GitHub/npm and website-source coverage; no DB or API access
+pulse coverage-report --input FILE  Read intended coverage, publications and source lag from existing storage
 pulse connectors                     Offline built-in source capabilities; no credentials needed
 pulse graph PROJECT                  Explicit resource relationships; no DB, credentials or network
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
@@ -47,6 +52,9 @@ pulse doctor                         Check coverage, freshness and credential av
 pulse report PROJECT [--days 30]      Source-aware report; --format json|markdown|csv
 pulse brief [PROJECT]                Evidence-based summary; omitting ID covers portfolio
 pulse review [--days 30]              Read-only portfolio agenda and next checks
+pulse review-record --input FILE    Save an explicit conclusion with a frozen evidence snapshot
+pulse review-history PROJECT        Read past conclusions; --review-id ID retrieves frozen evidence
+pulse mcp                           Read-only stdio tools over an existing local database
 pulse compare PROJECT...             Side-by-side reports, never a universal adoption score
 pulse export --out private.json      Portable private snapshot; refuses active collectors
 pulse import --input private.json    Restore into an EMPTY database, transactionally
@@ -59,6 +67,8 @@ Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --from YYYY-MM-DD --to YYYY-MM-DD, --resource ID, --group GROUP,
  --max-jobs N --chunk-days N --rotate --dry-run, --json, --format FORMAT,
  --out FILE (exclusive private output), --input FILE, --port N.
+ Operator commands may use --remote-d1 with account/database/token environment settings;
+ this reads the hosted configuration and cannot combine with --config or --db.
  Serve only: --host 127.0.0.1|0.0.0.0 and --public-origin https://HOST for a trusted TLS reverse proxy.
 Credentials are read from environment variables named by connections.
 No command creates a visitor tracker or publishes your collected data.
@@ -89,6 +99,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     options: {
       config: { type: 'string' },
       db: { type: 'string' },
+      'remote-d1': { type: 'boolean' },
+      'review-id': { type: 'string' },
+      limit: { type: 'string' },
       json: { type: 'boolean' },
       provider: { type: 'string' },
       resource: { type: 'string' },
@@ -224,6 +237,28 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     console.log(JSON.stringify({ schemaVersion: 1, connectors: connectorCatalog() }, null, 2));
     return 0;
   }
+  if (v['remote-d1'] && (v.config !== undefined || v.db !== undefined))
+    throw new PulseError(
+      'CONFIG',
+      'Remote D1 reads its authoritative configuration; omit --config and --db.',
+    );
+  if (
+    v['remote-d1'] &&
+    command === 'sync' &&
+    (!v.resource ||
+      !v.group ||
+      !v.from ||
+      v.to !== v.from ||
+      v.rotate ||
+      v['due-only'] ||
+      (v['max-jobs'] !== undefined && v['max-jobs'] !== '1'))
+  )
+    throw new PulseError(
+      'CONFIG',
+      'Remote sync requires one explicit resource, group and source day (--from equals --to), with one job.',
+    );
+  if (v.limit !== undefined && Number(v.limit) > 100)
+    throw new PulseError('CONFIG', 'Review history limit must be between 1 and 100.');
   const configPath = resolve(v.config ?? 'pulse.config.json');
   if (command === 'graph') {
     if (positionals.length !== 2 || Object.keys(v).some((key) => !['config', 'json'].includes(key)))
@@ -312,8 +347,70 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       throw new PulseError('CONFIG', 'Inspection input must be a JSON array of URL strings.');
     inspectionInput = input;
   }
-  const store = new Store(new SqliteDriver(dbPath));
-  await store.migrate();
+  if (command === 'coverage-report') {
+    const input = await privateJson(v.input, 256 * 1024);
+    const store = new Store(
+      v['remote-d1'] ? d1OperatorDriver(process.env) : new SqliteDriver(dbPath, { readOnly: true }),
+    );
+    try {
+      if ((await store.getSetting('schema_version')) !== '1')
+        throw new PulseError('SCHEMA', 'Coverage requires an existing supported database.');
+      const config = await store.getConfig();
+      if (!config)
+        throw new PulseError('CONFIG', 'Coverage requires an existing registered database.');
+      if (v.config && JSON.stringify(await configFrom(configPath)) !== JSON.stringify(config))
+        throw new PulseError(
+          'CONFLICT',
+          'Coverage configuration differs from the registered database. Reconcile it explicitly before reading evidence.',
+        );
+      const result = await observedCoverage(config, store, input, now);
+      console.log(JSON.stringify(result, null, 2));
+      return result.configurationAudit.configured ? 0 : 2;
+    } finally {
+      store.driver.close?.();
+    }
+  }
+  if (command === 'mcp') {
+    const store = new Store(new SqliteDriver(dbPath, { readOnly: true }));
+    try {
+      if ((await store.getSetting('schema_version')) !== '1')
+        throw new PulseError('SCHEMA', 'MCP requires an existing supported database.');
+      const config = await store.getConfig();
+      if (!config)
+        throw new PulseError(
+          'CONFIG',
+          'MCP requires an existing registered database. Run an explicit setup or collection first.',
+        );
+      if (v.config && JSON.stringify(await configFrom(configPath)) !== JSON.stringify(config))
+        throw new PulseError(
+          'CONFLICT',
+          'MCP configuration differs from the registered database. Reconcile it explicitly before serving evidence.',
+        );
+      const { startPulseMcpStdio } = await import('./mcp/stdio.js');
+      await startPulseMcpStdio(
+        { config, store, secrets: process.env, bindings, now },
+        {
+          version: VERSION,
+          onClose: () => store.driver.close?.(),
+        },
+      );
+      return 0;
+    } catch (error) {
+      store.driver.close?.();
+      throw error;
+    }
+  }
+  const reviewInput =
+    command === 'review-record'
+      ? validateReviewInput(await privateJson(v.input, 65536))
+      : undefined;
+  const store = new Store(
+    v['remote-d1'] ? d1OperatorDriver(process.env) : new SqliteDriver(dbPath),
+  );
+  if (v['remote-d1']) {
+    if ((await store.getSetting('schema_version')) !== '1')
+      throw new PulseError('SCHEMA', 'Remote database requires the supported operator migrations.');
+  } else await store.migrate();
   let hold = false;
   try {
     if (command === 'import') {
@@ -334,8 +431,32 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         console.log(`Open it: pulse serve --config ${path} --db ${dbPath}`);
         return 0;
       }
+    } else if (v['remote-d1']) {
+      const registered = await store.getConfig();
+      if (!registered)
+        throw new PulseError('CONFIG', 'The remote database has no registered configuration.');
+      config = registered;
     } else config = await configFrom(configPath);
-    await store.register(config);
+    if (!v['remote-d1']) await store.register(config);
+    if (command === 'review-record') {
+      const record = await recordReview(config, store, reviewInput, now);
+      console.log(JSON.stringify(reviewSummary(record), null, 2));
+      return 0;
+    }
+    if (command === 'review-history') {
+      const projectId = positionals[1]!;
+      const result = v['review-id']
+        ? await readReviewRecord(config, store, projectId, v['review-id'])
+        : {
+            schemaVersion: 1,
+            projectId,
+            reviews: (await readReviewHistory(config, store, projectId, numeric(v.limit, 20))).map(
+              reviewSummary,
+            ),
+          };
+      console.log(JSON.stringify(result, null, 2));
+      return 0;
+    }
     if (command === 'inspect') {
       if (!v.resource)
         throw new PulseError('CONFIG', 'Inspection requires --resource ID and --input FILE.');
@@ -369,7 +490,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         resourceId: v.resource,
         group: v.group,
         window: plannedOptions(config).window,
-        maxJobs: v['max-jobs'] ? numeric(v['max-jobs'], 1) : v['due-only'] ? 1 : undefined,
+        maxJobs: v['max-jobs']
+          ? numeric(v['max-jobs'], 1)
+          : v['due-only'] || v['remote-d1']
+            ? 1
+            : undefined,
+        ...(v['remote-d1']
+          ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250, retryRateLimits: false }
+          : {}),
         rotate: v.rotate,
         dueOnly: v['due-only'],
         bindings,

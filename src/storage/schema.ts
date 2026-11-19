@@ -13,4 +13,8 @@ export const INITIAL_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS annotations (id TEXT PRIMARY KEY,resource_id TEXT NOT NULL,date TEXT NOT NULL,title TEXT NOT NULL,url TEXT,kind TEXT NOT NULL CHECK(kind IN ('release','note')))`,
   `INSERT OR IGNORE INTO metadata(key,value) VALUES('schema_version','1')`,
 ];
-export const SCHEMA = [...INITIAL_SCHEMA, INSPECTION_SCHEMA];
+export const REVIEW_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS review_records (id TEXT PRIMARY KEY,project_id TEXT NOT NULL,created_at TEXT NOT NULL,record_json TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS review_records_project_time ON review_records(project_id,created_at DESC,id)',
+];
+export const SCHEMA = [...INITIAL_SCHEMA, INSPECTION_SCHEMA, ...REVIEW_SCHEMA];

@@ -138,6 +138,8 @@ const resource = z.discriminatedUnion('provider', [
     ),
     collectPages: z._default(z.boolean(), true),
     collectQueries: z._default(z.boolean(), false),
+    // Opt-in recent-date corrections, one source day per separate invocation.
+    reconcileDaysByGroup: z.optional(z.record(id, z.int().check(z.gte(1), z.lte(366)))),
     history,
   }),
   z.strictObject({
@@ -344,6 +346,14 @@ export function parseConfig(input: unknown): Config {
           'A website source and its connection must name the same self-hosted instance, or neither.',
         );
     }
+    if (
+      r.provider === 'gsc' &&
+      Object.keys(r.reconcileDaysByGroup ?? {}).some((name) => !groups(r).includes(name))
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Reconciliation horizons must name collected Search Console groups.',
+      );
     if ('groups' in r && new Set(r.groups).size !== r.groups.length)
       throw new PulseError('CONFIG', 'Duplicate collection group.');
     // A misspelt or uncollected group would otherwise be silently ignored.

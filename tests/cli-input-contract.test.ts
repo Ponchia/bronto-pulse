@@ -87,6 +87,7 @@ test('documented command shapes retain their effective options', () => {
     ['init', [], { config: 'private.json' }],
     ['validate', [], { config: 'private.json', json: true }],
     ['coverage', [], { config: 'private.json', input: 'inventory.json', json: true }],
+    ['coverage-report', [], { 'remote-d1': true, input: 'inventory.json', json: true }],
     ['connectors', [], { json: true }],
     ['graph', ['project'], { config: 'private.json', json: true }],
     ['plan', [], { resource: 'source', from: '2026-10-12', to: '2026-10-13', json: true }],

@@ -7,6 +7,11 @@ not evidence that a pilot has happened. Keep the resulting record private; do
 not submit credentials, analytics exports, search queries or owner screenshots
 in a public issue or CI artifact.
 
+Use this runbook for technical and real-source qualification. The separate
+[independent pilot evaluation](pilot-evaluation.md) tests recurring usefulness,
+setup/support effort and willingness to pay against the owner's existing workflow.
+Passing one does not establish the other.
+
 ## Choose the claim before running the test
 
 | Gate                    | Required evidence                                                                        | What it does not prove                                             |

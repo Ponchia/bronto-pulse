@@ -829,6 +829,188 @@ function resourceGraphPanel(graph) {
   return panel;
 }
 
+function inspectionPanel(report) {
+  const rows = (report.inspections ?? []).filter(
+    (row) => !state.focusResource || row.resourceId === state.focusResource,
+  );
+  const hasSearchSource = report.resources?.resources?.some(
+    (resource) =>
+      resource.provider === 'gsc' && (!state.focusResource || resource.id === state.focusResource),
+  );
+  if (!rows.length && !hasSearchSource) return null;
+  const panel = el(
+    'section',
+    { class: 'inspection-panel', 'aria-label': 'Stored URL inspections' },
+    [
+      heading('Stored URL inspections', 'The indexed view returned for explicitly selected URLs'),
+      el('p', {
+        class: 'small muted',
+        text: 'These are saved Search Console results at the stated inspection times. An observed response is not proof that a URL is indexed. Missing fields remain unknown; this is not a live-page test or an index submission.',
+      }),
+    ],
+  );
+  if (!rows.length) {
+    panel.append(
+      empty(
+        'No stored URL inspections for this selection. An owner can run pulse inspect with an explicit URL list. Opening this view does not start an inspection.',
+      ),
+    );
+    return panel;
+  }
+  const list = el('div', { class: 'project-records' });
+  for (const row of rows.slice(0, 20)) {
+    const item = el('article', { class: 'project-record inspection-record' }, [
+      el('h3', { text: row.url }),
+      el('p', { class: 'small muted', text: row.resourceId + ' · Inspected ' + row.inspectedAt }),
+      el('span', { class: 'badge', text: 'Response: ' + row.status }),
+      el('p', {
+        text:
+          row.status === 'observed'
+            ? 'Provider verdict: ' + (row.verdict ?? 'Unknown')
+            : 'No indexed verdict is available from this inspection.',
+      }),
+      el('p', { class: 'small', text: 'Coverage: ' + (row.coverageState ?? 'Unknown') }),
+    ]);
+    if (row.errorCode)
+      item.append(el('p', { class: 'small', text: 'Inspection error: ' + row.errorCode }));
+    const fields = [
+      ['Declared canonical', row.declaredCanonical],
+      ['Google canonical', row.googleCanonical],
+      ['Last crawl (source)', row.lastCrawlTime],
+    ].filter(([, value]) => value !== null && value !== undefined);
+    if (fields.length || row.sitemaps?.length) {
+      const details = el('details', { class: 'project-record-details' }, [
+        el('summary', { text: 'Additional indexed evidence' }),
+      ]);
+      for (const [label, value] of fields)
+        details.append(el('p', { class: 'small', text: label + ': ' + value }));
+      for (const sitemap of row.sitemaps ?? [])
+        details.append(el('p', { class: 'small', text: 'Sitemap: ' + sitemap }));
+      item.append(details);
+    }
+    list.append(item);
+  }
+  panel.append(list);
+  if (rows.length > 20)
+    panel.append(
+      el('p', {
+        class: 'small muted',
+        text:
+          'Showing 20 of ' +
+          rows.length +
+          ' stored inspection records. The report JSON contains the complete returned evidence.',
+      }),
+    );
+  return panel;
+}
+
+function reviewHistoryPanel(projectId) {
+  const generation = state.loading;
+  const panel = el(
+    'section',
+    { class: 'review-history-panel', 'aria-label': 'Saved project reviews' },
+    [
+      heading(
+        'Saved project reviews',
+        'Conclusions with the evidence available when they were recorded',
+      ),
+      el('p', {
+        class: 'small muted',
+        text: 'The latest 20 saved reviews across all dates. Each record retains its own window and frozen evidence; it does not change the current report selection.',
+      }),
+    ],
+  );
+  const body = el('div', { class: 'project-records' });
+  const readStatus = el('p', { class: 'visually-hidden', role: 'status' });
+  panel.append(readStatus, body);
+  const stale = () => generation !== state.loading || !panel.isConnected;
+  async function read() {
+    body.setAttribute('aria-busy', 'true');
+    body.replaceChildren(el('p', { class: 'small muted', text: 'Loading saved reviews…' }));
+    try {
+      const data = await api('/projects/' + encodeURIComponent(projectId) + '/reviews?limit=20');
+      if (stale()) return;
+      if (data.projectId !== projectId || !Array.isArray(data.reviews))
+        throw Error('Unexpected review history answer.');
+      body.replaceChildren();
+      readStatus.textContent = data.reviews.length + ' saved project reviews loaded.';
+      if (!data.reviews.length) {
+        body.append(
+          empty(
+            'No conclusions have been saved for this project. When useful, an owner can run pulse review-record with a private question and conclusion file. A review can also stay in an existing issue or PR; no action justified is a valid conclusion.',
+          ),
+        );
+        return;
+      }
+      for (const review of data.reviews) {
+        const item = el('article', { class: 'project-record saved-review' }, [
+          el('h3', { text: review.question }),
+          el('p', { class: 'review-conclusion', text: review.conclusion }),
+          el('p', {
+            class: 'small muted',
+            text:
+              'Evidence: ' +
+              review.window.from +
+              ' → ' +
+              review.window.to +
+              ' · Saved ' +
+              review.createdAt,
+          }),
+        ]);
+        if (review.followUpOf)
+          item.append(el('p', { class: 'small', text: 'Follows review ' + review.followUpOf }));
+        const links = el('div', { class: 'project-record-links' }, [
+          el('a', {
+            text: 'Download saved evidence',
+            href:
+              '/api/v1/projects/' +
+              encodeURIComponent(projectId) +
+              '/reviews/' +
+              encodeURIComponent(review.id),
+            download: 'pulse-review-' + review.id + '.json',
+          }),
+        ]);
+        if (review.actionUrl) {
+          try {
+            const url = new URL(review.actionUrl);
+            if (url.protocol !== 'https:' || url.username || url.password)
+              throw Error('Unsafe link');
+            links.append(
+              el('a', {
+                text: 'Open action link · ' + url.hostname,
+                href: url.href,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                referrerpolicy: 'no-referrer',
+              }),
+            );
+          } catch {
+            links.append(el('span', { class: 'small muted', text: 'Action link unavailable' }));
+          }
+        }
+        item.append(links);
+        body.append(item);
+      }
+    } catch {
+      if (stale()) return;
+      readStatus.textContent = 'Saved project reviews could not be loaded.';
+      const retry = el('button', { class: 'button secondary', text: 'Retry saved reviews' });
+      retry.addEventListener('click', read);
+      body.replaceChildren(
+        el('p', {
+          class: 'small',
+          text: 'Saved reviews could not be loaded. The current project report is still available.',
+        }),
+        retry,
+      );
+    } finally {
+      body.removeAttribute('aria-busy');
+    }
+  }
+  void read();
+  return panel;
+}
+
 function renderProject(report) {
   const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
   back.addEventListener('click', () => selectView('portfolio'));
@@ -913,6 +1095,9 @@ function renderProject(report) {
       );
     content.append(timeline);
   }
+  const inspections = inspectionPanel(report);
+  if (inspections) content.append(inspections);
+  content.append(reviewHistoryPanel(report.project.id));
   content.append(heading('Metric contract', 'Values retain source scope and timezone'));
   content.append(
     table(

@@ -6,6 +6,10 @@ Lifecycle: current
 | ----------------------------------------------------------------- | ------------------------------------------------------------- |
 | [Public preview](public-preview.md)                               | Source publication, privacy boundaries and maturity           |
 | [Quickstart](quickstart.md)                                       | Demo, private setup, offline planning and first reports       |
+| [Project reviews](project-reviews.md)                             | Repository/package/site first review and optional conclusions |
+| [Agent review](agent-review.md)                                   | Codex/Claude plugin, local and private hosted MCP setup       |
+| [MCP protocol](mcp-protocol.md)                                   | Read tool schemas, bounded evidence and private transports    |
+| [Independent pilot evaluation](pilot-evaluation.md)               | Proposed customer-value checks, baseline and paid experiments |
 | [Evidence demo](evidence-demo.md)                                 | Credential-free cross-source website reconciliation scenario  |
 | [Configuration](configuration.md)                                 | Connections, resources, scopes and historical changes         |
 | [Coverage](coverage.md)                                           | Offline inventory gaps, permissions and collection boundaries |
