@@ -224,6 +224,16 @@ export class Store {
     if (persisted === raw) return;
     const commands: Statement[] = [];
     const previous = persisted ? parseConfig(JSON.parse(persisted)) : undefined;
+    if (previous) {
+      const reviewed = await this.driver.all({
+        sql: 'SELECT DISTINCT project_id FROM review_records',
+      });
+      if (reviewed.some((row) => !config.projects.some((project) => project.id === row.project_id)))
+        throw new PulseError(
+          'CONFLICT',
+          'Project removal would orphan saved reviews. Retain the reviewed project identifier so its evidence remains readable and recoverable.',
+        );
+    }
     if (previous && previous.demo !== config.demo)
       throw new PulseError('CONFLICT', 'Synthetic and live data must use separate databases.');
     if (

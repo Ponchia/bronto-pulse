@@ -265,3 +265,40 @@ test('saved review captures one selected-project snapshot, closes it, and refuse
     backing.driver.close?.();
   }
 });
+
+test('saved reviews preserve project identity even before any observations exist', async () => {
+  const base = fixture('npm');
+  const config = {
+    ...base,
+    projects: [
+      ...base.projects,
+      { ...base.projects[0]!, id: 'unreviewed', label: 'Unreviewed synthetic project' },
+    ],
+  };
+  const store = await database(config);
+  const restored = new Store(new SqliteDriver(':memory:'));
+  try {
+    const first = await recordReview(config, store, input, now);
+    assert.equal((await store.driver.all({ sql: 'SELECT * FROM partitions' })).length, 0);
+    assert.equal((await store.driver.all({ sql: 'SELECT * FROM url_inspections' })).length, 0);
+    await assert.rejects(
+      store.register(
+        { ...config, projects: config.projects.filter((project) => project.id !== 'project') },
+        now,
+      ),
+      { code: 'CONFLICT' },
+    );
+    assert.deepEqual(await store.getConfig(), config);
+    const narrowed = {
+      ...config,
+      projects: config.projects.filter((project) => project.id === 'project'),
+    };
+    await store.register(narrowed, now);
+    await restored.migrate();
+    await restored.import(await store.export());
+    assert.deepEqual(await readReviewRecord(narrowed, restored, 'project', first.id), first);
+  } finally {
+    store.driver.close?.();
+    restored.driver.close?.();
+  }
+});

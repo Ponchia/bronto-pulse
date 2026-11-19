@@ -6,7 +6,7 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
 import { createPulseMcpServer, MCP_RESULT_BYTES } from '../src/mcp/server.js';
-import { handlePulseMcp } from '../src/mcp/http.js';
+import { handlePulseMcp, MCP_HTTP_PROTOCOL_VERSION } from '../src/mcp/http.js';
 import { reportRevision } from '../src/mcp/domain.js';
 import { projectReport } from '../src/report.js';
 import { recordReview } from '../src/journal.js';
@@ -66,6 +66,8 @@ test('MCP discovery is lazy, bounded and exposes only read tools', async () => {
       { projectId: 'project', includePoints: true },
       { projectId: 'project', reviewId: 'review-01', days: 2 },
       { projectId: 'project', pointOffset: 1 },
+      { projectId: 'project', from: '2026-11-03', to: '2026-11-01' },
+      { projectId: 'project', from: '2024-01-01', to: '2026-11-01' },
     ]) {
       const invalid = await connection.client.callTool({
         name: 'get_project_evidence',
@@ -331,17 +333,174 @@ test('MCP HTTP rejects malformed boundaries before loading private state', async
   assert.equal(loads, 0);
 });
 
+test('HTTP protocol, media types and strict tool arguments fail before private state loads', async () => {
+  let loads = 0;
+  const source = async () => {
+    loads++;
+    throw new Error('private state must not load');
+  };
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    'MCP-Protocol-Version': MCP_HTTP_PROTOCOL_VERSION,
+  };
+  const send = (message: unknown, suppliedHeaders: HeadersInit = headers) =>
+    handlePulseMcp(
+      new Request('https://pulse.invalid/mcp', {
+        method: 'POST',
+        headers: suppliedHeaders,
+        body: JSON.stringify(message),
+      }),
+      source,
+    );
+  for (const accept of [
+    '',
+    'application/json',
+    'text/event-stream',
+    'application/json;q=0, text/event-stream',
+    'application/json-malicious, text/event-stream',
+  ]) {
+    const response = await send(
+      { jsonrpc: '2.0', id: 1, method: 'ping' },
+      { ...headers, Accept: accept },
+    );
+    assert.equal(response.status, 406);
+  }
+  for (const version of ['', 'invalid', '2026-07-28', '2025-03-26']) {
+    const response = await send(
+      { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      { ...headers, 'MCP-Protocol-Version': version },
+    );
+    assert.equal(response.status, 400);
+  }
+  const noVersion = new Headers(headers);
+  noVersion.delete('MCP-Protocol-Version');
+  assert.equal(
+    (await send({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, noVersion)).status,
+    400,
+  );
+  const initialized = await send(
+    {
+      jsonrpc: '2.0',
+      id: 'initialize-test',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2099-01-01',
+        capabilities: {},
+        clientInfo: { name: 'synthetic-client', version: '1.0' },
+      },
+    },
+    {
+      'Content-Type': 'Application/JSON; charset=utf-8',
+      Accept: 'Application/JSON; q=1.0, Text/Event-Stream; q=0.9',
+    },
+  );
+  assert.equal(initialized.status, 200);
+  assert.equal(
+    ((await initialized.json()) as any).result.protocolVersion,
+    MCP_HTTP_PROTOCOL_VERSION,
+  );
+  assert.equal(initialized.headers.get('MCP-Session-Id'), null);
+  for (const method of [
+    'notifications/initialized',
+    'notifications/cancelled',
+    'notifications/unknown',
+  ]) {
+    const response = await send({
+      jsonrpc: '2.0',
+      method,
+      params: method === 'notifications/cancelled' ? { requestId: 7 } : {},
+    });
+    assert.equal(response.status, 202);
+    assert.equal(await response.text(), '');
+  }
+  assert.equal(
+    (await send({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'list_projects' } }))
+      .status,
+    400,
+  );
+  const missingMethod = await send({
+    jsonrpc: '2.0',
+    id: 'unknown-method',
+    method: 'no/such/method',
+  });
+  assert.deepEqual(await missingMethod.json(), {
+    jsonrpc: '2.0',
+    id: 'unknown-method',
+    error: { code: -32601, message: 'Method not found.' },
+  });
+  const discoveryProbe = await send(
+    { jsonrpc: '2.0', id: 42, method: 'server/discover' },
+    { ...headers, 'MCP-Protocol-Version': '2026-07-28' },
+  );
+  assert.equal(discoveryProbe.status, 400);
+  assert.equal(((await discoveryProbe.json()) as any).error.code, -32601);
+  for (const params of [
+    {},
+    { name: 'not_a_tool' },
+    { name: 'list_projects', arguments: [] },
+    { name: 'list_projects', arguments: {}, task: {} },
+  ]) {
+    const response = await send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params });
+    assert.equal(((await response.json()) as any).error.code, -32602);
+  }
+  for (const args of [
+    { projectId: 'project', unknown: true },
+    { projectId: 'project', days: 367 },
+    { projectId: 'project', from: '2026-02-30' },
+    { projectId: 'project', from: window.from, days: 2 },
+    { projectId: 'project', includePoints: true },
+    { projectId: 'project', reviewId: 'review-01', days: 2 },
+    { projectId: 'project', pointOffset: 1 },
+    { projectId: 'project', from: '2026-11-03', to: '2026-11-01' },
+    { projectId: 'project', from: '2024-01-01', to: '2026-11-01' },
+  ]) {
+    const response = await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'get_project_evidence', arguments: args },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(((await response.json()) as any).result.isError, true);
+  }
+  assert.equal(loads, 0);
+});
+
 for (const mode of ['legacy', 'auto'] as const) {
   test('SDK HTTP discovery and harmless call work in ' + mode + ' negotiation', async () => {
     const config = fixture('github', { groups: ['views'] });
     const store = await database(config);
     const source = { config, store, now };
+    const exchanges: {
+      method: string;
+      version: string | null;
+      status: number;
+      errorCode?: number;
+      negotiatedVersion?: string;
+    }[] = [];
     const client = new Client(
       { name: 'pulse-http-tests', version: '1.0.0' },
       { versionNegotiation: { mode } },
     );
     const transport = new StreamableHTTPClientTransport(new URL('https://pulse.invalid/mcp'), {
-      fetch: async (input, init) => handlePulseMcp(new Request(input, init), source),
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        const message =
+          request.method === 'POST' ? ((await request.clone().json()) as any) : undefined;
+        const response = await handlePulseMcp(request, source);
+        const reply = response.headers.get('Content-Type')?.includes('application/json')
+          ? ((await response.clone().json()) as any)
+          : undefined;
+        exchanges.push({
+          method: message?.method ?? request.method,
+          version: request.headers.get('MCP-Protocol-Version'),
+          status: response.status,
+          errorCode: reply?.error?.code,
+          negotiatedVersion: reply?.result?.protocolVersion,
+        });
+        return response;
+      },
     });
     try {
       await client.connect(transport);
@@ -352,6 +511,33 @@ for (const mode of ['legacy', 'auto'] as const) {
       const result = payload(await client.callTool({ name: 'list_projects', arguments: {} }));
       assert.equal(result.projects.items[0].id, 'project');
       assert.equal(result.readOnly, true);
+      assert.equal(
+        exchanges.find((entry) => entry.method === 'initialize')?.negotiatedVersion,
+        MCP_HTTP_PROTOCOL_VERSION,
+      );
+      assert.ok(
+        exchanges
+          .filter((entry) => entry.method.startsWith('tools/'))
+          .every((entry) => entry.version === MCP_HTTP_PROTOCOL_VERSION),
+      );
+      const probe = exchanges.find((entry) => entry.method === 'server/discover');
+      if (mode === 'auto') {
+        assert.equal(probe?.status, 400);
+        assert.equal(probe?.errorCode, -32601);
+        assert.ok(
+          exchanges.indexOf(probe!) < exchanges.findIndex((entry) => entry.method === 'initialize'),
+        );
+      } else assert.equal(probe, undefined);
+      const sdk = await connected(source);
+      try {
+        assert.deepEqual(
+          (await client.listTools()).tools,
+          (await sdk.client.listTools()).tools,
+          'HTTP and SDK stdio share the exact public tool definitions',
+        );
+      } finally {
+        await sdk.close();
+      }
     } finally {
       await client.close();
       store.driver.close?.();

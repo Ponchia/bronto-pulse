@@ -98,14 +98,35 @@ session cookies alone cannot authorize MCP. Discovery is private too. A signed
 owner identity covers the installation, not a separately authorized project or
 tenant.
 
-The transport is stateless Streamable HTTP using the maintained official
-TypeScript MCP SDK. It supports legacy initialization and current protocol
-negotiation. Use POST with `Content-Type: application/json` and the client's
-MCP Accept headers. An Origin header must exactly match the request origin;
-absent Origin is allowed for native clients. Cross-origin browser calls,
-oversized bodies and malformed implementation metadata are refused before
-loading private report state. Responses are not cacheable. GET/DELETE session
-operations and subscriptions are not supported.
+The HTTP transport implements the bounded, stateless MCP `2025-11-25`
+Streamable HTTP contract with JSON responses. It advertises only tools and
+supports `initialize`, `ping`, `tools/list`, and `tools/call`. Accepted
+notifications return an empty HTTP 202 response and never load private state.
+There are no sessions, SSE streams, subscriptions or server-initiated requests;
+GET and DELETE return 405. The official TypeScript SDK remains the Node stdio
+adapter. Both transports share the same strict `zod/mini` tool contracts,
+refinement checks, dispatch and result bounds. The Worker imports no SDK
+runtime or classic Zod dependency.
+
+Use POST with `Content-Type: application/json` and Accept entries for both
+`application/json` and `text/event-stream`. Initialization negotiates
+`2025-11-25`; subsequent requests must send
+`MCP-Protocol-Version: 2025-11-25`. Unsupported headers, or a missing header
+after initialization, return HTTP 400. A newer client's `server/discover`
+probe receives method-not-found (`-32601`); the qualified SDK auto mode then
+falls back to `initialize`. This endpoint does not advertise the newer
+per-request protocol. Clients pinned exclusively to that newer version must
+select legacy/automatic negotiation or use stdio.
+
+An Origin header must exactly match the request origin; absent Origin is
+allowed for native clients. Cross-origin browser calls, oversized bodies,
+malformed implementation metadata, invalid tool schemas, and explicit invalid
+date windows are refused before loading private report state. Project and
+resource existence checks require the saved configuration. Responses are not
+cacheable. These choices follow the primary
+[transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+and [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
+contracts.
 
 `handlePulseMcp` deliberately does not implement authentication. An alternate
 embedder must authenticate before invoking it; constructing this function
@@ -124,7 +145,9 @@ separate work.
 Focused tests use the official MCP client to discover tools and execute
 harmless reads over HTTP and stdio. They check strict arguments, output bounds,
 source fidelity, missing values, revision conflicts, frozen-review evidence,
-failure redaction, no report writes, and stdio shutdown. Run them through the
+failure redaction, no report writes, stdio shutdown, explicit HTTP protocol negotiation,
+and SDK automatic fallback. The Worker contract gate also rejects any classic
+Zod or Node transport dependency in its bundle. Run them through the
 maintainer's normal test wrapper:
 
 ```sh
