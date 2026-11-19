@@ -15,49 +15,81 @@ connection is implied.
 
 ## Try the local plugin with synthetic evidence
 
-From a checkout using Node.js 24.15 or newer:
+Use Node.js 24.15 or newer and a source checkout containing this integration.
+After these changes are merged, a new checkout can start with:
 
 ```sh
+git clone https://github.com/Ponchia/bronto-pulse.git
+cd bronto-pulse
 npm ci
 npm run demo
 ```
 
-`npm ci` builds the source; the demo creates `.pulse/demo.config.json` and
-`.pulse/demo.db`. Use their absolute paths and the checkout's built CLI:
+For an existing checkout, run the last two commands from its repository root
+after selecting a revision containing the `mcp` command and plugin.
+`npm ci` runs `prepare`, which invokes `npm run build` and produces
+`dist/cli.js`. The demo initializes and registers `.pulse/demo.db` and
+writes its matching `.pulse/demo.config.json`. No provider requests are made.
+This source workflow does not assume a new `@ponchia/pulse` npm release.
+
+From the repository root, set absolute paths in the same terminal that will
+launch the client:
 
 ```sh
-export PULSE_CLI_PATH="/absolute/path/bronto-pulse/dist/cli.js"
-export PULSE_CONFIG_PATH="/absolute/path/bronto-pulse/.pulse/demo.config.json"
-export PULSE_DB_PATH="/absolute/path/bronto-pulse/.pulse/demo.db"
-claude --plugin-dir ./plugins/bronto-pulse-review
+export PULSE_CLI_PATH="$(pwd)/dist/cli.js"
+export PULSE_CONFIG_PATH="$(pwd)/.pulse/demo.config.json"
+export PULSE_DB_PATH="$(pwd)/.pulse/demo.db"
 ```
 
-The Claude command loads the plugin for that session. For a current Codex
-client with portable plugin support, this repository advertises the package
-through `.agents/plugins/marketplace.json` as **available**, not installed.
-If the catalog is not already shown, the owner can register this checkout with
-`codex plugin marketplace add /absolute/path/bronto-pulse`, then select the
-local **Bronto Pulse Review** package through the client's plugin workflow.
-That registration changes the client's marketplace configuration; the repository
-itself does not install the plugin. The package's portable `plugin.json`, `mcp.json` and review skill
-also live in `plugins/bronto-pulse-review/`; its Claude overlay uses
-`.claude-plugin/plugin.json` and `.mcp.json`.
+For a Codex client with the `codex plugin` commands, register the local
+marketplace and install the source plugin:
 
-Ask:
+```sh
+codex plugin marketplace add "$(pwd)"
+codex plugin add bronto-pulse-review@bronto-pulse-local
+codex
+```
+
+Those first two commands change the owner's local marketplace and plugin
+configuration. They do not submit a public listing. The repository advertises
+the package through `.agents/plugins/marketplace.json` as **AVAILABLE**;
+checking out the repository does not install or enable it.
+
+For Claude Code, load the package for one session from the same terminal:
+
+```sh
+claude --plugin-dir "$(pwd)/plugins/bronto-pulse-review"
+```
+
+The portable `plugin.json`, `mcp.json` and review skill live under
+`plugins/bronto-pulse-review/`. The Claude overlay uses
+`.claude-plugin/plugin.json` and `.mcp.json`. Keep the source checkout and
+the three absolute paths available when launching either client.
+
+First ask the client to list the configured projects, then ask:
 
 > Review Bronto UI for the last 30 completed days. What changed, what remains
 > uncertain, and which check is useful next?
 
-All data in that example is synthetic. For a real installation, substitute its
-existing configuration and database only after explicit collection or restore.
-The MCP process opens SQLite read-only, checks the supplied configuration
-against the registered database and does not migrate, initialize or collect.
+All data in that example is synthetic. For your own projects, first complete
+the [private setup workflow](quickstart.md#configure-a-real-installation) or
+an explicit archive restore, then replace the two data paths:
+
+```sh
+export PULSE_CONFIG_PATH="/private/pulse/pulse.config.json"
+export PULSE_DB_PATH="/private/pulse/pulse.db"
+```
+
+Keep demo and real databases separate. The MCP process requires an already
+initialized, registered database, opens SQLite read-only and checks the supplied
+configuration against the registered one. It does not migrate, initialize or
+collect.
 
 The launcher starts only the configured local CLI. It does not download a
 runtime, source an environment file or forward provider tokens or
-`NODE_OPTIONS`. It needs the three absolute file paths above. Its collection
-health view therefore cannot establish whether credentials held only by a
-separate collector are currently available; stored run outcomes still apply.
+`NODE_OPTIONS`. Its collection health view therefore cannot establish whether
+credentials held only by a separate collector are currently available; stored
+run outcomes still apply.
 
 ## Connect a local MCP client directly
 
