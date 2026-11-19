@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { fixture } from './helpers.js';
+import { Store } from '../src/storage/store.js';
+import { SqliteDriver } from '../src/storage/sqlite.js';
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const loader = import.meta.resolve('tsx');
 function setup() {
@@ -269,6 +271,70 @@ test('dry-run and real sync use the same custom lookback anchored to --to', () =
     );
     assert.equal(actual.status, 0, actual.stderr);
     assert.equal(JSON.parse(actual.stdout)[0].rows, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('observed coverage CLI reads registered history without changing it or creating a missing database', async () => {
+  const dir = setup();
+  try {
+    const config = fixture('npm');
+    const db = join(dir, 'existing.db');
+    const store = new Store(new SqliteDriver(db));
+    try {
+      await store.migrate();
+      await store.register(config);
+    } finally {
+      store.driver.close?.();
+    }
+    const inventory = join(dir, 'inventory.json');
+    writeFileSync(
+      inventory,
+      JSON.stringify({
+        version: 1,
+        resources: [
+          { provider: 'npm', package: '@example/package' },
+          { provider: 'github', repository: 'example/unconfigured', groups: ['views'] },
+        ],
+      }),
+    );
+    const before = readFileSync(db);
+    const result = run(dir, ['coverage-report', '--db', db, '--input', inventory, '--json']);
+    assert.equal(result.status, 2, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.summary.intendedDatasets, 2);
+    assert.equal(report.summary.configuredDatasets, 1);
+    assert.equal(report.summary.neverPublishedDatasets, 2);
+    assert.deepEqual(readFileSync(db), before);
+    writeFileSync(
+      join(dir, 'pulse.config.json'),
+      JSON.stringify({
+        ...config,
+        projects: config.projects.map((p) => ({ ...p, label: 'Changed mapping' })),
+      }),
+    );
+    const conflict = run(dir, [
+      'coverage-report',
+      '--db',
+      db,
+      '--config',
+      'pulse.config.json',
+      '--input',
+      inventory,
+    ]);
+    assert.equal(conflict.status, 1);
+    assert.match(conflict.stderr, /CONFLICT:/);
+    assert.deepEqual(readFileSync(db), before);
+    const missing = run(dir, [
+      'coverage-report',
+      '--db',
+      'missing/history.db',
+      '--input',
+      inventory,
+    ]);
+    assert.equal(missing.status, 1);
+    assert.equal(existsSync(join(dir, 'missing')), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

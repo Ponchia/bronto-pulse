@@ -274,3 +274,41 @@ keys that are not part of the returned observation model. The original archive,
 run-history API, transaction snapshot, source windows and metric arithmetic are
 unchanged. These smaller reads reduce transferred data; they are not proof of
 sub-10-ms production CPU time. Measure the actual deployed invocation separately.
+
+## Hosted review records and selected inspections
+
+Apply additive `migrations/0003_review_records.sql` through the normal deployment
+migration path before deploying a Worker that requires the review table.
+The local CLI migrates its local database; `--remote-d1` never migrates or
+registers a replacement catalog. It reads the existing D1 configuration.
+
+For explicitly authorized owner operations, supply `CLOUDFLARE_ACCOUNT_ID`,
+`PULSE_D1_DATABASE_ID` and `CLOUDFLARE_API_TOKEN` through the private environment.
+Use a token scoped to the required account and D1 access. Keep provider
+credentials private as for local collection. `--remote-d1` cannot combine with
+`--config` or `--db`, and is not a public SQL or browser API.
+
+Supported owner workflows include `review-record`, `review-history`, `inspect`,
+`annotate` and reporting commands. Remote `sync` requires one selected resource,
+group and explicit source day (`--from` equals `--to`), with one job and the
+Free execution profile's request/byte/observation limits.
+
+The native Worker uses Cloudflare's documented [D1 binding batch
+transactions](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
+The operator adapter uses the administrative [REST query batch
+endpoint](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/),
+whose reference does not state the same rollback guarantee. Live rollback
+qualification is separate from the simulated transport tests. After an interrupted
+or rejected multi-statement owner request, inspect stored state before deciding
+whether to retry; the adapter does not retry it automatically.
+
+A review's caller-supplied id is its retry identity. Retrying identical input
+returns the original snapshot; a changed conclusion needs a new id and may link
+the original with `followUpOf`. An interrupted D1 write is not automatically
+retried. Read by that id before deciding the next action.
+
+Portable archives include review records and verify the frozen evidence on
+import. Older archives without reviews remain valid. The journal export is
+bounded to 1,000 records and 16 MiB; larger journals require the encrypted
+database backup path. An exceeded limit fails explicitly without discarding
+history. Collection compaction does not delete review snapshots.

@@ -1,3 +1,5 @@
+import { handlePulseMcp } from '../mcp/http.js';
+import { readReviewHistory, readReviewRecord, reviewSummary } from '../journal.js';
 import { investigateProject } from '../investigations.js';
 import { ownerReview, markdownReview } from '../review.js';
 import { projectGraph } from '../project-graph.js';
@@ -23,6 +25,8 @@ export interface ApiData {
   store: Store;
 }
 interface ApiAccessContext {
+  /** Optional strictly read-only context for agent calls; no lazy catalog writes. */
+  loadMcpData?: () => Promise<ApiData>;
   secrets: Secrets;
   apiToken: string;
   /** Explicit signed-identity mode; never trusts a plain proxy email header. */
@@ -84,6 +88,9 @@ function validateQuery(url: URL, now: Date): void {
   let dated = false;
   if (plain.has(tail)) allowed = [];
   else if (tail === 'runs') allowed = ['limit', 'resource'];
+  else if (/^projects\/[a-z][a-z0-9_-]{0,63}\/reviews$/.test(tail)) allowed = ['limit'];
+  else if (/^projects\/[a-z][a-z0-9_-]{0,63}\/reviews\/[a-z0-9][a-z0-9_-]{7,95}$/.test(tail))
+    allowed = [];
   else if (tail === 'plan') {
     allowed = [...dateKeys, 'resource', 'group'];
     dated = true;
@@ -136,7 +143,7 @@ function validateQuery(url: URL, now: Date): void {
     if (resource !== null && !/^[a-z][a-z0-9_-]{0,63}$/.test(resource))
       throw new PulseError('CONFIG', 'Invalid resource identifier.');
   }
-  if (tail.endsWith('/investigation')) limitFor(url, 100);
+  if (tail.endsWith('/investigation') || tail.endsWith('/reviews')) limitFor(url, 100);
 }
 const ASSETS = new Set([
   '/',
@@ -259,6 +266,39 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
             'Set-Cookie': `pulse_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${url.protocol === 'https:' ? '; Secure' : ''}`,
           },
         }),
+      );
+    }
+    if (url.pathname === '/mcp') {
+      // MCP's POST is a read-only protocol transport. Cookies do not authorize it.
+      const bearer = request.headers.get('authorization');
+      if (
+        !ctx.access &&
+        (!bearer?.startsWith('Bearer ') || !(await validToken(bearer.slice(7), ctx.apiToken)))
+      )
+        return secure(
+          json(
+            { error: { code: 'AUTH', message: 'MCP requires the configured owner bearer token.' } },
+            401,
+          ),
+        );
+      if (url.search)
+        return secure(
+          json(
+            { error: { code: 'CONFIG', message: 'MCP does not accept query parameters.' } },
+            400,
+          ),
+        );
+      return secure(
+        await handlePulseMcp(request, async () => ({
+          ...(ctx.loadMcpData
+            ? await ctx.loadMcpData()
+            : 'loadData' in ctx
+              ? await ctx.loadData()
+              : ctx),
+          secrets: ctx.secrets,
+          bindings: ctx.bindings,
+          now,
+        })),
       );
     }
     if (request.method !== 'GET' && request.method !== 'HEAD')
@@ -399,6 +439,30 @@ async function route(request: Request, ctx: ApiContext | LazyApiContext): Promis
           },
         }),
       );
+    const reviews =
+      /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/reviews(?:\/([a-z0-9][a-z0-9_-]{7,95}))?$/.exec(
+        url.pathname,
+      );
+    if (reviews) {
+      if (reviews[2])
+        return secure(
+          json(await readReviewRecord(data.config, data.store, reviews[1]!, reviews[2])),
+        );
+      return secure(
+        json({
+          schemaVersion: 1,
+          projectId: reviews[1],
+          reviews: (
+            await readReviewHistory(
+              data.config,
+              data.store,
+              reviews[1]!,
+              url.searchParams.has('limit') ? limitFor(url, 100) : 20,
+            )
+          ).map(reviewSummary),
+        }),
+      );
+    }
     const evidenceView =
       /^\/api\/v1\/projects\/([a-z][a-z0-9_-]{0,63})\/(graph|investigation)$/.exec(url.pathname);
     if (evidenceView) {

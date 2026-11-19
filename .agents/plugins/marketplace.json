@@ -1,0 +1,20 @@
+{
+  "name": "bronto-pulse-local",
+  "interface": {
+    "displayName": "Bronto Pulse local preview"
+  },
+  "plugins": [
+    {
+      "name": "bronto-pulse-review",
+      "source": {
+        "source": "local",
+        "path": "./plugins/bronto-pulse-review"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

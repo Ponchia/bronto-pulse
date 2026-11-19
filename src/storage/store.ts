@@ -22,6 +22,14 @@ import { isRegularRun, sourceZone } from '../due-schedule.js';
 import type { SqlDriver, Statement } from './driver.js';
 import { SCHEMA } from './schema.js';
 import { validateInspection, type Inspection } from '../inspection.js';
+import {
+  REVIEW_ID,
+  assertSameReview,
+  reviewInput,
+  validateReviewRecord,
+  verifyReviewEvidence,
+  type ReviewRecord,
+} from '../review-record.js';
 
 type Row = Record<string, unknown>;
 export interface Archive {
@@ -35,6 +43,8 @@ export interface Archive {
   observations: Row[];
   annotations: Row[];
   inspections?: Row[];
+  /** Frozen review evidence and conclusions; absent in older archives. */
+  reviews?: Row[];
   /** Provider waits of exported failed runs; absent when there are none. */
   retryGuidance?: RetryGuidance[];
 }
@@ -214,6 +224,16 @@ export class Store {
     if (persisted === raw) return;
     const commands: Statement[] = [];
     const previous = persisted ? parseConfig(JSON.parse(persisted)) : undefined;
+    if (previous) {
+      const reviewed = await this.driver.all({
+        sql: 'SELECT DISTINCT project_id FROM review_records',
+      });
+      if (reviewed.some((row) => !config.projects.some((project) => project.id === row.project_id)))
+        throw new PulseError(
+          'CONFLICT',
+          'Project removal would orphan saved reviews. Retain the reviewed project identifier so its evidence remains readable and recoverable.',
+        );
+    }
     if (previous && previous.demo !== config.demo)
       throw new PulseError('CONFLICT', 'Synthetic and live data must use separate databases.');
     if (
@@ -653,6 +673,50 @@ export class Store {
       },
     ]);
   }
+  async reviewRecord(id: string): Promise<ReviewRecord | undefined> {
+    invariant(REVIEW_ID.test(id), 'Invalid review identifier.');
+    const rows = await this.driver.all({
+      sql: 'SELECT record_json FROM review_records WHERE id=?',
+      params: [id],
+    });
+    return rows[0] ? validateReviewRecord(JSON.parse(String(rows[0].record_json))) : undefined;
+  }
+  async reviewRecords(projectId: string, limit = 20): Promise<ReviewRecord[]> {
+    invariant(
+      Number.isSafeInteger(limit) && limit > 0 && limit <= 100,
+      'Invalid review page size.',
+    );
+    return (
+      await this.driver.all({
+        sql: 'SELECT record_json FROM review_records WHERE project_id=? ORDER BY created_at DESC,id LIMIT ?',
+        params: [projectId, limit],
+      })
+    ).map((row) => validateReviewRecord(JSON.parse(String(row.record_json))));
+  }
+  /** Append-only. A retry with the same input returns the first frozen snapshot. */
+  async addReviewRecord(input: ReviewRecord): Promise<ReviewRecord> {
+    const config = await this.getConfig();
+    invariant(config, 'Register configuration before storing a review.');
+    const record = validateReviewRecord(input, config);
+    await verifyReviewEvidence(record);
+    if (record.followUpOf) {
+      const parent = await this.reviewRecord(record.followUpOf);
+      invariant(
+        parent?.projectId === record.projectId,
+        'Follow-up review is missing or belongs to another project.',
+      );
+    }
+    await this.driver.batch([
+      {
+        sql: 'INSERT INTO review_records(id,project_id,created_at,record_json) VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING',
+        params: [record.id, record.projectId, record.createdAt, json(record)],
+      },
+    ]);
+    const stored = await this.reviewRecord(record.id);
+    invariant(stored, 'Review publication did not produce a record.');
+    assertSameReview(stored, reviewInput(record));
+    return stored;
+  }
   /** Append normalized attempts atomically. Failed/unknown attempts never overwrite successes. */
   async addInspections(input: Inspection[]): Promise<void> {
     invariant(input.length > 0 && input.length <= 20, 'Invalid inspection write budget.');
@@ -681,7 +745,11 @@ export class Store {
     return rows.map((row) => JSON.parse(String(row.result_json)) as Inspection);
   }
   /** Request-scoped, read-only portfolio snapshot. No state survives the response. */
-  async reportingSnapshot(config: Config, window: DateRange): Promise<Store> {
+  async reportingSnapshot(
+    config: Config,
+    window: DateRange,
+    options: { required?: boolean } = {},
+  ): Promise<Store> {
     range(window.from, window.to);
     const observationWindow = { from: previous(window).from, to: window.to };
     const pending = new Map<string, Statement>();
@@ -697,7 +765,14 @@ export class Store {
       if (ids.length) add(reportStatements.annotations(ids, window));
       // Large portable installations keep their existing bounded per-source reads.
       // A small portfolio uses at most forty SQL reads in a single D1 round trip.
-      if (pending.size > 40) return this;
+      if (pending.size > 40) {
+        if (options.required)
+          throw new PulseError(
+            'ROW_LIMIT',
+            'Report exceeds the 40-statement atomic snapshot budget. A saved review cannot use live-read fallback.',
+          );
+        return this;
+      }
     }
     const statements = [...pending.values()];
     const results = await this.driver.readBatch(statements);
@@ -720,6 +795,9 @@ export class Store {
       async batch() {
         throw new PulseError('CONFIG', 'Report snapshots are read-only.');
       },
+      close() {
+        values.clear();
+      },
     });
   }
   async export(maxRows = 100000): Promise<Archive> {
@@ -740,6 +818,8 @@ export class Store {
       inspections = [],
       guidance = [],
       newer = [],
+      reviewBudget = [],
+      reviews = [],
     ] = await this.driver.readBatch([
       { sql: 'SELECT key FROM leases WHERE expires_at>unixepoch()*1000' },
       { sql: "SELECT value FROM metadata WHERE key='config'" },
@@ -775,12 +855,23 @@ export class Store {
           SUPERSEDING_RUNS + 1,
         ],
       },
+      {
+        sql: 'SELECT count(*) AS count,coalesce(sum(length(CAST(record_json AS BLOB))),0) AS bytes FROM review_records',
+      },
+      {
+        sql: 'SELECT * FROM review_records WHERE (SELECT coalesce(sum(length(CAST(record_json AS BLOB))),0) FROM review_records)<=16777216 ORDER BY created_at,id LIMIT 1001',
+      },
     ]);
     if (locks.length)
       throw new PulseError('CONFLICT', 'Wait for active collection jobs before exporting.');
     if (!configRows[0]) throw new PulseError('CONFIG', 'No configuration is registered.');
     const config = parseConfig(JSON.parse(String(configRows[0].value)));
-    if (observations.length > maxRows || inspections.length > maxRows)
+    if (
+      observations.length > maxRows ||
+      inspections.length > maxRows ||
+      Number(reviewBudget[0]?.count ?? 0) > Math.min(maxRows, 1000) ||
+      Number(reviewBudget[0]?.bytes ?? 0) > 16777216
+    )
       throw new PulseError(
         'ROW_LIMIT',
         'Export exceeds the bounded row limit. Use an encrypted database backup for a larger installation.',
@@ -826,6 +917,7 @@ export class Store {
       observations,
       annotations,
       inspections,
+      ...(reviews.length ? { reviews } : {}),
       ...(retryGuidance.length ? { retryGuidance } : {}),
     };
   }
@@ -834,6 +926,13 @@ export class Store {
     invariant(a && a.format === 'bronto-pulse' && a.version === 1, 'Unsupported archive format.');
     const config = parseConfig(a.config);
     const inspections = a.inspections === undefined ? [] : a.inspections;
+    const reviews = a.reviews === undefined ? [] : a.reviews;
+    invariant(
+      Array.isArray(reviews) &&
+        reviews.length <= 1000 &&
+        new TextEncoder().encode(JSON.stringify(reviews)).byteLength <= 16777216,
+      'Invalid archived review budget.',
+    );
     invariant(
       Array.isArray(inspections) && inspections.length <= 100000,
       'Invalid archived inspection budget.',
@@ -917,6 +1016,34 @@ export class Store {
         result.id === row.id && result.url === row.url && result.inspectedAt === row.inspected_at,
         'Archived inspection key mismatch.',
       );
+    }
+
+    const archivedReviews = new Map<string, ReviewRecord>();
+    for (const row of reviews) {
+      invariant(typeof row.record_json === 'string', 'Invalid archived review.');
+      const record = validateReviewRecord(JSON.parse(row.record_json), config);
+      invariant(
+        record.id === row.id &&
+          record.projectId === row.project_id &&
+          record.createdAt === row.created_at &&
+          !archivedReviews.has(record.id),
+        'Archived review key mismatch or duplicate.',
+      );
+      await verifyReviewEvidence(record);
+      archivedReviews.set(record.id, record);
+    }
+    for (const record of archivedReviews.values()) {
+      const seen = new Set<string>([record.id]);
+      let child = record;
+      while (child.followUpOf) {
+        const parent = archivedReviews.get(child.followUpOf);
+        invariant(
+          parent?.projectId === record.projectId && !seen.has(parent.id),
+          'Invalid archived review follow-up chain.',
+        );
+        seen.add(parent.id);
+        child = parent;
+      }
     }
 
     for (const r of a.runs) {
@@ -1013,6 +1140,7 @@ export class Store {
       ['partitions', a.partitions, ['resource_id', 'group_id', 'day', 'run_id']],
       ['annotations', a.annotations, ['id', 'resource_id', 'date', 'title', 'url', 'kind']],
       ['url_inspections', inspections, ['id', 'resource_id', 'url', 'inspected_at', 'result_json']],
+      ['review_records', reviews, ['id', 'project_id', 'created_at', 'record_json']],
     ];
     for (const [table, rows, fields] of tables) {
       for (let i = 0; i < rows.length; i += 100) {

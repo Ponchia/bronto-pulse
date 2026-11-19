@@ -65,3 +65,30 @@ bounded window. More groups lengthen a one-job-per-trigger rotation. Keep the
 existing Free-profile request/observation limits; do not raise quotas, copy a
 broad CLI token, or enable new grants to make this check pass. Collection and
 production publication need their own operator authorization and evidence.
+
+## Stored collection evidence
+
+`pulse coverage-report --input /private/inventory.json --db /private/pulse.db --json`
+uses the same intended inventory and reads the configuration already registered in
+an existing database. It opens SQLite read-only: it cannot create a database,
+migrate it, change configuration or contact a provider. An explicit `--config`
+file must match the registered configuration. Omit it to use that stored mapping.
+Use `--remote-d1` instead of `--db` for the hosted operator connection described in
+[operations](operations.md); this uses the administrative D1 API for stored reads
+and does not call a collection provider.
+
+The denominator includes every intended identity/group, including missing,
+disabled, unbound, unconfigured and never-published datasets. Each matching
+resource retains its own last attempt, last successful publication, collection
+recency, latest observed source date and source-data lag. A success from one
+resource cannot conceal an access failure from another. A successful empty
+publication remains distinct from an observed zero. Permission evidence records
+a past success or the latest stored access error; it does not verify current
+provider access. Reads may straddle a concurrent publication, and a recent source
+date does not establish complete historical coverage.
+
+Output is bounded JSON. Exit 0 means the intended configuration is complete;
+exit 2 means configuration gaps, and exit 1 means invalid input or failed reads.
+Collection freshness and source lag remain separate reported fields rather than
+being collapsed into that configuration exit code. Keep inventories and reports
+private.

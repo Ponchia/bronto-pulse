@@ -93,6 +93,8 @@ export interface CoverageEntry {
   state: 'missing' | 'disabled' | 'unbound' | 'partial' | 'configured';
   resourceIds: string[];
   projectIds: string[];
+  requestedGroups: string[];
+  enabledBoundResourceIds: string[];
   missingGroups: string[];
 }
 export interface CoverageAudit {
@@ -219,6 +221,8 @@ export function auditCoverage(config: Config, input: unknown): CoverageAudit {
       state,
       resourceIds: matches.map((r) => r.id).sort(),
       projectIds,
+      requestedGroups: [...requested],
+      enabledBoundResourceIds: bound.map((r) => r.id).sort(),
       missingGroups,
     };
   });

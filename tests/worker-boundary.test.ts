@@ -171,7 +171,7 @@ test('a failed old initialization cannot discard a newer successful cached conte
         if (sql.includes('metadata') && sql.includes('schema_version'))
           return { results: [{ value: '1' }] };
         if (sql.includes('sqlite_master') && sql.includes('url_inspections'))
-          return { results: [{ name: 'url_inspections' }] };
+          return { results: [{ name: 'url_inspections' }, { name: 'review_records' }] };
         return { results: [] };
       });
     },
@@ -223,7 +223,10 @@ test('Free schema checks share one consistent native D1 read batch', async () =>
       );
       if (batch.length === 2 && statements.at(-1)?.[0]?.includes('schema_version')) {
         schemaBatches++;
-        return [{ results: [{ value: '1' }] }, { results: [{ name: 'url_inspections' }] }];
+        return [
+          { results: [{ value: '1' }] },
+          { results: [{ name: 'url_inspections' }, { name: 'review_records' }] },
+        ];
       }
       writes++;
       return batch.map(() => ({ results: [] }));

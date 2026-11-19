@@ -1290,3 +1290,48 @@ code {
   text-underline-offset: 3px;
   margin-top: 0.4rem;
 }
+
+/* Saved conclusions and indexed URL evidence use the report's existing reading flow. */
+.review-history-panel,
+.inspection-panel {
+  margin-block: 1.5rem;
+  min-width: 0;
+}
+.project-records {
+  display: grid;
+  gap: 0.75rem;
+}
+.project-record {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  overflow-wrap: anywhere;
+}
+.project-record h3 {
+  margin: 0 0 0.65rem;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.project-record p {
+  line-height: 1.7;
+}
+.review-conclusion {
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.project-record-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.2rem;
+  font-size: 12px;
+}
+.project-record-links a,
+.project-record-details summary {
+  padding-block: 0.5rem;
+}
+.project-record-details summary {
+  cursor: pointer;
+  font-size: 12px;
+}

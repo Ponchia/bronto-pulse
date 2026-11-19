@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "bronto-pulse-review",
+  "version": "0.1.0",
+  "description": "Review private project evidence across repositories, packages and websites with Bronto Pulse.",
+  "author": {
+    "name": "Bronto Pulse contributors"
+  },
+  "homepage": "https://github.com/Ponchia/bronto-pulse",
+  "repository": "https://github.com/Ponchia/bronto-pulse",
+  "license": "MIT",
+  "keywords": ["project-review", "analytics", "maintainers", "evidence", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Bronto Pulse Review",
+        "shortDescription": "Review project evidence",
+        "longDescription": "Review an existing private Pulse installation, inspect source dates and coverage, and choose a useful next check. Local pilot integration; no automatic collection or account changes.",
+        "developerName": "Bronto Pulse contributors",
+        "category": "Productivity",
+        "capabilities": ["Read"],
+        "defaultPrompt": [
+          "Review my projects and tell me what deserves attention.",
+          "Review the evidence around my latest release.",
+          "Help me investigate a change in my project metrics."
+        ]
+      }
+    }
+  }
+}
