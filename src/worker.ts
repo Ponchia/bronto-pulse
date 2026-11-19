@@ -7,6 +7,7 @@ import {
 } from './worker-config.js';
 import { D1Driver, type D1Like } from './storage/driver.js';
 import { Store } from './storage/store.js';
+import { handle } from './api/handler.js';
 import { sync, type SyncResult } from './sync.js';
 import { collectHistory } from './history.js';
 import { collectReconciliation } from './reconcile.js';
@@ -103,8 +104,6 @@ async function context(env: WorkerEnv) {
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     try {
-      // Keep API-only module initialization off the scheduled execution path.
-      const { handle } = await import('./api/handler.js');
       return await handle(request, {
         loadMcpData: async () => {
           // Agent reads use the authoritative catalog without migrating or registering it.
