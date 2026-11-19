@@ -530,9 +530,11 @@ for (const mode of ['legacy', 'auto'] as const) {
       } else assert.equal(probe, undefined);
       const sdk = await connected(source);
       try {
+        // In-memory transport preserves undefined fields that JSON stdio omits.
+        const sdkWireTools = JSON.parse(JSON.stringify((await sdk.client.listTools()).tools));
         assert.deepEqual(
           (await client.listTools()).tools,
-          (await sdk.client.listTools()).tools,
+          sdkWireTools,
           'HTTP and SDK stdio share the exact public tool definitions',
         );
       } finally {

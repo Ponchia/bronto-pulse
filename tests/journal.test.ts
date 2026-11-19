@@ -268,6 +268,8 @@ test('saved review captures one selected-project snapshot, closes it, and refuse
 
 test('saved reviews preserve project identity even before any observations exist', async () => {
   const base = fixture('npm');
+  // Both synthetic project identities intentionally share this source.
+  base.projects[0]!.resources[0]!.allowShared = true;
   const config = {
     ...base,
     projects: [
