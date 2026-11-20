@@ -7,7 +7,9 @@
   transports. Include a source plugin and review skill for Codex and Claude.
 - Save explicit project conclusions with verified frozen evidence, optional action
   links and follow-up records. Read saved history and selected URL inspections in
-  the dashboard; include review records in bounded portable recovery archives.
+  the dashboard; reopen frozen evidence through private saved-review links, with
+  explicit navigation to preceding reviews or current evidence for the same dates.
+  Include review records in bounded portable recovery archives.
 - Report observed collection coverage against an explicit intended inventory,
   preserving missing datasets, independent source attempts, publication recency
   and source-data lag. The new CLI reads existing storage without changing it.

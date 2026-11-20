@@ -7,7 +7,9 @@ The following are **not** represented as shipped features:
 
 - Multi-tenant hosting, billing, user accounts and public signup.
 - A contributor CRM, individual attribution, visitor SDK or session replay.
-- A dedicated MCP server; the read-only API/CLI already supports agent use.
+- Public MCP-directory distribution, OAuth consent and customer account lifecycle.
+  The bounded private MCP server and local source plugin are implemented; see
+  [agent review](agent-review.md).
 - An arbitrary SQL warehouse, unbounded raw payload retention or plugins with
   arbitrary network/code execution.
 - An automatic migration between cloud providers or credential consent flow.
