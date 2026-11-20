@@ -71,6 +71,42 @@ and separate storage products have different billing rules. See
 Old private-repository jobs that never started are historical failures, not evidence
 of either a source defect or a passing check. Do not bypass a required check.
 
+## Container deployment artifacts
+
+`container.yml` is an explicit manual workflow on reviewed `main`. It first
+runs the complete reusable CI, then builds the pinned Dockerfile once on a
+standard GitHub-hosted runner. The existing synthetic OCI acceptance checks
+that exact local image, including authentication, Host/Origin rejection,
+Secure login cookies and SQLite persistence after a restart. The workflow then
+pushes the same image to `ghcr.io/ponchia/bronto-pulse:sha-<commit>` and pulls
+its registry digest back, comparing both image identity and source revision.
+
+The built-in job token receives `packages: write` only in the publication job.
+No provider credentials, private configuration, live analytics or cluster
+credentials enter the build or smoke test. There is no automatic deployment,
+version bump, npm publication or moving `latest` image tag. GitOps deployments
+must pin the reported `ghcr.io/ponchia/bronto-pulse@sha256:...` digest; a source
+commit tag is a convenience, not an immutable identity.
+
+Start it with `gh workflow run container.yml --ref main` after the reviewed
+source has merged. Read its completed run and digest summary before updating
+an installation. A successful registry push is a publication even if a later
+readback fails: inspect that exact digest rather than publishing again to
+recover a verification result. Rebuilding the same source does not prove
+byte-identical images.
+
+A first GHCR package defaults to private even when the linked source repository
+is public. Check access explicitly and use an already authorized pull identity
+or a separately reviewed visibility change. Do not broaden a registry token to
+work around a failed pull. Container registry storage and bandwidth are currently
+free according to [GitHub Packages billing](https://docs.github.com/en/billing/concepts/product-billing/github-packages);
+recheck that policy before changing the distribution approach.
+
+For a locally built image, `PULSE_SMOKE_IMAGE=<local-image> bash scripts/oci-smoke.sh`
+runs the same acceptance without rebuilding or deleting the supplied image.
+Without that variable, the script retains its disposable build-and-cleanup flow.
+Only synthetic data is used in either mode.
+
 ## npm beta releases
 
 A tag `v<version>-beta.<n>` on reviewed main, matching `package.json`, starts

@@ -1,0 +1,68 @@
+# Explicit deployment artifact publication; no npm release or live installation access.
+name: Publish container
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pulse-container-publication
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'Ponchia/bronto-pulse' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    if: github.repository == 'Ponchia/bronto-pulse' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the reviewed source once
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          command -v podman
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+          image="ghcr.io/ponchia/bronto-pulse:sha-$GITHUB_SHA"
+          echo "PULSE_CONTAINER_IMAGE=$image" >> "$GITHUB_ENV"
+          podman build --pull=always \
+            --label "org.opencontainers.image.source=https://github.com/Ponchia/bronto-pulse" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=MIT" \
+            -t "$image" .
+          podman image inspect "$image" --format '{{.Id}}' > "$RUNNER_TEMP/pulse-image-id"
+      - name: Qualify the exact image with synthetic data
+        shell: bash
+        run: |
+          set -euo pipefail
+          PULSE_SMOKE_IMAGE="$PULSE_CONTAINER_IMAGE" bash scripts/oci-smoke.sh
+          test "$(podman image inspect "$PULSE_CONTAINER_IMAGE" --format '{{.Id}}')" = "$(cat "$RUNNER_TEMP/pulse-image-id")"
+      - name: Publish and read back the qualified digest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGISTRY_AUTH_FILE: ${{ runner.temp }}/pulse-registry-auth.json
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GH_TOKEN" | podman login --username "$GITHUB_ACTOR" --password-stdin ghcr.io
+          podman push --digestfile "$RUNNER_TEMP/pulse-image-digest" "$PULSE_CONTAINER_IMAGE"
+          digest="$(cat "$RUNNER_TEMP/pulse-image-digest")"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          immutable="ghcr.io/ponchia/bronto-pulse@$digest"
+          echo "Published source $GITHUB_SHA as \`$immutable\`." >> "$GITHUB_STEP_SUMMARY"
+          podman pull "$immutable"
+          test "$(podman image inspect "$immutable" --format '{{.Id}}')" = "$(cat "$RUNNER_TEMP/pulse-image-id")"
+          test "$(podman image inspect "$immutable" --format '{{index .Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
+          echo 'Digest pullback matched the exact image tested before publication. Deployment and registry visibility are separate operations.' >> "$GITHUB_STEP_SUMMARY"

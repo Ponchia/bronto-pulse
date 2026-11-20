@@ -403,3 +403,147 @@ test('portable collector sidecar defaults to rotation and selects due-only expli
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+test('portable collector serializes opted-in correction cycles and preserves explicit budgets', async () => {
+  if (process.platform === 'win32') return;
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const directory = mkdtempSync(join(tmpdir(), 'pulse-reconcile-sidecar-'));
+  const script = fileURLToPath(new URL('../deploy/collect-loop.sh', import.meta.url));
+  const capture = join(directory, 'commands.txt');
+  const counter = join(directory, 'counter.txt');
+  const env = {
+    PATH: directory + ':' + process.env.PATH,
+    HOME: directory,
+    PULSE_COLLECT_INTERVAL_SECONDS: '60',
+    PULSE_COLLECT_MAX_JOBS: '1',
+    PULSE_COLLECT_DUE_ONLY: 'true',
+    PULSE_COLLECT_READY_ONLY: 'true',
+    PULSE_COLLECT_EXECUTION_PROFILE: 'free',
+    PULSE_RECONCILE_INTERVAL_SECONDS: '90',
+    PULSE_CAPTURE_FILE: capture,
+    PULSE_COUNTER_FILE: counter,
+  };
+  try {
+    writeFileSync(
+      join(directory, 'node'),
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$PULSE_CAPTURE_FILE"\n[ "$2" != "sync" ]\n',
+      { mode: 0o700 },
+    );
+    writeFileSync(
+      join(directory, 'sleep'),
+      '#!/bin/sh\nn=$(cat "$PULSE_COUNTER_FILE")\nn=$((n + 1))\nprintf "%s" "$n" > "$PULSE_COUNTER_FILE"\n[ "$n" -lt 3 ]\n',
+      { mode: 0o700 },
+    );
+    writeFileSync(
+      join(directory, 'date'),
+      '#!/bin/sh\nn=$(cat "$PULSE_COUNTER_FILE")\nprintf "%s\\n" "$((1000 + n * 60))"\n',
+      { mode: 0o700 },
+    );
+    writeFileSync(counter, '0');
+    const result = spawnSync('/bin/sh', [script], { encoding: 'utf8', timeout: 4000, env });
+    assert.equal(result.status, 0, result.stderr);
+    const commands = readFileSync(capture, 'utf8').trim().split('\n');
+    assert.deepEqual(
+      commands.map((command) => command.split(' ')[1]),
+      ['sync', 'reconcile', 'sync', 'sync', 'reconcile'],
+      'correction runs serialize after regular jobs and wait for their configured gap',
+    );
+    for (const command of commands) {
+      assert.match(command, /--ready-only --execution-profile free/);
+      assert.match(command, /--config \/run\/pulse\/config.json --db \/app\/.pulse\/pulse.db/);
+      if (command.includes(' reconcile ')) assert.doesNotMatch(command, /--due-only|--max-jobs/);
+      else assert.match(command, /--max-jobs 1 --due-only/);
+    }
+    assert.match(
+      result.stderr,
+      /collector cycle failed/,
+      'source failure does not stop later cycles',
+    );
+    for (const invalid of [
+      { PULSE_COLLECT_READY_ONLY: 'maybe' },
+      { PULSE_COLLECT_EXECUTION_PROFILE: 'unbounded' },
+      { PULSE_COLLECT_MAX_JOBS: '2' },
+      { PULSE_RECONCILE_INTERVAL_SECONDS: '59' },
+      { PULSE_RECONCILE_INTERVAL_SECONDS: '86401' },
+      { PULSE_RECONCILE_INTERVAL_SECONDS: 'invalid' },
+    ]) {
+      rmSync(capture);
+      const refused = spawnSync('/bin/sh', [script], {
+        encoding: 'utf8',
+        timeout: 4000,
+        env: { ...env, ...invalid },
+      });
+      assert.equal(refused.status, 2, refused.stderr);
+      const { existsSync } = await import('node:fs');
+      assert.equal(existsSync(capture), false, 'invalid controls refuse before any collection');
+      writeFileSync(capture, '');
+    }
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('portable collector forwards termination and reaps the active collection child', async () => {
+  if (process.platform === 'win32') return;
+  const { spawn } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { once } = await import('node:events');
+  const { setTimeout: delay } = await import('node:timers/promises');
+  const directory = mkdtempSync(join(tmpdir(), 'pulse-collector-stop-'));
+  const script = fileURLToPath(new URL('../deploy/collect-loop.sh', import.meta.url));
+  const pidFile = join(directory, 'child.pid');
+  const stoppedFile = join(directory, 'child.stopped');
+  writeFileSync(
+    join(directory, 'node'),
+    [
+      '#!' + process.execPath,
+      "const fs = require('node:fs');",
+      "process.on('SIGTERM', () => { fs.writeFileSync(process.env.PULSE_STOPPED_FILE, 'stopped'); process.exit(0); });",
+      'fs.writeFileSync(process.env.PULSE_PID_FILE, String(process.pid));',
+      'setInterval(() => {}, 1000);',
+    ].join('\n') + '\n',
+    { mode: 0o700 },
+  );
+  const child = spawn('/bin/sh', [script], {
+    stdio: 'ignore',
+    env: {
+      PATH: directory + ':' + process.env.PATH,
+      HOME: directory,
+      PULSE_COLLECT_INTERVAL_SECONDS: '60',
+      PULSE_PID_FILE: pidFile,
+      PULSE_STOPPED_FILE: stoppedFile,
+    },
+  });
+  let activePid: number | undefined;
+  let confirmedStopped = false;
+  try {
+    for (let attempt = 0; attempt < 200 && !existsSync(pidFile); attempt++) await delay(10);
+    assert.equal(existsSync(pidFile), true, 'fixture collection reached its active state');
+    activePid = Number(readFileSync(pidFile, 'utf8'));
+    const exited = once(child, 'exit', { signal: AbortSignal.timeout(4000) });
+    child.kill('SIGTERM');
+    const [code, signal] = await exited;
+    assert.equal(code, 0);
+    assert.equal(signal, null);
+    assert.equal(readFileSync(stoppedFile, 'utf8'), 'stopped');
+    assert.throws(() => process.kill(activePid!, 0), { code: 'ESRCH' });
+    confirmedStopped = true;
+  } finally {
+    if (child.exitCode === null) child.kill('SIGKILL');
+    if (!confirmedStopped && activePid !== undefined) {
+      try {
+        process.kill(activePid, 'SIGKILL');
+      } catch {
+        // Expected after successful reaping; never target an unrelated process.
+      }
+    }
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
