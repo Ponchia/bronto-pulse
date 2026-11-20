@@ -2,6 +2,7 @@ const content = document.querySelector('#content');
 const state = {
   view: 'portfolio',
   project: null,
+  savedReview: null,
   // An explicit resource focus belongs to this URL/view, not the saved catalog.
   focusResource: null,
   focusGroup: null,
@@ -80,11 +81,17 @@ function period(days) {
 /** Navigation and period controls describe the view that is loading, for sight and for assistive technology. */
 function syncControls() {
   document.querySelectorAll('[data-view]').forEach((b) => {
-    const active = b.dataset.view === state.view;
+    const active = b.dataset.view === (state.view === 'saved-review' ? 'portfolio' : state.view);
     b.classList.toggle('active', active);
     if (active) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
+  const saved = state.view === 'saved-review';
+  for (const id of ['from', 'to', 'apply']) $(id).disabled = saved;
+  document.querySelectorAll('[data-days]').forEach((b) => {
+    b.disabled = saved;
+  });
+  $('download').textContent = saved ? 'Export saved review ↓' : 'Export report ↓';
   const end = new Date();
   end.setUTCDate(end.getUTCDate() - 1);
   const to = end.toISOString().slice(0, 10);
@@ -92,7 +99,8 @@ function syncControls() {
     const start = new Date(end);
     start.setUTCDate(start.getUTCDate() - Number(b.dataset.days) + 1);
     // A preset is selected only while the dates are exactly its dates.
-    const selected = $('to').value === to && $('from').value === start.toISOString().slice(0, 10);
+    const selected =
+      !saved && $('to').value === to && $('from').value === start.toISOString().slice(0, 10);
     b.classList.toggle('selected', selected);
     b.setAttribute('aria-pressed', String(selected));
   });
@@ -281,6 +289,7 @@ function checkAction(check, projectId) {
       $('from').value = requested.from;
       $('to').value = requested.to;
     }
+    state.savedReview = null;
     state.view = destination.view;
     state.project = destination.view === 'portfolio' ? projectId : null;
     state.focusResource = scoped ? check.resourceId : null;
@@ -626,7 +635,7 @@ function leadItem(finding, id, open, source) {
   );
   const checks = el('ol', { class: 'investigation-checks', 'aria-label': 'Next checks' });
   for (const check of finding.nextChecks) {
-    const action = checkAction(check, source?.projectId);
+    const action = source?.saved ? null : checkAction(check, source?.projectId);
     checks.append(
       el('li', {}, [
         el('span', { text: check.text }),
@@ -700,7 +709,7 @@ function investigationPanel(investigation, source, maximum = 5) {
   const count = el('p', { class: 'small muted investigation-count', role: 'status' });
   const problem = el('p', { class: 'notice investigation-problem', role: 'alert' });
   const more = el('button', { class: 'button secondary investigation-more', type: 'button' });
-  const canLoad = () => unlisted > 0 && !requested && Boolean(source);
+  const canLoad = () => unlisted > 0 && !requested && Boolean(source) && !source.saved;
   const render = () => {
     const open = new Set(
       [...list.querySelectorAll('details[open]')].map(
@@ -722,7 +731,9 @@ function investigationPanel(investigation, source, maximum = 5) {
         ? `Showing all ${total} leads.`
         : more.hidden
           ? // Nothing more can be listed here: say how many remain rather than hide them.
-            `Showing ${shown} of ${total} leads. This view lists at most ${LEAD_VIEW_LIMIT}; the remaining ${total - shown} are counted, not listed.`
+            source?.saved
+            ? `Showing ${shown} of ${total} leads. The remaining ${total - shown} were not included in this saved evidence; open current evidence to investigate further.`
+            : `Showing ${shown} of ${total} leads. This view lists at most ${LEAD_VIEW_LIMIT}; the remaining ${total - shown} are counted, not listed.`
           : `Showing ${shown} of ${total} leads.`;
   };
   more.addEventListener('click', async () => {
@@ -904,6 +915,125 @@ function inspectionPanel(report) {
   return panel;
 }
 
+function savedReviewLink(projectId, reviewId, label) {
+  const params = new URLSearchParams({
+    view: 'saved-review',
+    project: projectId,
+    review: reviewId,
+  });
+  const link = el('a', { href: '/?' + params, text: label });
+  link.addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    state.view = 'saved-review';
+    state.project = projectId;
+    state.savedReview = reviewId;
+    state.focusResource = null;
+    state.focusGroup = null;
+    void load({ push: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
+  return link;
+}
+function savedEvidenceLink(projectId, reviewId) {
+  return el('a', {
+    text: 'Download saved evidence',
+    href:
+      '/api/v1/projects/' +
+      encodeURIComponent(projectId) +
+      '/reviews/' +
+      encodeURIComponent(reviewId),
+    download: 'pulse-review-' + reviewId + '.json',
+  });
+}
+function reviewActionLink(actionUrl) {
+  try {
+    const url = new URL(actionUrl);
+    if (url.protocol !== 'https:' || url.username || url.password) throw Error('Unsafe link');
+    return el('a', {
+      text: 'Open action link · ' + url.hostname,
+      href: url.href,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      referrerpolicy: 'no-referrer',
+    });
+  } catch {
+    return el('span', { class: 'small muted', text: 'Action link unavailable' });
+  }
+}
+function renderSavedReview(record) {
+  const report = record.evidence.report;
+  const current = el('button', {
+    class: 'button secondary',
+    text: 'Open current evidence for these dates',
+  });
+  current.addEventListener('click', () => selectProject(record.projectId));
+  const links = el('div', { class: 'project-record-links' }, [
+    savedEvidenceLink(record.projectId, record.id),
+  ]);
+  if (record.followUpOf)
+    links.append(
+      savedReviewLink(
+        record.projectId,
+        record.followUpOf,
+        'Open preceding review · ' + record.followUpOf,
+      ),
+    );
+  if (record.actionUrl) links.append(reviewActionLink(record.actionUrl));
+  const integrity = el('details', { class: 'project-record-details' }, [
+    el('summary', { text: 'Evidence identity' }),
+    el('p', { class: 'small', text: 'Review: ' + record.id }),
+    el('p', { class: 'small', text: 'SHA-256 verified by the server: ' + record.evidence.sha256 }),
+  ]);
+  content.append(
+    el(
+      'section',
+      { class: 'project-record saved-review-detail', 'aria-label': 'Saved review conclusion' },
+      [
+        el('span', { class: 'badge', text: 'Frozen evidence' }),
+        el('h2', { text: record.question }),
+        el('p', { class: 'review-conclusion', text: record.conclusion }),
+        el('p', {
+          class: 'small muted',
+          text:
+            'Evidence: ' +
+            record.window.from +
+            ' → ' +
+            record.window.to +
+            ' · Saved ' +
+            record.createdAt,
+        }),
+        el('p', {
+          class: 'small',
+          text: 'This report is the evidence saved with this conclusion. Later collections do not update it. Open current evidence to investigate subsequent changes.',
+        }),
+        links,
+        integrity,
+        current,
+      ],
+    ),
+  );
+  renderProject(report, { saved: true });
+}
+function validateSavedReview(record) {
+  const report = record?.evidence?.report;
+  if (
+    record?.schemaVersion !== 1 ||
+    record.id !== state.savedReview ||
+    record.projectId !== state.project ||
+    report?.project?.id !== state.project ||
+    report?.window?.from !== record.window?.from ||
+    report?.window?.to !== record.window?.to ||
+    !/^[a-f0-9]{64}$/.test(record.evidence?.sha256 ?? '') ||
+    !['cards', 'breakdowns', 'annotations', 'inspections', 'warnings'].every((key) =>
+      Array.isArray(report?.[key]),
+    )
+  )
+    throw Error('The saved evidence does not match this review. Nothing was changed.');
+  return record;
+}
+
 function reviewHistoryPanel(projectId) {
   const generation = state.loading;
   const panel = el(
@@ -958,36 +1088,16 @@ function reviewHistoryPanel(projectId) {
           }),
         ]);
         if (review.followUpOf)
-          item.append(el('p', { class: 'small', text: 'Follows review ' + review.followUpOf }));
+          item.append(
+            el('p', { class: 'small' }, [
+              savedReviewLink(projectId, review.followUpOf, 'Follows review ' + review.followUpOf),
+            ]),
+          );
         const links = el('div', { class: 'project-record-links' }, [
-          el('a', {
-            text: 'Download saved evidence',
-            href:
-              '/api/v1/projects/' +
-              encodeURIComponent(projectId) +
-              '/reviews/' +
-              encodeURIComponent(review.id),
-            download: 'pulse-review-' + review.id + '.json',
-          }),
+          savedReviewLink(projectId, review.id, 'Read saved review'),
+          savedEvidenceLink(projectId, review.id),
         ]);
-        if (review.actionUrl) {
-          try {
-            const url = new URL(review.actionUrl);
-            if (url.protocol !== 'https:' || url.username || url.password)
-              throw Error('Unsafe link');
-            links.append(
-              el('a', {
-                text: 'Open action link · ' + url.hostname,
-                href: url.href,
-                target: '_blank',
-                rel: 'noopener noreferrer',
-                referrerpolicy: 'no-referrer',
-              }),
-            );
-          } catch {
-            links.append(el('span', { class: 'small muted', text: 'Action link unavailable' }));
-          }
-        }
+        if (review.actionUrl) links.append(reviewActionLink(review.actionUrl));
         item.append(links);
         body.append(item);
       }
@@ -1011,30 +1121,32 @@ function reviewHistoryPanel(projectId) {
   return panel;
 }
 
-function renderProject(report) {
-  const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
-  back.addEventListener('click', () => selectView('portfolio'));
-  const csv = el('a', {
-    class: 'button secondary',
-    text: 'Download CSV',
-    href:
-      '/api/v1/projects/' +
-      encodeURIComponent(report.project.id) +
-      '/report?' +
-      query() +
-      '&format=csv',
-  });
-  const briefing = el('a', {
-    class: 'button quiet',
-    text: 'Download briefing',
-    href:
-      '/api/v1/projects/' +
-      encodeURIComponent(report.project.id) +
-      '/brief?' +
-      query() +
-      '&format=markdown',
-  });
-  content.append(el('div', { class: 'report-actions' }, [back, csv, briefing]));
+function renderProject(report, { saved = false } = {}) {
+  if (!saved) {
+    const back = el('button', { class: 'button quiet back-button', text: '← All projects' });
+    back.addEventListener('click', () => selectView('portfolio'));
+    const csv = el('a', {
+      class: 'button secondary',
+      text: 'Download CSV',
+      href:
+        '/api/v1/projects/' +
+        encodeURIComponent(report.project.id) +
+        '/report?' +
+        query() +
+        '&format=csv',
+    });
+    const briefing = el('a', {
+      class: 'button quiet',
+      text: 'Download briefing',
+      href:
+        '/api/v1/projects/' +
+        encodeURIComponent(report.project.id) +
+        '/brief?' +
+        query() +
+        '&format=markdown',
+    });
+    content.append(el('div', { class: 'report-actions' }, [back, csv, briefing]));
+  }
   if (report.evidence) {
     content.append(
       heading(
@@ -1051,6 +1163,7 @@ function renderProject(report) {
   const investigation = investigationPanel(report.investigation, {
     projectId: report.project.id,
     window: report.window,
+    saved,
   });
   if (investigation) content.append(investigation);
   const resourceMap = resourceGraphPanel(report.resources);
@@ -1074,7 +1187,7 @@ function renderProject(report) {
       ? grid
       : empty('No metrics are available for this project. Check collection health.'),
   );
-  const comparisonPanel = sourceComparisonPanel(report);
+  const comparisonPanel = saved ? null : sourceComparisonPanel(report);
   if (comparisonPanel) content.append(comparisonPanel);
   if (report.warnings.length) {
     content.append(heading('Read this data carefully'));
@@ -1097,7 +1210,7 @@ function renderProject(report) {
   }
   const inspections = inspectionPanel(report);
   if (inspections) content.append(inspections);
-  content.append(reviewHistoryPanel(report.project.id));
+  if (!saved) content.append(reviewHistoryPanel(report.project.id));
   content.append(heading('Metric contract', 'Values retain source scope and timezone'));
   content.append(
     table(
@@ -1401,11 +1514,13 @@ function renderPlan(data) {
   content.append(notes);
 }
 function saveView(push = false) {
-  const params = new URLSearchParams({
-    view: state.view,
-    from: $('from').value,
-    to: $('to').value,
-  });
+  const params = new URLSearchParams({ view: state.view });
+  if (state.view === 'saved-review') {
+    if (state.savedReview) params.set('review', state.savedReview);
+  } else {
+    params.set('from', $('from').value);
+    params.set('to', $('to').value);
+  }
   if (state.project) params.set('project', state.project);
   if (
     (state.focusResource && ['plan', 'health'].includes(state.view)) ||
@@ -1422,12 +1537,25 @@ function saveView(push = false) {
 /** Read a view from the address: on first load and when the reader goes back or forward. */
 function restoreView(params) {
   const view = params.get('view');
-  state.view = ['portfolio', 'review', 'brief', 'plan', 'health', 'definitions'].includes(view)
+  state.view = [
+    'portfolio',
+    'review',
+    'saved-review',
+    'brief',
+    'plan',
+    'health',
+    'definitions',
+  ].includes(view)
     ? view
     : 'portfolio';
   state.project =
-    state.view === 'portfolio' && /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('project') ?? '')
+    ['portfolio', 'saved-review'].includes(state.view) &&
+    /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('project') ?? '')
       ? params.get('project')
+      : null;
+  state.savedReview =
+    state.view === 'saved-review' && /^[a-z0-9][a-z0-9_-]{7,95}$/.test(params.get('review') ?? '')
+      ? params.get('review')
       : null;
   const validResource = /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('resource') ?? '');
   state.focusResource =
@@ -1467,33 +1595,54 @@ async function load({ push = false } = {}) {
   content.setAttribute('aria-busy', 'true');
   content.replaceChildren(el('div', { class: 'loading', text: 'Reading source-aware history…' }));
   try {
+    if (state.view === 'saved-review' && (!state.project || !state.savedReview))
+      throw Error(
+        'This saved-review link is incomplete or invalid. Choose a project to open its saved reviews.',
+      );
     const data =
-      state.view === 'health'
-        ? await api('/health')
-        : state.view === 'review'
-          ? await api('/review?' + query())
-          : state.view === 'brief'
-            ? await api('/brief?' + query())
-            : state.view === 'plan'
-              ? await api(
-                  '/plan?' +
-                    query() +
-                    (state.focusResource
-                      ? '&resource=' + encodeURIComponent(state.focusResource)
-                      : '') +
-                    (state.focusGroup ? '&group=' + encodeURIComponent(state.focusGroup) : ''),
-                )
-              : state.view === 'definitions'
-                ? await api('/metrics')
-                : state.project
-                  ? await api(
-                      '/projects/' + encodeURIComponent(state.project) + '/report?' + query(),
-                    )
-                  : await api('/portfolio?' + query());
+      state.view === 'saved-review'
+        ? await api(
+            '/projects/' +
+              encodeURIComponent(state.project) +
+              '/reviews/' +
+              encodeURIComponent(state.savedReview),
+          )
+        : state.view === 'health'
+          ? await api('/health')
+          : state.view === 'review'
+            ? await api('/review?' + query())
+            : state.view === 'brief'
+              ? await api('/brief?' + query())
+              : state.view === 'plan'
+                ? await api(
+                    '/plan?' +
+                      query() +
+                      (state.focusResource
+                        ? '&resource=' + encodeURIComponent(state.focusResource)
+                        : '') +
+                      (state.focusGroup ? '&group=' + encodeURIComponent(state.focusGroup) : ''),
+                  )
+                : state.view === 'definitions'
+                  ? await api('/metrics')
+                  : state.project
+                    ? await api(
+                        '/projects/' + encodeURIComponent(state.project) + '/report?' + query(),
+                      )
+                    : await api('/portfolio?' + query());
     if (generation !== state.loading) return;
+    if (state.view === 'saved-review') validateSavedReview(data);
     state.data = data;
     content.replaceChildren();
-    if (state.view === 'health') {
+    if (state.view === 'saved-review') {
+      $('from').value = data.window.from;
+      $('to').value = data.window.to;
+      syncControls();
+      renderSavedReview(data);
+      $('page-title').textContent = 'Saved review · ' + data.evidence.report.project.label;
+      $('page-description').textContent =
+        'A conclusion and its evidence at the time it was recorded.';
+      $('breadcrumb').textContent = 'SAVED REVIEW / ' + data.projectId.toUpperCase();
+    } else if (state.view === 'health') {
       renderHealth(data);
       $('page-title').textContent = 'Know what is collecting.';
       $('page-description').textContent =
@@ -1546,8 +1695,9 @@ async function load({ push = false } = {}) {
         'Follow discovery and distribution without following people.';
       $('breadcrumb').textContent = 'YOUR PORTFOLIO';
     }
-    const demo = data.demo ?? false;
-    if ('demo' in data) {
+    const displayed = state.view === 'saved-review' ? data.evidence.report : data;
+    const demo = displayed.demo ?? false;
+    if ('demo' in displayed) {
       $('mode').textContent = demo ? 'SYNTHETIC DEMO' : 'PRIVATE WORKSPACE';
       $('mode').classList.toggle('demo', demo);
     }
@@ -1555,16 +1705,41 @@ async function load({ push = false } = {}) {
       message(
         'Demo workspace — all numbers shown here are synthetic fixtures. No provider requests or real visitor data are involved.',
       );
-    $('freshness').textContent = data.generatedAt
-      ? 'Read ' +
-        new Date(data.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : 'Definitions v1';
+    $('freshness').textContent =
+      state.view === 'saved-review'
+        ? 'Saved ' + data.createdAt
+        : data.generatedAt
+          ? 'Read ' +
+            new Date(data.generatedAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : 'Definitions v1';
     settle($('page-title').textContent + ' loaded.');
   } catch (error) {
     if (generation !== state.loading) return;
+    state.data = null;
     content.replaceChildren(
-      empty('The report could not be loaded. Existing collected history has not been changed.'),
+      empty(
+        state.view === 'saved-review'
+          ? 'The saved review could not be loaded. Its frozen evidence was not replaced with a current report.'
+          : 'The report could not be loaded. Existing collected history has not been changed.',
+      ),
     );
+    if (state.view === 'saved-review') {
+      $('page-title').textContent = 'Saved review unavailable';
+      $('page-description').textContent = 'Use Refresh to retry, or return to the project.';
+      $('breadcrumb').textContent = 'SAVED REVIEW';
+      $('freshness').textContent = 'Saved evidence unavailable';
+      const back = el('button', {
+        class: 'button secondary',
+        text: state.project ? 'Open project report' : 'Open portfolio',
+      });
+      back.addEventListener('click', () =>
+        state.project ? selectProject(state.project) : selectView('portfolio'),
+      );
+      content.append(back);
+    }
     $('error').textContent = error.message;
     $('error').hidden = false;
     settle('The report could not be loaded.');
@@ -1577,6 +1752,7 @@ async function load({ push = false } = {}) {
   }
 }
 function selectView(view) {
+  state.savedReview = null;
   state.view = view;
   state.project = null;
   state.focusResource = null;
@@ -1584,6 +1760,7 @@ function selectView(view) {
   void load({ push: true });
 }
 function selectProject(id) {
+  state.savedReview = null;
   state.view = 'portfolio';
   state.project = id;
   state.focusResource = null;
@@ -1608,7 +1785,13 @@ $('download').addEventListener('click', () => {
   if (!state.data) return;
   const blob = new Blob([JSON.stringify(state.data, null, 2)], { type: 'application/json' }),
     url = URL.createObjectURL(blob),
-    a = el('a', { href: url, download: 'pulse-private-report.json' });
+    a = el('a', {
+      href: url,
+      download:
+        state.view === 'saved-review'
+          ? 'pulse-review-' + state.savedReview + '.json'
+          : 'pulse-private-report.json',
+    });
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });

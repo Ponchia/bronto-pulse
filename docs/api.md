@@ -54,9 +54,9 @@ A report has `schemaVersion`, `project`, `window`, `cards`, `breakdowns`,
 and may have a latest source bucket. Unavailable is not zero.
 
 The exact same structures are returned by CLI `--json`, so Spatial or another
-agent can consume them without screen scraping. There is no dedicated MCP
-server yet: use this authenticated API, or invoke a local CLI with a bounded
-report command. The MCP adapter exposes these deterministic reads through the authenticated `/mcp` endpoint and local stdio transport. See [agent setup](agent-review.md) and the [protocol contract](mcp-protocol.md).
+agent can consume them without screen scraping. The MCP adapter exposes bounded
+reads through the authenticated `/mcp` endpoint and local stdio transport. See
+[agent setup](agent-review.md) and the [protocol contract](mcp-protocol.md).
 
 Health includes `observedThrough`, `dataLagDays`, `dataState` and `nextAction`.
 A recent successful request does not guarantee recent observed dates. Daily

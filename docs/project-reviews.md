@@ -134,6 +134,12 @@ this operator access.
 
 Review records are private and travel in portable backup/restore archives.
 The report API and MCP tools expose read-only history and frozen evidence.
+In the project dashboard, **Read saved review** opens that record's conclusion
+and frozen report. Its private deep link preserves the project and review ID,
+including across reload and browser Back/Forward. The date controls are fixed
+to the saved evidence window. A preceding-review link opens one record at a
+time; **Open current evidence for these dates** explicitly leaves the snapshot.
+The frozen view never fills omitted leads or comparisons from later collections.
 The owner's explicit CLI command is the write boundary.
 
 A useful result can be “no action justified” or “this question is not measured.”
