@@ -494,7 +494,7 @@ test('portable collector forwards termination and reaps the active collection ch
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
-  const { once } = await import('node:events');
+  const { EventEmitter } = await import('node:events');
   const { setTimeout: delay } = await import('node:timers/promises');
   const directory = mkdtempSync(join(tmpdir(), 'pulse-collector-stop-'));
   const script = fileURLToPath(new URL('../deploy/collect-loop.sh', import.meta.url));
@@ -527,7 +527,7 @@ test('portable collector forwards termination and reaps the active collection ch
     for (let attempt = 0; attempt < 200 && !existsSync(pidFile); attempt++) await delay(10);
     assert.equal(existsSync(pidFile), true, 'fixture collection reached its active state');
     activePid = Number(readFileSync(pidFile, 'utf8'));
-    const exited = once(child, 'exit', { signal: AbortSignal.timeout(4000) });
+    const exited = EventEmitter.once(child, 'exit', { signal: AbortSignal.timeout(4000) });
     child.kill('SIGTERM');
     const [code, signal] = await exited;
     assert.equal(code, 0);
