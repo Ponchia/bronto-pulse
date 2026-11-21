@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { database, fixture, now, publish, sample, window } from './helpers.js';
 import { recordReview, readReviewHistory, readReviewRecord } from '../src/journal.js';
 import { evidenceDigest } from '../src/review-record.js';
+import { reportRevision } from '../src/report-revision.js';
+import { projectReport } from '../src/report.js';
 import { Store } from '../src/storage/store.js';
 import { SqliteDriver } from '../src/storage/sqlite.js';
 import { handle } from '../src/api/handler.js';
@@ -302,5 +304,31 @@ test('saved reviews preserve project identity even before any observations exist
   } finally {
     store.driver.close?.();
     restored.driver.close?.();
+  }
+});
+
+test('a guarded concurrent save refuses a different winner snapshot without replacing it', async () => {
+  const config = fixture(),
+    store = await database(config);
+  try {
+    await publish(store, config, [sample()]);
+    const revision = await reportRevision(
+      await projectReport(config, store, 'project', window, now),
+    );
+    const add = store.addReviewRecord.bind(store);
+    let winner: Awaited<ReturnType<typeof recordReview>> | undefined;
+    store.addReviewRecord = async (record) => {
+      store.addReviewRecord = add;
+      await publish(store, config, [sample(window.from, 30)]);
+      winner = await recordReview(config, store, input, now);
+      return add(record);
+    };
+    await assert.rejects(recordReview(config, store, input, now, revision), { code: 'CONFLICT' });
+    assert.ok(winner);
+    assert.deepEqual(await readReviewRecord(config, store, 'project', input.id), winner);
+    assert.equal((await readReviewHistory(config, store, 'project')).length, 1);
+    assert.notEqual(await reportRevision(winner.evidence.report), revision);
+  } finally {
+    store.driver.close?.();
   }
 });

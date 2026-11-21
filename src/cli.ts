@@ -70,6 +70,7 @@ Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --max-jobs N --chunk-days N --rotate --dry-run, --json, --format FORMAT,
  Sync/reconcile: --ready-only and --execution-profile free for bounded provider requests.
  --out FILE (exclusive private output), --input FILE, --port N.
+ Review record: --expected-revision SHA256 guards the current evidence cited by MCP.
  Operator commands may use --remote-d1 with account/database/token environment settings;
  this reads the hosted configuration and cannot combine with --config or --db.
  Serve only: --host 127.0.0.1|0.0.0.0 and --public-origin https://HOST for a trusted TLS reverse proxy.
@@ -104,6 +105,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       db: { type: 'string' },
       'remote-d1': { type: 'boolean' },
       'review-id': { type: 'string' },
+      'expected-revision': { type: 'string' },
       limit: { type: 'string' },
       json: { type: 'boolean' },
       provider: { type: 'string' },
@@ -461,7 +463,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     } else config = await configFrom(configPath);
     if (!v['remote-d1']) await store.register(config);
     if (command === 'review-record') {
-      const record = await recordReview(config, store, reviewInput, now);
+      const record = await recordReview(config, store, reviewInput, now, v['expected-revision']);
       console.log(JSON.stringify(reviewSummary(record), null, 2));
       return 0;
     }

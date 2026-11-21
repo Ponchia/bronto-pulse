@@ -126,6 +126,31 @@ identical retry safe; it is not permission to overwrite a prior conclusion.
 IDs use 8–96 lowercase letters, digits, underscores or hyphens and start with a
 letter or digit.
 
+### Save the evidence you reviewed
+
+After investigating through MCP, pass the current result's
+`evidenceRef.arguments.expectedRevision` when saving the conclusion:
+
+```sh
+node dist/cli.js review-record --input /private/project-review.json \
+  --expected-revision CURRENT_EVIDENCE_REVISION
+```
+
+Replace the placeholder with the exact 64-character lowercase revision returned
+for the same project and dates. This is a current-content revision; it is not
+an existing saved review's full snapshot SHA-256. The optional guard excludes
+only report generation time. If published evidence, source qualifications or
+project context has changed, the command refuses with `CONFLICT` before
+creating a new review. Read the evidence again and reconsider the conclusion;
+do not simply substitute a new revision to suppress that refusal.
+
+An identical retry checks the original frozen evidence, so later collection
+does not break recovery of a successfully saved record. A reused ID whose
+frozen evidence differs from the requested revision is refused. A concurrent
+save cannot silently substitute another snapshot. Existing records and the
+unguarded CLI workflow remain compatible: without this option, a new review
+captures the evidence available at save time.
+
 The optional `actionUrl` can point to the owner's existing issue or PR.
 A later record may set `followUpOf` to a prior record in the same project.
 It appends a new conclusion and evidence snapshot instead of rewriting the
