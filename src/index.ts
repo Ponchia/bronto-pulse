@@ -61,3 +61,9 @@ export type { CoverageInventory, CoverageEntry, CoverageAudit } from './coverage
 
 export { evaluateDailyCountEvidence } from './evidence-compatibility.js';
 export type { DailyCountDecision, DailyCountEvidence } from './evidence-compatibility.js';
+
+export { recordReview, readReviewHistory, readReviewRecord, reviewSummary } from './journal.js';
+export type { ReviewRecord, ReviewInput } from './review-record.js';
+
+export { observedCoverage } from './coverage-report.js';
+export type { ObservedCoverageDataset, ObservedCoverageSource } from './coverage-report.js';

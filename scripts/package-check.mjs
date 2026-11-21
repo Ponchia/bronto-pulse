@@ -23,7 +23,7 @@ try {
   const files = result.files.map((f) => f.path);
   for (const path of files) {
     if (
-      !/^(dist\/|web\/|migrations\/|examples\/|schemas\/|docs\/|SECURITY\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|README\.md$|LICENSE$|package\.json$)/.test(
+      !/^(dist\/|web\/|migrations\/|plugins\/|examples\/|schemas\/|docs\/|SECURITY\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|README\.md$|LICENSE$|package\.json$)/.test(
         path,
       )
     )
@@ -43,6 +43,8 @@ try {
     'web/index.html',
     'examples/quickstart.json',
     'migrations/0001_initial.sql',
+    'migrations/0003_review_records.sql',
+    'plugins/bronto-pulse-review/plugin.json',
     'schemas/config.schema.json',
   ])
     if (!files.includes(path)) throw Error('Package is missing ' + path);

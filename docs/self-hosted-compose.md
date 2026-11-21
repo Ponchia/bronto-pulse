@@ -65,6 +65,23 @@ quotas, requested groups, API limits and collection delay before increasing
 [clock-and-history-aware alternative](scheduling.md), set
 `PULSE_COLLECT_DUE_ONLY=true` in the private `.env` file (leave unset to
 preserve rotation). Invalid due-time settings refuse collection.
+Set `PULSE_COLLECT_EXECUTION_PROFILE=free` to retain the bounded
+eight-request, 256-KiB-response, 250-observation profile when moving an existing
+Worker installation. This profile requires one job; its name is a provider
+budget label, not a paid/free host check. `PULSE_COLLECT_READY_ONLY=true` skips
+unavailable grants using the same readiness rules as the Worker. Leaving these
+values unset retains the existing Node defaults.
+
+Opt-in Search Console correction dates use
+`PULSE_RECONCILE_INTERVAL_SECONDS=3600` alongside the resource's
+`reconcileDaysByGroup` configuration. The loop serializes regular collection
+and at most one correction; both use the configured profile and readiness.
+An empty correction interval disables that work. The integer range is
+60–86400 seconds, and the gap is checked after regular jobs, not by an
+independent clock trigger. See [scheduling](scheduling.md) for cursor,
+failure and restart behavior. The collector forwards shutdown to the active
+CLI or sleeper and waits for it to exit.
+
 Jobs rotate with a durable database
 cursor. One job per quarter hour means 56 groups take roughly 14 hours
 to complete one rotation; this is **not** an independent hourly freshness
@@ -149,6 +166,10 @@ credentials and archive independently of the runtime.
 
 The unauthenticated `/health` endpoint proves process liveness only.
 Check `/api/v1/health` through authenticated access for collection health.
+A lightweight database readiness probe can request authenticated
+`/api/v1/runs?limit=1` with the exact configured Host and check its response.
+`/api/v1/projects` uses the already-loaded configuration and is not a database
+readiness check. A successful readiness response does not prove fresh collection.
 Use a real browser behind your proxy to verify token login, session cookie
 `Secure` flag, CSRF rejection and private report views before opening the
 service to users.

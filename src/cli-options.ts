@@ -10,11 +10,18 @@ interface Contract {
 const dates = ['from', 'to', 'days'];
 const selection = ['provider', 'resource', 'group'];
 const installation = ['config', 'db'];
-const reports = [...installation, ...dates, 'json'];
+const operator = [...installation, 'remote-d1'];
+const reports = [...operator, ...dates, 'json'];
 const contracts: Readonly<Record<string, Contract>> = {
   init: { options: ['config'], minimum: 0, maximum: 0 },
   validate: { options: ['config', 'json'], minimum: 0, maximum: 0 },
   coverage: { options: ['config', 'input', 'json'], minimum: 0, maximum: 0, required: ['input'] },
+  'coverage-report': {
+    options: [...operator, 'input', 'json'],
+    minimum: 0,
+    maximum: 0,
+    required: ['input'],
+  },
   connectors: { options: ['json'], minimum: 0, maximum: 0 },
   graph: { options: ['config', 'json'], minimum: 1, maximum: 1 },
   plan: {
@@ -24,15 +31,22 @@ const contracts: Readonly<Record<string, Contract>> = {
   },
   sync: {
     options: [
-      ...installation,
+      ...operator,
       ...selection,
       ...dates,
       'max-jobs',
       'rotate',
       'due-only',
+      'ready-only',
+      'execution-profile',
       'dry-run',
       'json',
     ],
+    minimum: 0,
+    maximum: 0,
+  },
+  reconcile: {
+    options: [...installation, ...selection, 'ready-only', 'execution-profile', 'json'],
     minimum: 0,
     maximum: 0,
   },
@@ -48,12 +62,24 @@ const contracts: Readonly<Record<string, Contract>> = {
     maximum: 0,
   },
   inspect: {
-    options: [...installation, 'resource', 'input', 'out', 'json'],
+    options: [...operator, 'resource', 'input', 'out', 'json'],
     minimum: 0,
     maximum: 0,
     required: ['resource', 'input'],
   },
-  doctor: { options: [...installation, 'json'], minimum: 0, maximum: 0 },
+  doctor: { options: [...operator, 'json'], minimum: 0, maximum: 0 },
+  mcp: { options: installation, minimum: 0, maximum: 0 },
+  'review-record': {
+    options: [...operator, 'input', 'json'],
+    minimum: 0,
+    maximum: 0,
+    required: ['input'],
+  },
+  'review-history': {
+    options: [...operator, 'limit', 'review-id', 'json'],
+    minimum: 1,
+    maximum: 1,
+  },
   report: { options: [...reports, 'format', 'out'], minimum: 1, maximum: 1 },
   brief: { options: [...reports, 'format', 'out'], minimum: 0, maximum: 1 },
   review: { options: [...reports, 'format', 'out'], minimum: 0, maximum: 0 },
@@ -62,7 +88,7 @@ const contracts: Readonly<Record<string, Contract>> = {
   export: { options: [...installation, 'out'], minimum: 0, maximum: 0, required: ['out'] },
   import: { options: ['db', 'input'], minimum: 0, maximum: 0, required: ['input'] },
   annotate: {
-    options: [...installation, 'resource', 'title', 'date'],
+    options: [...operator, 'resource', 'title', 'date'],
     minimum: 0,
     maximum: 0,
     required: ['resource', 'title'],
@@ -106,7 +132,7 @@ export function validateCliInput(
   for (const name of contract.required ?? [])
     if (typeof values[name] !== 'string' || values[name] === '')
       throw new PulseError('CONFIG', `This command requires --${name}.`);
-  for (const name of ['days', 'max-jobs', 'chunk-days', 'port']) {
+  for (const name of ['days', 'max-jobs', 'chunk-days', 'port', 'limit']) {
     const value = values[name];
     if (
       value !== undefined &&
@@ -123,7 +149,7 @@ export function validateCliInput(
       '--days must be between 1 and 366 and cannot combine with --from.',
     );
   if (
-    ['report', 'brief', 'compare', 'graph'].includes(command) &&
+    ['report', 'brief', 'compare', 'graph', 'review-history'].includes(command) &&
     args.some((id) => !/^[a-z][a-z0-9_-]{0,63}$/.test(id))
   )
     throw new PulseError('CONFIG', 'Pass valid project identifiers.');

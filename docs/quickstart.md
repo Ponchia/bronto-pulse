@@ -8,7 +8,6 @@ Use Node.js 24.15 or newer; Node 24 is the tested line. From a repository checko
 
 ```sh
 npm ci
-npm run check
 npm run demo -- --serve
 ```
 
@@ -22,6 +21,18 @@ The portfolio, briefing, collection plan, project reports and collection-health
 views all use the same contracts as the CLI. Date/project/view selections remain
 in the URL, not in browser storage. Tokens are never put in the URL. JSON,
 Markdown and CSV reports stay private and are not website publication features.
+
+Choose **Bronto UI** for the first question: what changed across its repository,
+package and documentation site, and which check is useful next? Follow a
+briefing finding into its source observations and preserve any quality
+qualification. **Bronto Annotations** includes missing repository dates so you
+can see how an unsupported comparison is withheld. The
+[project-review walkthrough](project-reviews.md) develops both examples.
+
+The same synthetic installation works with the
+[Codex/Claude review plugin](agent-review.md). Developer quality gates are
+documented separately in [releasing](releasing.md); they are not a prerequisite
+for trying the demo.
 
 ## Explore cross-source evidence without credentials
 
@@ -80,7 +91,7 @@ Create the destination directory yourself with appropriate permissions. New
 output files are mode 0600 where supported; an existing file is never overwritten.
 The default reporting interval ends on the last completed **UTC** date. Stored
 Search Console dates retain their Pacific-time convention inside that date range.
-`--to` anchors `--days`; an explicit `--from` overrides the calculated start.
+Choose `--days` with an optional `--to`, or an explicit `--from`/`--to` range. Do not combine `--from` with `--days`.
 
 A report with only a few newly collected days cannot establish a 30-day trend.
 The briefing makes that limitation visible instead of manufacturing growth.

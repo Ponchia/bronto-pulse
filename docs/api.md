@@ -54,9 +54,9 @@ A report has `schemaVersion`, `project`, `window`, `cards`, `breakdowns`,
 and may have a latest source bucket. Unavailable is not zero.
 
 The exact same structures are returned by CLI `--json`, so Spatial or another
-agent can consume them without screen scraping. There is no dedicated MCP
-server yet: use this authenticated API, or invoke a local CLI with a bounded
-report command. A future MCP adapter must remain read-only by default.
+agent can consume them without screen scraping. The MCP adapter exposes bounded
+reads through the authenticated `/mcp` endpoint and local stdio transport. See
+[agent setup](agent-review.md) and the [protocol contract](mcp-protocol.md).
 
 Health includes `observedThrough`, `dataLagDays`, `dataState` and `nextAction`.
 A recent successful request does not guarantee recent observed dates. Daily
@@ -150,3 +150,22 @@ read-only: it neither authenticates to a provider nor collects missing history.
 The portfolio endpoint continues to accept dates only. In particular,
 `/api/v1/export?resource=...` is rejected: the backup endpoint does not implement
 partial export. A selector or misspelling must not silently return broader data.
+
+## Review records and MCP
+
+`GET /api/v1/projects/:id/reviews?limit=20` returns bounded conclusion summaries,
+including their evidence digest and optional action/follow-up links. The default
+is 20 and the maximum is 100. `GET /api/v1/projects/:id/reviews/:reviewId`
+returns one frozen report and verifies its digest. These endpoints use the
+same owner authentication as other private reports and reject writes.
+
+`POST /mcp` carries the read-only MCP protocol. It requires an explicit owner
+Bearer token or the configured verified Cloudflare Access identity; browser
+session cookies alone do not authorize it. Requests are limited to JSON and
+32 KiB, reject cross-origin browser requests and query parameters, and resolve
+the registered catalog lazily without migration or registration. This is a
+private integration; it does not implement OAuth or multi-tenant accounts.
+
+Conclusions are recorded through the explicit owner CLI described in
+[project reviews](project-reviews.md), including an operator-only D1 mode.
+The browser and MCP cannot submit SQL, record conclusions or trigger collection.

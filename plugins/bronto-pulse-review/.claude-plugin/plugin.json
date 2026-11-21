@@ -1,0 +1,12 @@
+{
+  "name": "bronto-pulse-review",
+  "version": "0.1.0",
+  "description": "Review private project evidence across repositories, packages and websites with Bronto Pulse.",
+  "author": {
+    "name": "Bronto Pulse contributors"
+  },
+  "homepage": "https://github.com/Ponchia/bronto-pulse",
+  "repository": "https://github.com/Ponchia/bronto-pulse",
+  "license": "MIT",
+  "keywords": ["project-review", "analytics", "maintainers", "evidence", "mcp"]
+}

@@ -178,6 +178,84 @@ failure delay or a provider wait. Any newer regular collection of that
 dataset, such as an explicit `pulse sync --resource <id> --group
 <group>`, resolves it.
 
+## Bounded Search Console reconciliation
+
+A resource's optional `reconcileDaysByGroup` map enables a correction pass for
+selected Search Console datasets. Unlike history backfill, it revisits recent
+published dates, including days previously returned without observations.
+Normal regular collection still uses its own implicit lookback.
+
+### Node and single-host containers
+
+Run one bounded correction from the same private configuration and SQLite database:
+
+```sh
+pulse reconcile --config /private/pulse.config.json --db /private/pulse.db --ready-only --execution-profile free --json
+```
+
+This command processes one opted-in dataset and one complete Pacific source day.
+It takes the same `reconciliation-scheduler` lease as the Worker path, releases
+it after success or failure, and keeps the durable correction cursor in SQLite.
+A held scheduler refuses the command before any provider request. It does not
+accept explicit dates, `--max-jobs`, rotation, due-time mode or `--remote-d1`:
+use `sync` for an explicit date and the Worker trigger for hosted corrections.
+
+The optional container collector enables corrections with
+`PULSE_RECONCILE_INTERVAL_SECONDS=3600`. An absent or empty value disables them;
+an explicit value must be an integer from 60 to 86400 seconds. It runs a single
+correction after regular collection when the interval has elapsed. Both jobs
+run serially in one collector process. The interval is a minimum gap after an
+attempt, checked at regular cycle boundaries; long jobs and restarts can change
+the wall-clock schedule. Restarting may run one correction immediately, using
+the retained cursor. A failed regular job does not suppress correction, and a
+failed correction does not stop future regular jobs.
+
+### Explicit Node collection budgets
+
+Node `sync` and `reconcile` accept `--execution-profile free` to preserve the
+bounded provider profile: one job, at most eight provider requests, 256 KiB per
+response and 250 normalized observations, with HTTP 429 deferred to another
+invocation. Oversized or failed results retain the last good publication.
+The profile name describes engineering limits, not the host's billing tier or
+a requirement to use Cloudflare. Existing Node defaults remain unchanged when
+the option is absent. Invalid profile values and incompatible job bounds fail
+before opening private storage.
+
+`--ready-only` skips sources whose configured credentials are unavailable.
+Public GitHub metadata may use its existing anonymous fallback; private
+datasets still require their selected credentials. Neither option applies to
+offline `--dry-run`. The container equivalents are
+`PULSE_COLLECT_EXECUTION_PROFILE=free` and `PULSE_COLLECT_READY_ONLY=true`;
+they apply to both regular and correction jobs.
+
+### Worker trigger
+
+The opt-in Worker variable `PULSE_RECONCILE_CRON` identifies a dedicated,
+distinct Cron Trigger. Each invocation executes exactly one dataset/day with
+the same execution profile limits and atomic publication contract as regular
+sync. Keep `PULSE_MAX_JOBS=1` and `PULSE_EXECUTION_PROFILE=free` for the Free
+profile. The expression must differ from `PULSE_HISTORY_CRON`; source code does
+not install either trigger.
+
+For one dataset with a 14-day horizon, an hourly trigger takes about 14 hours
+per pass when every invocation runs. More datasets, held leases, missing
+credentials, outages or delayed invocations extend that interval. This is a
+capacity calculation, not a collection SLA or evidence of Worker CPU compliance.
+
+The `reconciliation_days` metadata records each dataset's last attempted
+source date; `reconciliation_cursor` rotates across opted-in datasets. Dates
+outside the rolling horizon restart at its oldest date. A failed request
+advances to the next date so one overfull day cannot block all later dates,
+while preserving its failure and earlier published evidence. It is revisited
+on the next pass. Skipped collection does not advance that dataset's date.
+
+The outer `reconciliation-scheduler` lease serializes this scheduler separately
+from regular/history scheduling; per-dataset leases still prevent concurrent
+publication. Regular refresh, manual explicit windows and history do not modify
+the reconciliation cursor. A rollback to a version without this configuration
+field requires removing `reconcileDaysByGroup` and the dedicated trigger first;
+retained observations are compatible and must not be deleted.
+
 ## Limitations
 
 This is a small-installation scheduler, not a durable distributed queue.

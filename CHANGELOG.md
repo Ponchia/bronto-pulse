@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Add bounded read-only MCP tools for project reviews, exact evidence, collection
+  health and resource relationships, with local stdio and authenticated hosted
+  transports. Include a source plugin and review skill for Codex and Claude.
+- Save explicit project conclusions with verified frozen evidence, optional action
+  links and follow-up records. Read saved history and selected URL inspections in
+  the dashboard; reopen frozen evidence through private saved-review links, with
+  explicit navigation to preceding reviews or current evidence for the same dates.
+  Include review records in bounded portable recovery archives.
+- Report observed collection coverage against an explicit intended inventory,
+  preserving missing datasets, independent source attempts, publication recency
+  and source-data lag. The new CLI reads existing storage without changing it.
+- Revisit configured Search Console datasets one source day per reconciliation
+  trigger, with durable progress, fair dataset rotation and existing Free-profile
+  publication limits. Add a bounded administrative D1 path for selected owner
+  operations without exposing SQL or writes through the browser or agent API.
+- Document first project reviews, private agent setup, independent pilot criteria
+  and the proposed SaaS direction, keeping pricing and naming hypotheses explicit.
+
 ## 0.2.0-beta.3 — 2026-11-15
 
 - Expand investigation leads in the dashboard, preserving keyboard focus, evidence

@@ -115,6 +115,38 @@ Keep historical collection appropriately bounded and probe explicit older dates
 when checking revisions; a failed or too-large window still preserves prior
 published history. No existing installation changes without opting in.
 
+## Bounded Search Console correction passes
+
+A short regular query window can fit the runtime's observation limit while
+missing revisions or late data for older days. Search Console resources can
+opt in to a separate correction horizon:
+
+```json
+{
+  "lookbackDaysByGroup": { "queries": 1 },
+  "reconcileDaysByGroup": { "queries": 14 }
+}
+```
+
+`reconcileDaysByGroup` accepts 1–366 whole days and only groups that this
+Search Console resource collects. Each reconciliation invocation revisits
+**one source-calendar day for one dataset**, rotating through the configured
+horizon from oldest to newest. It does not concatenate days into an oversized
+response or raise the execution profile's row, request or byte limits.
+
+A successful correction replaces that day's published partition through the
+normal validated publication path. A failed correction preserves the earlier
+partition and remains visible in run history. The next day can still proceed;
+the failed date is attempted again on the next pass. A held lease or unavailable
+credential does not consume a date. An empty provider response is still unknown
+evidence, and later passes can populate it.
+
+This is separate from regular collection and older-history backfill. It needs
+an explicitly configured reconciliation invocation or Worker trigger; adding
+the map alone starts no schedule. Frequency and dataset count determine how
+long a pass takes. It does not guarantee discovery of corrections outside the
+horizon or rows the provider omits. See [scheduling](scheduling.md).
+
 ## Older history
 
 An npm, Search Console or Sense6 resource may declare

@@ -85,6 +85,60 @@ validates a trusted D1 SQL archive, restores it transactionally, and compares
 the portable export/import reports in temporary private databases.
 It never changes production and is not an automatic cutover.
 
+## Full SQLite backups on a single host
+
+The container includes a full-database backup helper. It opens the existing
+SQLite database read-only, pins one WAL snapshot, and uses Node's native
+[SQLite online backup API](https://nodejs.org/download/release/v24.22.2/docs/api/sqlite.html).
+It never runs migrations, registers a catalog, reads provider credentials or
+contacts a provider:
+
+```sh
+node deploy/backup-sqlite.mjs \
+  --db /private/pulse/pulse.db \
+  --out-dir /private/pulse/backups \
+  --retain 14
+```
+
+Use canonical, operator-owned paths on a local filesystem. The source must
+already exist. Source files and output directories must have no group or other
+permissions; symbolic links are refused. The helper creates its directory mode
+0700 and files mode 0600. It verifies integrity, foreign keys, the registered
+catalog and every table's ordered contents against the same source snapshot
+before atomically publishing a new archive and checksum manifest. Concurrent
+WAL writers may continue; copying the live `.db` file with `cp` is not equivalent.
+All retained runs, superseded observations, configuration versions, inspections,
+review records and operational metadata are included.
+
+`--retain` accepts 2–31 verified archives (default 14). `--max-bytes` accepts
+1 MiB–1 GiB (default 128 MiB) and counts committed WAL pages as part of the
+snapshot. At the defaults, 14 full-size retained archives occupy at most
+1.75 GiB, plus the new snapshot, the live database and its WAL. Account for that
+space before scheduling backups; a PVC's requested capacity alone may not impose
+a filesystem quota. The operation has a 180-second deadline. In Kubernetes use
+one backup job at a time and an outer deadline longer than this helper's budget.
+
+Retention considers only matching `pulse-sqlite-*.db` files with valid private
+manifests and matching checksums. Unrelated, incomplete, tampered, linked or
+unreadable files and the source database remain untouched. A failed new backup
+never prunes prior ones. A private lock prevents overlapping invocations; if the
+entire process or host is killed, inspect and remove that operation's stale lock
+only after confirming it no longer runs. Unexpected partial files also require
+operator review and are not automatically pruned.
+
+Success prints metadata and checksums, never source values. Failures print
+`ok:false` and a fixed category such as `operator-setup`, `already-running`,
+`backup-size`, `backup-timeout` or `backup-verification`. The manifest always says
+`offBoxVerified:false`. Schedule an encrypted transfer to an independent host
+and verify a restored copy there; a snapshot on the live PVC and a successful
+CronJob are not evidence of off-host recovery.
+
+To restore, stop the collector and dashboard, verify the archive checksum, and
+copy the full archive to a **new** private database path. Run integrity/foreign-key
+checks and compare representative reports, review hashes and configuration before
+switching both services to that path. Preserve the previous database and never
+replace a live file or merge two collectors' histories implicitly.
+
 ## Historical configuration changes
 
 A collected resource cannot be deleted from the catalog: keep it with
@@ -274,3 +328,41 @@ keys that are not part of the returned observation model. The original archive,
 run-history API, transaction snapshot, source windows and metric arithmetic are
 unchanged. These smaller reads reduce transferred data; they are not proof of
 sub-10-ms production CPU time. Measure the actual deployed invocation separately.
+
+## Hosted review records and selected inspections
+
+Apply additive `migrations/0003_review_records.sql` through the normal deployment
+migration path before deploying a Worker that requires the review table.
+The local CLI migrates its local database; `--remote-d1` never migrates or
+registers a replacement catalog. It reads the existing D1 configuration.
+
+For explicitly authorized owner operations, supply `CLOUDFLARE_ACCOUNT_ID`,
+`PULSE_D1_DATABASE_ID` and `CLOUDFLARE_API_TOKEN` through the private environment.
+Use a token scoped to the required account and D1 access. Keep provider
+credentials private as for local collection. `--remote-d1` cannot combine with
+`--config` or `--db`, and is not a public SQL or browser API.
+
+Supported owner workflows include `review-record`, `review-history`, `inspect`,
+`annotate` and reporting commands. Remote `sync` requires one selected resource,
+group and explicit source day (`--from` equals `--to`), with one job and the
+Free execution profile's request/byte/observation limits.
+
+The native Worker uses Cloudflare's documented [D1 binding batch
+transactions](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
+The operator adapter uses the administrative [REST query batch
+endpoint](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/),
+whose reference does not state the same rollback guarantee. Live rollback
+qualification is separate from the simulated transport tests. After an interrupted
+or rejected multi-statement owner request, inspect stored state before deciding
+whether to retry; the adapter does not retry it automatically.
+
+A review's caller-supplied id is its retry identity. Retrying identical input
+returns the original snapshot; a changed conclusion needs a new id and may link
+the original with `followUpOf`. An interrupted D1 write is not automatically
+retried. Read by that id before deciding the next action.
+
+Portable archives include review records and verify the frozen evidence on
+import. Older archives without reviews remain valid. The journal export is
+bounded to 1,000 records and 16 MiB; larger journals require the encrypted
+database backup path. An exceeded limit fails explicitly without discarding
+history. Collection compaction does not delete review snapshots.

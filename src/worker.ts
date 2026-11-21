@@ -10,6 +10,7 @@ import { Store } from './storage/store.js';
 import { handle } from './api/handler.js';
 import { sync, type SyncResult } from './sync.js';
 import { collectHistory } from './history.js';
+import { collectReconciliation } from './reconcile.js';
 import { scheduleOptions } from './worker-schedule.js';
 import { PulseError, safeError } from './errors.js';
 import type { Secrets } from './auth.js';
@@ -34,6 +35,8 @@ export interface WorkerEnv
   PULSE_DUE_ONLY?: string;
   /** The one cron expression whose invocations collect older dates instead of rotating. */
   PULSE_HISTORY_CRON?: string;
+  /** Dedicated bounded correction pass, distinct from history and regular refresh. */
+  PULSE_RECONCILE_CRON?: string;
 }
 let cached:
   | {
@@ -72,9 +75,11 @@ async function context(env: WorkerEnv) {
       // Provision schema through migrations, never during a Free-profile cold start.
       const [versions, inspections] = await store.driver.readBatch([
         { sql: "SELECT value FROM metadata WHERE key='schema_version'" },
-        { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='url_inspections'" },
+        {
+          sql: "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('url_inspections','review_records')",
+        },
       ]);
-      if (versions?.[0]?.value !== '1' || !inspections?.length)
+      if (versions?.[0]?.value !== '1' || inspections?.length !== 2)
         throw new PulseError(
           'SCHEMA',
           'Apply supported database migrations before enabling the Free profile.',
@@ -100,6 +105,16 @@ export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     try {
       return await handle(request, {
+        loadMcpData: async () => {
+          // Agent reads use the authoritative catalog without migrating or registering it.
+          const store = new Store(new D1Driver(env.DB));
+          if ((await store.getSetting('schema_version')) !== '1')
+            throw new PulseError('SCHEMA', 'Apply supported database migrations before using MCP.');
+          const config = await store.getConfig();
+          if (!config)
+            throw new PulseError('CONFIG', 'Register the operator configuration before using MCP.');
+          return { store, config };
+        },
         loadData: async () => {
           const data = await context(env);
           // Reporting initializes its catalog lazily once, after authentication.
@@ -138,6 +153,14 @@ export default {
   },
   async scheduled(event: { scheduledTime: number; cron?: string }, env: WorkerEnv): Promise<void> {
     // Validate explicit scheduling controls before touching private storage.
+    if (
+      env.PULSE_RECONCILE_CRON !== undefined &&
+      (!env.PULSE_RECONCILE_CRON.trim() || env.PULSE_RECONCILE_CRON === env.PULSE_HISTORY_CRON)
+    )
+      throw new PulseError(
+        'CONFIG',
+        'Reconciliation requires a nonempty cron distinct from history.',
+      );
     const selection = scheduleOptions(env);
     const bindings = workerBindings(env);
     // History runs only on its own trigger, so it never delays the regular rotation.
@@ -145,14 +168,33 @@ export default {
       env.PULSE_HISTORY_CRON !== undefined &&
       event.cron !== undefined &&
       event.cron === env.PULSE_HISTORY_CRON;
+    const reconciliation =
+      env.PULSE_RECONCILE_CRON !== undefined &&
+      event.cron !== undefined &&
+      event.cron === env.PULSE_RECONCILE_CRON;
     const { store, config } = await context(env);
     if (config.demo) return;
     const owner = crypto.randomUUID(),
-      key = history ? 'history-scheduler' : 'scheduler';
+      key = reconciliation
+        ? 'reconciliation-scheduler'
+        : history
+          ? 'history-scheduler'
+          : 'scheduler';
     if (!(await store.acquire(key, owner))) return;
     try {
       let results: SyncResult[], pending: number | undefined;
-      if (history) {
+      if (reconciliation) {
+        const { maxJobs: _one, dueOnly: _notReconciliation, ...bounds } = selection;
+        ({ results, pending } = await collectReconciliation(
+          config,
+          store,
+          environmentSecrets(env),
+          {
+            ...bounds,
+            bindings,
+          },
+        ));
+      } else if (history) {
         const { maxJobs: _one, dueOnly: _notHistory, ...bounds } = selection;
         ({ results, pending } = await collectHistory(config, store, environmentSecrets(env), {
           ...bounds,
@@ -167,8 +209,8 @@ export default {
       // Only aggregate result codes. No URLs, credentials or provider payloads in logs.
       console.log(
         JSON.stringify({
-          event: history ? 'history' : 'collection',
-          ...(history ? { pendingDatasets: pending } : {}),
+          event: reconciliation ? 'reconciliation' : history ? 'history' : 'collection',
+          ...(history || reconciliation ? { pendingDatasets: pending } : {}),
           succeeded: results.filter((x) => x.status === 'success').length,
           failed: results.filter((x) => x.status === 'failed').length,
           skipped: results.filter((x) => x.status === 'skipped').length,

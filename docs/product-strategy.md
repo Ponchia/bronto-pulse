@@ -1,142 +1,140 @@
-# Bronto Pulse product direction: evidence for independent software projects
+# Product direction: evidence for project reviews
 
 Lifecycle: proposal
 
-## The user problem
+## The useful job
 
-Maintainers of public libraries, independent developers and small engineering
-teams have their signals spread between a Git forge, package registries, search,
-website analytics and product instrumentation. A thousand downloads could mean
-independent usage, an automated build, or repeated maintainer testing. A metric
-dashboard may show each count accurately yet suggest a conclusion the evidence
-cannot establish.
+Help the owner of a software project understand what changed across its
+repository, package and website, decide which observation deserves attention,
+and return to the supporting evidence after taking an action.
 
-**The first customer is a technically capable owner of 1–20 software projects
-who wants an honest private answer to what is being discovered, distributed,
-used or maintained, without deploying another tracking pixel or buying a
-developer-contact database.** The next audience is a small OSS program/team
-that needs repeatable, auditable portfolio assessments.
+The first commercial hypothesis is an independent developer or small
+developer-tools team actively maintaining a product with a repository, a
+distribution channel and a documentation or marketing site. A person with
+several quiet hobby repositories can still benefit from the free, self-hosted
+core; project count alone does not establish willingness to pay.
 
-Jobs to be done:
+The human owns the question and the decision. A coding assistant can inspect
+the evidence, read related documentation or code, propose an improvement and
+link the resulting work. Pulse supplies durable observations and explicit
+measurement limits.
 
-1. Identify which projects show _independent_ signs of interest, and explain
-   what cannot be inferred from GitHub/npm counters.
-2. Locate changes worth investigating, with exact source windows, sampling,
-   confidence and incomplete coverage visible before a growth claim.
-3. Compare website discovery, code distribution and product activity **without
-   pretending to reconstruct a visitor journey**.
-4. Retain that evidence privately, move the installation between machines,
-   and provide stable read-only reports to operators and AI agents.
+## Three review situations
 
-## Competitive boundaries
+| Situation                           | Question                                | Useful result                                                                    |
+| ----------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------- |
+| Routine project or portfolio review | What deserves attention?                | A short supported finding, an uncertainty that matters and a concrete next check |
+| Release or website change           | What changed around this event?         | Dated observations and comparable windows, with release context and uncertainty  |
+| Focused investigation               | Can these sources answer this question? | The relevant evidence, missing coverage and a conclusion the owner can verify    |
 
-| Neighbor                             | Their strength                                                           | Pulse must do differently                                                                                                                        |
-| ------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Umami, Plausible, Matomo, PostHog    | First-party website/product events, sessions, behavior, goals            | Connect their _existing_ aggregate outputs; no Pulse visitor SDK or session replay                                                               |
-| Apache DevLake, GrimoireLab / CHAOSS | Engineering contribution, community health and delivery metrics          | Start with project discovery/distribution/adoption evidence; later import accepted engineering semantics rather than duplicating their pipelines |
-| Scarf, Reo.dev                       | Package distribution, developer/company intent and commercial enrichment | Be open, low-cost and privacy-preserving; avoid identifying, enriching or selling individual developer accounts                                  |
-| Airbyte and similar ETL platforms    | Large catalogue of extraction and loading connectors                     | Keep a small curated connector core with domain-specific metric definitions, and use external ETL for a governed long tail                       |
-| Grafana, generic BI                  | Rich dashboards and time-series visualization                            | Maintain explainable source lineage, calendar/coverage rules, scoped comparisons and a deterministic investigation brief                         |
+Weekly and monthly reviews are possible cadences, not requirements. A quiet
+period can produce no actionable finding. A release annotation supplies
+context; it does not establish that the release caused a change.
 
-References: [DevLake](https://devlake.apache.org/),
-[GrimoireLab](https://chaoss.github.io/grimoirelab/),
-[CHAOSS metrics](https://chaoss.community/),
-[Scarf](https://about.scarf.sh/),
-[Reo](https://www.reo.dev/),
-[Airbyte](https://airbyte.com/),
-[Umami](https://umami.is/),
-[Plausible](https://plausible.io/),
-[PostHog](https://posthog.com/).
+The [project-review walkthrough](project-reviews.md) uses the existing
+synthetic repository, package and website example. The
+[pilot evaluation](pilot-evaluation.md) defines how to test usefulness with
+independent owners. Neither document is a claim that external validation has
+already happened.
 
-**Positioning:** "The private evidence layer for the software you build and
-maintain." Scope it to **evidence-backed project intelligence**, not an
-unbounded business intelligence suite, a universal usage score or an
-individual tracking product.
+## Product boundary
 
-## First useful portfolio story
+Pulse retains provider-native aggregates and their provenance. It does not
+reconstruct people moving from search to documentation to an npm install.
+Downloads, clones, daily unique counts and product events keep their own
+meanings. Two changing sources can justify an investigation without proving
+a shared audience, causality, or independent adoption.
 
-A site measured by Plausible and Cloudflare, a library distributed via npm
-and GitHub, and its Search Console property coexist in the same Pulse
-installation. Pulse shows provider-native counts side by side and can answer:
+An optional review record can connect a question, its evidence and a conclusion
+or external PR. It should help retrieve work that already happens in the
+owner's tools. It is not a task-management system, and writing a record is not
+required for a useful review. A documented decision to take no action can be
+a successful result.
 
-- Which source has an observed, sufficiently complete change?
-- Do two providers observing the same site disagree, and do they use comparable
-  windows, timezones, dimensions and methods?
-- Is package distribution rising while independent consumption remains unproven?
-- Which source or permission would most improve the next assessment?
+Existing provider-native goal or completion counts are a possible next step
+when a pilot needs them. Keep them opt-in and preserve their definitions.
+A documentation download click is not proof of a successful package install.
+An onboarding-completion count is not automatically a cross-source conversion
+rate. Add outcome evidence for a concrete question, not a general tracking SDK.
 
-The default remains **no automatic cross-provider sum**, no inferred people,
-no bot correction, no automatic disclosure of private reports.
+## What should earn continued development
 
-## Architectural path and maturity
+1. **Trustworthy coverage.** Every intended resource and dataset is either
+   connected with inspectable freshness or explicitly missing, unsupported or
+   blocked. A scheduled success does not imply complete source dates.
+2. **A useful first review.** An owner can connect a small scope, inspect a
+   convincing example, and explain the result without learning the collector
+   architecture.
+3. **A reliable agent interface.** The same report contracts are available to
+   an assistant through bounded, read-oriented tools. Private reports remain
+   private; source text is data, not instructions for the agent.
+4. **Evidence of value.** Independent owners repeatedly resolve a real question
+   more easily than with their existing dashboards or direct provider tools.
 
-### Stage A — Portable source-aware foundation
+Test the product against the user's existing workflow. A marketplace install,
+a passing fixture suite, a larger connector catalogue or a growing observation
+count does not establish usefulness.
 
-A single-host Node/SQLite installation, explicit token authentication and an
-opt-in external TLS proxy, alongside optional Worker/D1. Source-aware
-observations, atomic publish, privacy constraints, versioned export and
-restore already exist. Qualify the Compose build on a Docker-capable host
-before calling the installation production-ready.
+## Competitive choices
 
-### Stage B — Curated connectors and semantics
+| Alternative                                    | Existing strength                                           | Pulse's hypothesis                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Provider dashboards and their MCP integrations | Direct access to each provider's analytics                  | Retained project context and consistent interpretation across sources and sessions |
+| GitHub history tools such as ghstats           | Retain repository traffic beyond GitHub's short window      | Connect that history with a package and site for a useful project review           |
+| Umami, Plausible and PostHog                   | Website or product analytics with provider-native behavior  | Read relevant existing aggregates while preserving their measurement boundaries    |
+| Scarf and Reo                                  | Commercial usage intelligence and company/contact workflows | Serve owners who want private project evidence without identity enrichment         |
+| DevLake and community-health platforms         | Delivery, contribution and community metrics                | Start with discovery, distribution and owner investigations                        |
 
-Introduce an internal static connector manifest (discovery, auth mode, groups,
-metrics, timezone and history). Add Plausible Stats v2 and Umami Cloud v3
-as **account-unverified reference adapters**, with strict fixed-origin
-outbound requests, import exclusion and non-additive daily audience metrics.
-Keep API and configuration backward-compatible. Real credentials, site
-permissions, rate limits and provider changes require separate account probes.
-Do not dynamically load third-party code into a credential-bearing Worker.
+MCP access is an interface and a potential installation channel. It is not a
+competitive advantage by itself. Current examples include
+[PostHog MCP](https://posthog.com/docs/model-context-protocol),
+[Scarf MCP](https://docs.scarf.sh/scarf-ai/),
+[Umami MCP](https://umami.is/blog/introducing-umami-mcp), and
+[Plausible's documented community integration](https://plausible.io/docs/data-access).
 
-A future connector SDK may expose `discover`, `probe`, `plan`, `collect`,
-and versioned capabilities through an externally isolated process. First
-validate what current adapters need rather than commit to a plugin protocol
-before those examples work on real installations.
+## Hosted-service progression
 
-### Stage C — Evidence reconciliation
+The current source package is an MIT-licensed preview. The bundled local plugin
+and private authenticated MCP interface are pilot integration paths; they do
+not establish public-directory acceptance, OAuth support, customer tenancy,
+billing, or a production SaaS.
 
-Introduce explicit `Project -> Website -> Package -> Repository -> Deployment`
-relations. A project may declare a primary source per metric _and_ keep
-alternative sources as independently observable comparators. Only compare
-matching calendar, coverage, unit, aggregation and scope. Imported historical
-sources require origin markers to prevent duplicate rollups. Add deterministic
-"what changed / what is supported / what remains unknown" reports, not
-LLM-generated causal assertions.
+Progress through these evidence gates:
 
-### Stage D — Scale and breadth
+| Stage                       | Deliverable                                                   | Gate to continue                                                 |
+| --------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Useful private installation | Repair coverage and complete one project review               | An owner verifies the answer and next check                      |
+| Independent pilot           | Small real portfolios using the current deployment model      | Repeatable findings and measured setup/support effort            |
+| Managed private pilot       | A few isolated, explicitly provisioned installations          | Paid use, reliable collection, recovery and understandable costs |
+| Repeatable small SaaS       | Account lifecycle, billing and shared operations as justified | Retention and support economics support the added platform       |
 
-Replace round-robin scheduling with per-resource due dates, source-specific
-quotas, backoff and failure visibility, retaining low-cost worker limits.
-Keep a local SQLite profile for small installations. Add a PostgreSQL-backed,
-multi-worker mode **only when a deployment/test case requires HA**. Kubernetes
-and generic source URLs should not be accepted as complete merely because
-a Compose profile exists. Custom outbound provider origins require a separate
-SSRF, DNS rebinding, redirects, network egress and token-scope threat model.
+A hosted pilot still requires credential isolation, controlled access,
+backup/restore, export and deletion. A collection job must never inherit
+another customer's credentials or data. Isolated installations can keep the
+first platform small; they do not make operating costs disappear.
 
-Next integrations should be selected by real pilot needs: Bing Search,
-CrUX performance, PyPI/crates, other Git forges, then Sentry/observability
-or commercial sources. Avoid a directory of adapters that no one validates.
+Keep self-hosting available. A hosted offering would charge for reliable
+collection, retained history, convenience and shared reviews. Candidate price
+experiments are EUR 15–25 per month for an owner and EUR 49–99 for a small
+team. These are **unvalidated hypotheses**, not announced plans or evidence of
+willingness to pay. Measure support time, provider eligibility and real hosting
+costs before choosing a price. A personal deployment fitting a free tier is
+not a durable SaaS cost model.
 
-## Falsifiable milestones
+Use direct signup and account management outside agent directories where
+required. Listing requirements and billing rules must be rechecked before
+submission. No directory traffic or conversion rate is assumed.
 
-A meaningful first external release has:
+## Decisions deferred
 
-- Two independently installed private (non-Cloudflare) portfolios successfully
-  restoring their data on a second host, with explicit supported limitations.
-- Plausible and Umami collectors validated against consenting real accounts,
-  including empty/sampled/limited responses, timezone and rate limit behavior.
-- One reproducible report comparing two analytics providers on the same site
-  without double-counting their observations.
-- Three non-maintainer pilot users who can identify an actionable finding from
-  Pulse that their provider dashboards alone did not reveal.
-- Install, upgrade, recovery and security docs maintained alongside CI,
-  rather than a speculative plugin catalogue.
+A broad connector SDK, Kubernetes-first deployment, PostgreSQL HA, generic BI,
+automatic growth recommendations and contact enrichment remain outside this
+first product test. Runtime changes need a demonstrated operating constraint.
 
-These are **targets**, not achievements or usage claims.
+SEO, URL inspection and AI-visibility tools should participate when they
+resolve an owner question. Do not merge every audit into a single dashboard
+just because it exists.
 
-## Decisions deliberately deferred
-
-No user-tracking SDK, fingerprinting, contact or company enrichment, public
-multi-tenant service, billing system, unrestricted SQL, automatic account
-creation, automatic LLM decisions, event-level surveillance or auto-enabled
-sources. No provider credentials in public source, error logs or CI.
+Bronto Pulse remains the repository, package and CLI identity. A new brand is a
+separate decision after testing the promise and checking naming availability;
+a research candidate is not a cleared or launched brand.
