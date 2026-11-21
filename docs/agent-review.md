@@ -226,6 +226,14 @@ checking a source limitation or doing no work.
 
 When the owner explicitly wants to keep the conclusion, use the operator
 [review-record workflow](project-reviews.md#keep-a-conclusion-when-it-helps).
+Pass the current result's `evidenceRef.arguments.expectedRevision` to the
+operator command's `--expected-revision` option, using the same project and
+window. The save then refuses changed evidence rather than attaching a newer
+snapshot to an earlier conclusion. After a refusal, reread and reconsider the
+conclusion. On an uncertain save, retain the same input, ID and revision:
+an identical retry verifies the original frozen evidence despite later collection.
+Use a current-evidence reference, not a saved record's full snapshot digest.
+
 The MCP surface can read that history but cannot write it. Any code/docs edit,
 PR or publication follows the owner's actual instruction and the repository's
 existing review process.

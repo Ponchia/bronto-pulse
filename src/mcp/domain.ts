@@ -6,10 +6,14 @@ import { investigateProject } from '../investigations.js';
 import { readReviewHistory, readReviewRecord } from '../journal.js';
 import { projectGraph } from '../project-graph.js';
 import { projectReport, type ProjectReport } from '../report.js';
+import { reportRevision } from '../report-revision.js';
+
 import { ownerReview } from '../review.js';
 import type { Store } from '../storage/store.js';
 import { doctor } from '../sync.js';
 import { reportRange, type DateRange } from '../time.js';
+
+export { reportRevision } from '../report-revision.js';
 
 export interface PulseMcpContext {
   config: Config;
@@ -100,15 +104,6 @@ async function readReport(context: PulseMcpContext, projectId: string, window: D
     window,
   );
   return projectReport(context.config, snapshot, projectId, window, clock(context));
-}
-/** A current-content revision, not a persisted historical snapshot. */
-export async function reportRevision(report: ProjectReport): Promise<string> {
-  const { generatedAt: _generatedAt, ...evidence } = report;
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(JSON.stringify(evidence)),
-  );
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 function evidenceRef(report: ProjectReport, revision: string, reviewId?: string) {
   return {

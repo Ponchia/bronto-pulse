@@ -1,4 +1,5 @@
 import { PulseError } from './errors.js';
+import { REPORT_REVISION } from './report-revision.js';
 
 type Values = Readonly<Record<string, string | boolean | undefined>>;
 interface Contract {
@@ -70,7 +71,7 @@ const contracts: Readonly<Record<string, Contract>> = {
   doctor: { options: [...operator, 'json'], minimum: 0, maximum: 0 },
   mcp: { options: installation, minimum: 0, maximum: 0 },
   'review-record': {
-    options: [...operator, 'input', 'json'],
+    options: [...operator, 'input', 'expected-revision', 'json'],
     minimum: 0,
     maximum: 0,
     required: ['input'],
@@ -132,6 +133,15 @@ export function validateCliInput(
   for (const name of contract.required ?? [])
     if (typeof values[name] !== 'string' || values[name] === '')
       throw new PulseError('CONFIG', `This command requires --${name}.`);
+  if (
+    values['expected-revision'] !== undefined &&
+    (typeof values['expected-revision'] !== 'string' ||
+      !REPORT_REVISION.test(values['expected-revision']))
+  )
+    throw new PulseError(
+      'CONFIG',
+      'Expected revision must be a lowercase SHA-256 current-evidence revision.',
+    );
   for (const name of ['days', 'max-jobs', 'chunk-days', 'port', 'limit']) {
     const value = values[name];
     if (

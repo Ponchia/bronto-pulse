@@ -12,6 +12,10 @@ const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const loader = import.meta.resolve('tsx');
 for (const args of [
   ['report', 'project', '--provider', 'npm'],
+  ['review-record', '--input', 'review.json', '--expected-revision', 'not-a-revision'],
+  ['review-record', '--input', 'review.json', '--expected-revision', 'A'.repeat(64)],
+  ['review-record', '--input', 'review.json', '--expected-revision='],
+  ['report', 'project', '--expected-revision', 'a'.repeat(64)],
   ['brief', 'project', 'ignored-project'],
   ['review', 'project'],
   ['review', '--provider', 'npm'],
@@ -92,6 +96,7 @@ test('malformed archive input is bounded and rejected before destination creatio
 test('documented command shapes retain their effective options', () => {
   const examples: [string, string[], Record<string, string | boolean>][] = [
     ['init', [], { config: 'private.json' }],
+    ['review-record', [], { input: 'review.json', 'expected-revision': 'a'.repeat(64) }],
     ['validate', [], { config: 'private.json', json: true }],
     ['coverage', [], { config: 'private.json', input: 'inventory.json', json: true }],
     ['coverage-report', [], { 'remote-d1': true, input: 'inventory.json', json: true }],
