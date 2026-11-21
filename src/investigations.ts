@@ -3,7 +3,7 @@ import type { EvidenceSignal } from './evidence.js';
 import { evaluateDailyCountEvidence } from './evidence-compatibility.js';
 import type { GraphIdentity, ProjectGraph, ResourceKind } from './project-graph.js';
 import type { MetricCard, ProjectReport } from './report.js';
-import { days, previous, type DateRange } from './time.js';
+import { dateInZone, days, previous, type DateRange } from './time.js';
 
 /**
  * Investigation leads: what a published report supports, what it cannot show
@@ -63,6 +63,11 @@ const CHECKS = {
     'configuration',
     (_r, w) =>
       `Review the declared website sources and dated pageview preference that apply to ${span(w)}.`,
+  ],
+  'report.completed_source_dates': [
+    'pulse_report',
+    (r) =>
+      `Read ${r} over completed dates in each series' source timezone before comparing values; provider publication and collection can still lag after the day ends.`,
   ],
   'report.daily_points': [
     'pulse_report',
@@ -281,7 +286,50 @@ function lead(
 
 const SNAPSHOT_LIMITATION =
   'A snapshot that was not taken cannot be collected afterwards. Only later snapshots can supply the missing evidence.';
+const SOURCE_DATE_LIMITATION =
+  'For some missing daily dates, the source day has not ended in its timezone or a future date has not begun. Normal daily collection selects completed source dates; provider publication and collection can still lag afterward. This timing does not establish why observations are absent.';
 const snapshot = (card: MetricCard) => card.aggregation === 'latest';
+/** Qualify only actual missing daily dates; a broad window can cross a binding boundary. */
+function qualifySourceDates(
+  report: ProjectReport,
+  cards: MetricCard[],
+  finding: InvestigationFinding,
+): InvestigationFinding {
+  const generatedAt = new Date(report.generatedAt);
+  let unfinished = false;
+  let onlyUnfinished = cards.length > 0;
+  for (const card of cards) {
+    if (snapshot(card) || !card.coverage.missingDays.length) {
+      onlyUnfinished = false;
+      continue;
+    }
+    let sourceToday: string;
+    try {
+      sourceToday = dateInZone(generatedAt, card.timezone);
+    } catch {
+      // An unrecognized calendar or timestamp cannot explain absent observations.
+      onlyUnfinished = false;
+      continue;
+    }
+    const open = card.coverage.missingDays.filter((date) => date >= sourceToday);
+    unfinished ||= open.length > 0;
+    onlyUnfinished &&= open.length === card.coverage.missingDays.length;
+  }
+  if (!unfinished) return finding;
+  return {
+    ...finding,
+    limitations: (onlyUnfinished
+      ? [SOURCE_DATE_LIMITATION, ...finding.limitations]
+      : [...finding.limitations, SOURCE_DATE_LIMITATION]
+    ).slice(0, INVESTIGATION_LIMITS.limitations),
+    nextChecks: onlyUnfinished
+      ? [
+          check('report.completed_source_dates', finding.resourceId, report.window),
+          ...finding.nextChecks,
+        ].slice(0, INVESTIGATION_LIMITS.nextChecks)
+      : finding.nextChecks,
+  };
+}
 function coverageLeads(report: ProjectReport, out: InvestigationFinding[]): void {
   const window = report.window;
   for (const resourceId of [...new Set(report.cards.map((c) => c.resourceId))].sort(compare)) {
@@ -289,32 +337,36 @@ function coverageLeads(report: ProjectReport, out: InvestigationFinding[]): void
     const unavailable = cards.filter((c) => c.coverage.status === 'unavailable');
     if (unavailable.length)
       out.push(
-        lead(
-          'coverage.series_unavailable',
-          'unavailable',
-          resourceId,
-          '',
-          `${resourceId}: ${series(unavailable.length, 'has', 'have')} no published observation for ${span(window)}. ${unavailable.length === 1 ? 'The value is' : 'The values are'} unavailable, not zero.`,
-          unavailable.map((c) =>
-            cardRef(c, covered(c, window), {
-              aggregation: c.aggregation,
-              observedDays: c.coverage.observedDays,
-              expectedDays: c.coverage.expectedDays,
-              value: null,
-            }),
+        qualifySourceDates(
+          report,
+          unavailable,
+          lead(
+            'coverage.series_unavailable',
+            'unavailable',
+            resourceId,
+            '',
+            `${resourceId}: ${series(unavailable.length, 'has', 'have')} no published observation for ${span(window)}. ${unavailable.length === 1 ? 'The value is' : 'The values are'} unavailable, not zero.`,
+            unavailable.map((c) =>
+              cardRef(c, covered(c, window), {
+                aggregation: c.aggregation,
+                observedDays: c.coverage.observedDays,
+                expectedDays: c.coverage.expectedDays,
+                value: null,
+              }),
+            ),
+            [
+              'An absent observation is not a measured zero. This report does not establish whether collection did not run, access was refused, the provider no longer retains the dates or a mapping boundary excludes them.',
+              ...(unavailable.some(snapshot) ? [SNAPSHOT_LIMITATION] : []),
+            ],
+            [
+              check('health.latest_refresh', resourceId, null),
+              // A collection plan covers dated series only; it cannot recover a snapshot.
+              ...(unavailable.every(snapshot)
+                ? []
+                : [check('plan.window_coverage', resourceId, window)]),
+              check('config.binding_dates', resourceId, window),
+            ],
           ),
-          [
-            'An absent observation is not a measured zero. This report does not establish whether collection did not run, access was refused, the provider no longer retains the dates or a mapping boundary excludes them.',
-            ...(unavailable.some(snapshot) ? [SNAPSHOT_LIMITATION] : []),
-          ],
-          [
-            check('health.latest_refresh', resourceId, null),
-            // A collection plan covers dated series only; it cannot recover a snapshot.
-            ...(unavailable.every(snapshot)
-              ? []
-              : [check('plan.window_coverage', resourceId, window)]),
-            check('config.binding_dates', resourceId, window),
-          ],
         ),
       );
     // Snapshots are not daily series: a missing snapshot day is not a coverage gap.
@@ -323,34 +375,38 @@ function coverageLeads(report: ProjectReport, out: InvestigationFinding[]): void
     );
     if (partial.length)
       out.push(
-        lead(
-          'coverage.dates_missing',
-          'partial',
-          resourceId,
-          '',
-          `${resourceId}: ${series(partial.length, 'lacks', 'lack')} some requested dates in ${span(window)}. Observed subtotals cover the published dates only and are not full-period totals.`,
-          partial.map((c) =>
-            cardRef(c, covered(c, window), {
-              aggregation: c.aggregation,
-              observedDays: c.coverage.observedDays,
-              expectedDays: c.coverage.expectedDays,
-              missingDays: c.coverage.missingDays.length,
-              firstMissing: c.coverage.missingDays[0] ?? null,
-              lastMissing: c.coverage.missingDays.at(-1) ?? null,
-              missingDates: c.coverage.missingDays
-                .slice(0, INVESTIGATION_LIMITS.missingDates)
-                .join(','),
-              observedSubtotal: finite(c.value),
-            }),
+        qualifySourceDates(
+          report,
+          partial,
+          lead(
+            'coverage.dates_missing',
+            'partial',
+            resourceId,
+            '',
+            `${resourceId}: ${series(partial.length, 'lacks', 'lack')} some requested dates in ${span(window)}. Observed subtotals cover the published dates only and are not full-period totals.`,
+            partial.map((c) =>
+              cardRef(c, covered(c, window), {
+                aggregation: c.aggregation,
+                observedDays: c.coverage.observedDays,
+                expectedDays: c.coverage.expectedDays,
+                missingDays: c.coverage.missingDays.length,
+                firstMissing: c.coverage.missingDays[0] ?? null,
+                lastMissing: c.coverage.missingDays.at(-1) ?? null,
+                missingDates: c.coverage.missingDays
+                  .slice(0, INVESTIGATION_LIMITS.missingDates)
+                  .join(','),
+                observedSubtotal: finite(c.value),
+              }),
+            ),
+            [
+              'Missing dates are not counted as zero, and no period comparison is made for these series. Whether the dates can still be collected is not established here.',
+            ],
+            [
+              check('plan.window_coverage', resourceId, window),
+              check('health.latest_refresh', resourceId, null),
+              check('provider.same_window', resourceId, window),
+            ],
           ),
-          [
-            'Missing dates are not counted as zero, and no period comparison is made for these series. Whether the dates can still be collected is not established here.',
-          ],
-          [
-            check('plan.window_coverage', resourceId, window),
-            check('health.latest_refresh', resourceId, null),
-            check('provider.same_window', resourceId, window),
-          ],
         ),
       );
     const unqualified = cards.filter((c) => c.coverage.qualities.some((q) => q !== 'observed'));
@@ -928,13 +984,17 @@ export function investigateProject(
           ...finding.nextChecks,
         ].slice(0, INVESTIGATION_LIMITS.nextChecks);
       }
-      if (
-        resource.sharedWithProjects.length &&
-        finding.limitations.length < INVESTIGATION_LIMITS.limitations
-      )
-        finding.limitations.push(
-          'This resource is explicitly shared with other projects; its values must not be added across projects.',
-        );
+      if (resource.sharedWithProjects.length) {
+        // Optional calendar context must not displace the existing shared-source warning.
+        if (finding.limitations.length >= INVESTIGATION_LIMITS.limitations)
+          finding.limitations = finding.limitations.filter(
+            (text) => text !== SOURCE_DATE_LIMITATION,
+          );
+        if (finding.limitations.length < INVESTIGATION_LIMITS.limitations)
+          finding.limitations.push(
+            'This resource is explicitly shared with other projects; its values must not be added across projects.',
+          );
+      }
     }
   return {
     schemaVersion: 1,
