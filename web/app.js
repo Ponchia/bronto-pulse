@@ -53,6 +53,9 @@ function status(label) {
 function query() {
   return new URLSearchParams({ from: $('from').value, to: $('to').value }).toString();
 }
+function briefingPath(projectId = null) {
+  return (projectId ? '/projects/' + encodeURIComponent(projectId) : '') + '/brief?' + query();
+}
 async function api(path) {
   const response = await fetch('/api/v1' + path, { credentials: 'same-origin' });
   if (response.status === 401) {
@@ -1135,17 +1138,17 @@ function renderProject(report, { saved = false } = {}) {
         query() +
         '&format=csv',
     });
+    const readBriefing = el('button', {
+      class: 'button secondary',
+      text: 'Read project briefing',
+    });
+    readBriefing.addEventListener('click', () => selectProject(report.project.id, 'brief'));
     const briefing = el('a', {
       class: 'button quiet',
       text: 'Download briefing',
-      href:
-        '/api/v1/projects/' +
-        encodeURIComponent(report.project.id) +
-        '/brief?' +
-        query() +
-        '&format=markdown',
+      href: '/api/v1' + briefingPath(report.project.id) + '&format=markdown',
     });
-    content.append(el('div', { class: 'report-actions' }, [back, csv, briefing]));
+    content.append(el('div', { class: 'report-actions' }, [back, readBriefing, csv, briefing]));
   }
   if (report.evidence) {
     content.append(
@@ -1329,14 +1332,23 @@ function renderBrief(data) {
   content.append(
     heading('Evidence-based briefing', 'Deterministic findings, not an AI growth score'),
   );
-  content.append(
+  const actions = el('div', { class: 'report-actions' });
+  if (state.project) {
+    const back = el('button', { class: 'button secondary', text: '← Project report' });
+    back.addEventListener('click', () => selectProject(data.project.id));
+    const all = el('button', { class: 'button secondary', text: 'All project briefings' });
+    all.addEventListener('click', () => selectView('brief'));
+    actions.append(back, all);
+  }
+  actions.append(
     el('a', {
-      class: 'button quiet',
+      class: 'button secondary',
       text: 'Download Markdown briefing',
-      href: '/api/v1/brief?' + query() + '&format=markdown',
+      href: '/api/v1' + briefingPath(state.project) + '&format=markdown',
     }),
   );
-  for (const brief of data.briefs) {
+  content.append(actions);
+  for (const brief of state.project ? [data] : data.briefs) {
     const panel = el('article', { class: 'brief-panel' });
     const button = el('button', { class: 'text-button', text: brief.project.label });
     button.addEventListener('click', () => selectProject(brief.project.id));
@@ -1549,7 +1561,7 @@ function restoreView(params) {
     ? view
     : 'portfolio';
   state.project =
-    ['portfolio', 'saved-review'].includes(state.view) &&
+    ['portfolio', 'saved-review', 'brief'].includes(state.view) &&
     /^[a-z][a-z0-9_-]{0,63}$/.test(params.get('project') ?? '')
       ? params.get('project')
       : null;
@@ -1612,7 +1624,7 @@ async function load({ push = false } = {}) {
           : state.view === 'review'
             ? await api('/review?' + query())
             : state.view === 'brief'
-              ? await api('/brief?' + query())
+              ? await api(briefingPath(state.project))
               : state.view === 'plan'
                 ? await api(
                     '/plan?' +
@@ -1673,10 +1685,14 @@ async function load({ push = false } = {}) {
       $('breadcrumb').textContent = 'OWNER REVIEW';
     } else if (state.view === 'brief') {
       renderBrief(data);
-      $('page-title').textContent = 'What changed, and what did not.';
+      $('page-title').textContent = state.project
+        ? data.project.label + ' · briefing'
+        : 'What changed, and what did not.';
       $('page-description').textContent =
         'Traceable changes, missing baselines and explicit limits.';
-      $('breadcrumb').textContent = 'PROJECT BRIEFING';
+      $('breadcrumb').textContent = state.project
+        ? 'PROJECT BRIEFING / ' + data.project.id.toUpperCase()
+        : 'PROJECT BRIEFING';
     } else if (state.view === 'plan') {
       renderPlan(data);
       $('page-title').textContent = 'Know what a sync will do.';
@@ -1739,6 +1755,14 @@ async function load({ push = false } = {}) {
         state.project ? selectProject(state.project) : selectView('portfolio'),
       );
       content.append(back);
+    } else if (state.view === 'brief' && state.project) {
+      $('page-title').textContent = 'Project briefing unavailable';
+      $('page-description').textContent = 'Use Refresh to retry, or return to the project.';
+      $('breadcrumb').textContent = 'PROJECT BRIEFING / ' + state.project.toUpperCase();
+      $('freshness').textContent = 'Briefing unavailable';
+      const back = el('button', { class: 'button secondary', text: 'Open project report' });
+      back.addEventListener('click', () => selectProject(state.project));
+      content.append(back);
     }
     $('error').textContent = error.message;
     $('error').hidden = false;
@@ -1759,9 +1783,9 @@ function selectView(view) {
   state.focusGroup = null;
   void load({ push: true });
 }
-function selectProject(id) {
+function selectProject(id, view = 'portfolio') {
   state.savedReview = null;
-  state.view = 'portfolio';
+  state.view = view;
   state.project = id;
   state.focusResource = null;
   state.focusGroup = null;
