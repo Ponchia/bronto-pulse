@@ -15,6 +15,7 @@ import { d1OperatorDriver } from './storage/d1-http.js';
 import { recordReview, readReviewHistory, readReviewRecord, reviewSummary } from './journal.js';
 import { validateReviewInput } from './review-record.js';
 import { sync, doctor, probe, MAX_PROBE_DAYS } from './sync.js';
+import { collectReconciliation } from './reconcile.js';
 import { projectReport, portfolio, markdownReport } from './report.js';
 import { seedDemo, type DemoScenario } from './demo.js';
 import { startServer } from './server.js';
@@ -44,6 +45,7 @@ pulse connectors                     Offline built-in source capabilities; no cr
 pulse graph PROJECT                  Explicit resource relationships; no DB, credentials or network
 pulse plan [--from DATE --to DATE]   Offline, bounded collection plan; no DB or API access
 pulse sync [--provider github]       Collect bounded source windows; --due-only for due jobs
+pulse reconcile                    Revisit one opted-in GSC dataset/day; local SQLite only
 pulse backfill --from DATE --to DATE Collect planned chunks with an explicit job budget
 pulse probe [--from DATE --to DATE]  Read-only capability check; explicit windows up to 7 days
 pulse inspect --resource ID --input FILE  Inspect an explicit JSON list of 1–20 GSC URLs
@@ -66,6 +68,7 @@ pulse demo [--serve --scenario evidence]  Seed isolated SYNTHETIC portfolio or c
 Options: --config FILE (pulse.config.json), --db FILE (.pulse/pulse.db),
  --from YYYY-MM-DD --to YYYY-MM-DD, --resource ID, --group GROUP,
  --max-jobs N --chunk-days N --rotate --dry-run, --json, --format FORMAT,
+ Sync/reconcile: --ready-only and --execution-profile free for bounded provider requests.
  --out FILE (exclusive private output), --input FILE, --port N.
  Operator commands may use --remote-d1 with account/database/token environment settings;
  this reads the hosted configuration and cannot combine with --config or --db.
@@ -112,6 +115,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       'max-jobs': { type: 'string' },
       rotate: { type: 'boolean' },
       'due-only': { type: 'boolean' },
+      'ready-only': { type: 'boolean' },
+      'execution-profile': { type: 'string' },
       'dry-run': { type: 'boolean' },
       'chunk-days': { type: 'string' },
       format: { type: 'string' },
@@ -159,6 +164,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       'CONFIG',
       'Due-only selection requires sync without rotation, explicit dates or offline dry-run.',
     );
+  if (v['dry-run'] && (v['ready-only'] || v['execution-profile'] !== undefined))
+    throw new PulseError(
+      'CONFIG',
+      'Offline dry-run cannot apply credential readiness or execution profiles.',
+    );
   if (v['dry-run'] && !['sync', 'backfill'].includes(command))
     throw new PulseError(
       'CONFIG',
@@ -186,6 +196,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     v,
     tokens.flatMap((token) => (token.kind === 'option' ? [token.name] : [])),
   );
+  if (v['execution-profile'] !== undefined && v['execution-profile'] !== 'free')
+    throw new PulseError('CONFIG', 'Invalid execution profile; supported value is free.');
+  if (
+    v['execution-profile'] === 'free' &&
+    v['max-jobs'] !== undefined &&
+    Number(v['max-jobs']) !== 1
+  )
+    throw new PulseError('CONFIG', 'The Free execution profile requires exactly one job.');
+  const collectionBounds =
+    v['remote-d1'] || v['execution-profile'] === 'free'
+      ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250, retryRateLimits: false }
+      : {};
   const probeWindow =
     command === 'probe' && v.from !== undefined && v.to !== undefined
       ? range(v.from, v.to, MAX_PROBE_DAYS)
@@ -482,6 +504,25 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     };
     const print = (value: unknown, text?: string) =>
       console.log(v.json || !text ? JSON.stringify(value, null, 2) : text);
+    if (command === 'reconcile') {
+      const key = 'reconciliation-scheduler';
+      const owner = crypto.randomUUID();
+      if (!(await store.acquire(key, owner)))
+        throw new PulseError('CONFLICT', 'Another collector holds the reconciliation scheduler.');
+      try {
+        const result = await collectReconciliation(config, store, process.env, {
+          ...selection,
+          ...collectionBounds,
+          readyOnly: v['ready-only'],
+          now,
+          bindings,
+        });
+        print(result);
+        return result.results.some((row) => row.status === 'failed') ? 2 : 0;
+      } finally {
+        await store.release(key, owner);
+      }
+    }
     if (command === 'sync') {
       if (v.provider && !hasConnector(v.provider))
         throw new PulseError('CONFIG', 'Unknown provider.');
@@ -492,12 +533,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         window: plannedOptions(config).window,
         maxJobs: v['max-jobs']
           ? numeric(v['max-jobs'], 1)
-          : v['due-only'] || v['remote-d1']
+          : v['due-only'] || v['remote-d1'] || v['execution-profile'] === 'free'
             ? 1
             : undefined,
-        ...(v['remote-d1']
-          ? { maximumRequests: 8, maximumBytes: 262144, maximumRows: 250, retryRateLimits: false }
-          : {}),
+        ...collectionBounds,
+        readyOnly: v['ready-only'],
         rotate: v.rotate,
         dueOnly: v['due-only'],
         bindings,
