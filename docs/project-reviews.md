@@ -24,9 +24,15 @@ documentation site. Ask:
 
 > What changed around this project, and which check would be useful next?
 
-Open its briefing and report. Follow the source and date references for a
-supported change. Inspect the npm download history and GitHub observations,
-then inspect the documentation pageviews and their quality information.
+Choose **Read project briefing** in its project report. The dashboard opens
+only that project's findings for the selected dates. Its private link preserves
+the project and period when you reload or return with browser history. Use
+**Project report** to inspect the supporting evidence or **All project briefings**
+to widen the review. The Markdown download keeps the same project and dates.
+
+Follow the source and date references for a supported change. Inspect the npm
+download history and GitHub observations, then inspect the documentation
+pageviews and their quality information.
 
 The example deliberately includes a sampled documentation observation. That
 qualification should travel with the answer. Daily unique viewers are not a
