@@ -8,6 +8,7 @@ import {
   type InvestigationFinding,
 } from '../src/investigations.js';
 import { projectBrief, markdownBrief } from '../src/brief.js';
+import { projectSummary } from '../src/mcp/domain.js';
 import { projectGraph } from '../src/project-graph.js';
 import { type MetricCard, type ProjectReport, projectReport } from '../src/report.js';
 import { evidenceDemoConfig, seedDemo } from '../src/demo.js';
@@ -238,6 +239,224 @@ test('unavailable evidence stays unavailable and is never reported as zero', asy
   const empty = investigateProject(report([]));
   assert.deepEqual(empty.findings, []);
   assert.equal(empty.omittedFindings, 0);
+});
+
+test('missing current source dates lead with completed-date guidance at UTC/Pacific rollover', async () => {
+  const selected = { from: '2026-11-20', to: '2026-11-20' };
+  const at = new Date('2026-11-21T02:00:00Z');
+  for (const provider of ['npm', 'gsc']) {
+    const config = fixture(provider),
+      store = await database(config);
+    try {
+      const current = await projectReport(config, store, 'project', selected, at);
+      const before = structuredClone(current);
+      const lead = current.investigation!.findings[0]!;
+      assert.equal(lead.reason, 'coverage.series_unavailable');
+      assert.equal(lead.evidenceState, 'unavailable');
+      assert.equal(
+        lead.nextChecks[0]!.id,
+        provider === 'gsc' ? 'report.completed_source_dates' : 'health.latest_refresh',
+      );
+      assert.equal(
+        lead.limitations.some((text) => text.includes('source day has not ended')),
+        provider === 'gsc',
+      );
+      for (const metric of current.cards) {
+        assert.equal(metric.value, null);
+        assert.equal(metric.coverage.expectedDays, 1);
+        assert.equal(metric.coverage.observedDays, 0);
+        assert.deepEqual(metric.coverage.missingDays, ['2026-11-20']);
+      }
+      assert.deepEqual(investigateProject(current, 20, current.resources), current.investigation);
+      assert.deepEqual(current, before, 'guidance never changes the evidence');
+      const mcp: Record<string, unknown> = await projectSummary(
+        { config, store, now: at },
+        { projectId: 'project', ...selected, limit: 20 },
+      );
+      assert.deepEqual(
+        (mcp.brief as ReturnType<typeof projectBrief>).investigation,
+        current.investigation,
+        'the MCP brief carries the same source-day guidance',
+      );
+      if (provider === 'gsc') {
+        assert.match(lead.limitations.join(' '), /publication and collection can still lag/);
+        assert.match(
+          markdownBrief(projectBrief(current, 20, current.resources)),
+          /completed dates/,
+        );
+      }
+    } finally {
+      store.driver.close?.();
+    }
+  }
+});
+
+test('configured source calendars qualify current and future dates without assuming publication', async () => {
+  const selected = { from: '2026-07-02', to: '2026-07-02' };
+  for (const [timestamp, unfinished] of [
+    ['2026-07-01T12:00:00Z', true],
+    ['2026-07-02T12:00:00Z', true],
+    ['2026-07-02T22:30:00Z', false],
+  ] as const) {
+    const config = fixture('plausible', {
+      connection: 'auth',
+      siteId: 'example.invalid',
+      timezone: 'Europe/Madrid',
+    });
+    const store = await database(config);
+    try {
+      const current = await projectReport(config, store, 'project', selected, new Date(timestamp));
+      assert.ok(current.cards.every((metric) => metric.timezone === 'Europe/Madrid'));
+      const lead = current.investigation!.findings[0]!;
+      assert.equal(
+        lead.nextChecks[0]!.id,
+        unfinished ? 'report.completed_source_dates' : 'health.latest_refresh',
+      );
+      assert.equal(
+        lead.limitations.some((text) => text.includes('source day has not ended')),
+        unfinished,
+      );
+      assert.ok(
+        current.cards.every(
+          (metric) => metric.value === null && metric.coverage.status === 'unavailable',
+        ),
+      );
+    } finally {
+      store.driver.close?.();
+    }
+  }
+});
+
+test('mixed historical gaps retain troubleshooting and snapshots never become unfinished daily evidence', () => {
+  const at = '2026-09-30T12:00:00Z';
+  const open = unavailable({
+    scope: { effectiveFrom: '2026-09-30' },
+    coverage: {
+      observedDays: 0,
+      expectedDays: 1,
+      missingDays: ['2026-09-30'],
+      status: 'unavailable',
+      qualities: [],
+    },
+  });
+  const snapshot = unavailable({
+    metric: 'github.stars',
+    aggregation: 'latest',
+    coverage: open.coverage,
+  });
+  const mixed = investigateProject(report([open, snapshot], { generatedAt: at })).findings[0]!;
+  assert.equal(mixed.nextChecks[0]!.id, 'health.latest_refresh');
+  assert.match(mixed.limitations.join(' '), /source day has not ended/);
+  assert.match(mixed.limitations.join(' '), /cannot be collected afterwards/);
+  const snapshots = investigateProject(report([snapshot], { generatedAt: at })).findings[0]!;
+  assert.deepEqual(
+    snapshots.nextChecks.map((step) => step.id),
+    ['health.latest_refresh', 'config.binding_dates'],
+  );
+  assert.ok(!snapshots.limitations.some((text) => text.includes('source day has not ended')));
+
+  const make = (missing: string[]) =>
+    card({
+      value: (30 - missing.length) * 10,
+      points: spread(300).filter((point) => !missing.includes(point.date)),
+      coverage: {
+        observedDays: 30 - missing.length,
+        expectedDays: 30,
+        missingDays: missing,
+        status: 'partial',
+        qualities: ['observed'],
+      },
+    });
+  const onlyOpen = investigateProject(report([make(['2026-09-30'])], { generatedAt: at }))
+    .findings[0]!;
+  assert.equal(onlyOpen.nextChecks[0]!.id, 'report.completed_source_dates');
+  for (const missing of [['2026-09-29', '2026-09-30'], ['2026-09-29']]) {
+    const current = report([make(missing)], { generatedAt: at });
+    const before = structuredClone(current);
+    const lead = investigateProject(current).findings[0]!;
+    assert.equal(lead.id, onlyOpen.id, 'reason and series identity stay stable');
+    assert.deepEqual(
+      lead.nextChecks.map((step) => step.id),
+      ['plan.window_coverage', 'health.latest_refresh', 'provider.same_window'],
+    );
+    assert.equal(
+      lead.limitations.some((text) => text.includes('source day has not ended')),
+      missing.includes('2026-09-30'),
+    );
+    assert.equal(lead.evidence[0]!.facts.missingDays, missing.length);
+    assert.equal(lead.evidence[0]!.facts.observedSubtotal, (30 - missing.length) * 10);
+    assert.deepEqual(current, before);
+  }
+});
+
+test('source-date guidance uses binding-clipped missing dates and keeps disabled-source priority', async () => {
+  for (const enabled of [true, false]) {
+    const config = fixture('npm', { enabled });
+    config.projects[0]!.resources[0]!.effectiveFrom = '2026-11-21';
+    const store = await database(config);
+    try {
+      const current = await projectReport(
+        config,
+        store,
+        'project',
+        { from: '2026-11-01', to: '2026-11-21' },
+        new Date('2026-11-21T12:00:00Z'),
+      );
+      const lead = current.investigation!.findings[0]!;
+      assert.equal(
+        lead.nextChecks[0]!.id,
+        enabled ? 'report.completed_source_dates' : 'config.collection_enabled',
+      );
+      assert.ok(lead.nextChecks.some((step) => step.id === 'report.completed_source_dates'));
+      assert.equal(lead.nextChecks.length, INVESTIGATION_LIMITS.nextChecks);
+      assert.ok(lead.limitations.length <= INVESTIGATION_LIMITS.limitations);
+      if (!enabled) assert.match(lead.limitations[0]!, /disabled in configuration/);
+      assert.deepEqual(current.cards[0]!.coverage.missingDays, ['2026-11-21']);
+      assert.equal(current.cards[0]!.coverage.expectedDays, 1);
+      assert.deepEqual(lead.evidence[0]!.window, { from: '2026-11-21', to: '2026-11-21' });
+    } finally {
+      store.driver.close?.();
+    }
+  }
+});
+
+test('source-date context keeps shared and disabled snapshot warnings within their existing bound', async () => {
+  for (const enabled of [true, false]) {
+    const config = fixture('github', {
+      enabled,
+      groups: enabled ? ['views'] : ['repository', 'views'],
+    });
+    config.projects[0]!.resources[0]!.allowShared = true;
+    config.projects.push({ ...config.projects[0]!, id: 'other', label: 'Other project' });
+    const store = await database(config);
+    try {
+      const current = await projectReport(
+        config,
+        store,
+        'project',
+        { from: '2026-11-21', to: '2026-11-21' },
+        new Date('2026-11-21T12:00:00Z'),
+      );
+      const lead = current.investigation!.findings[0]!;
+      assert.equal(lead.reason, 'coverage.series_unavailable');
+      assert.equal(lead.subject!.sharedWithProjects, 1);
+      assert.match(lead.limitations.join(' '), /absent observation is not a measured zero/);
+      assert.match(lead.limitations.join(' '), /must not be added across projects/);
+      assert.equal(lead.limitations.length, enabled ? 3 : INVESTIGATION_LIMITS.limitations);
+      if (enabled) {
+        assert.equal(lead.nextChecks[0]!.id, 'report.completed_source_dates');
+        assert.match(lead.limitations.join(' '), /source day has not ended/);
+      } else {
+        assert.equal(lead.nextChecks[0]!.id, 'config.collection_enabled');
+        assert.equal(lead.nextChecks[1]!.id, 'health.latest_refresh');
+        assert.match(lead.limitations[0]!, /disabled in configuration/);
+        assert.match(lead.limitations.join(' '), /cannot be collected afterwards/);
+        assert.ok(!lead.limitations.some((text) => text.includes('source day has not ended')));
+      }
+    } finally {
+      store.driver.close?.();
+    }
+  }
 });
 
 test('partial series keep their observed subtotal and a bounded list of missing dates', () => {

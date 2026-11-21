@@ -93,7 +93,20 @@ in its limitations.
 
 When the project resource map shows that collection for a resource is disabled,
 its coverage and comparison leads state that first and ask you to confirm the
-setting before any collection check.
+setting before any collection check. Optional source-date context never displaces
+the existing snapshot, disabled-collection or shared-source limitations.
+
+Missing daily dates are interpreted in each series' source timezone at the
+report's timestamp. If every missing date in a coverage lead is a day that
+has not ended or a future date, its first check is to read completed source
+dates. Historical gaps or a missing snapshot keep the usual troubleshooting
+first, with a qualification for any unfinished daily dates. A disabled source
+still puts its configuration check first.
+
+A completed calendar date does not establish finalized or collected data:
+provider publication and collection can still lag. Timing alone does not
+explain an absent observation. Values, coverage counts and missing-date lists
+stay unchanged, and saved reviews retain the guidance frozen with their evidence.
 
 ## Bounds
 

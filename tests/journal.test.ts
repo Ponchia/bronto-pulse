@@ -53,6 +53,38 @@ test('review retries retain the first evidence; a linked follow-up captures late
     store.driver.close?.();
   }
 });
+test('a source day ending changes current guidance but never a frozen review or its guarded retry', async () => {
+  const config = fixture('gsc'),
+    store = await database(config);
+  const reviewed = {
+    ...input,
+    id: 'source-day-review-0001',
+    window: { from: '2026-11-20', to: '2026-11-20' },
+    question: 'Is this missing source date complete enough to investigate?',
+    conclusion: 'Use completed source dates first; absent observations remain unavailable.',
+  };
+  const beforeMidnight = new Date('2026-11-21T02:00:00Z');
+  const afterMidnight = new Date('2026-11-21T08:01:00Z');
+  try {
+    const current = await projectReport(config, store, 'project', reviewed.window, beforeMidnight);
+    const revision = await reportRevision(current);
+    const saved = await recordReview(config, store, reviewed, beforeMidnight, revision);
+    assert.equal(
+      saved.evidence.report.investigation!.findings[0]!.nextChecks[0]!.id,
+      'report.completed_source_dates',
+    );
+    const later = await projectReport(config, store, 'project', reviewed.window, afterMidnight);
+    assert.equal(later.investigation!.findings[0]!.nextChecks[0]!.id, 'health.latest_refresh');
+    assert.deepEqual(later.cards, current.cards, 'the clock changes guidance, not recorded values');
+    assert.notEqual(await reportRevision(later), revision);
+    assert.deepEqual(await readReviewRecord(config, store, 'project', reviewed.id), saved);
+    assert.deepEqual(await recordReview(config, store, reviewed, afterMidnight, revision), saved);
+    assert.equal(await evidenceDigest(saved.evidence.report), saved.evidence.sha256);
+  } finally {
+    store.driver.close?.();
+  }
+});
+
 test('journal survives archive restore and rejects tampered snapshots before any import', async () => {
   const config = fixture(),
     store = await database(config);
