@@ -13,13 +13,20 @@ command -v node >/dev/null || { echo 'Node is required.' >&2; exit 2; }
 }
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="${PULSE_SMOKE_IMAGE:-localhost/pulse-oci-smoke:$$}"
+owned_image=true
+if [[ -n "${PULSE_SMOKE_IMAGE:-}" ]]; then
+  owned_image=false
+  podman image exists "$image" || { echo "The supplied smoke image is not local." >&2; exit 2; }
+fi
 tmp="$(mktemp -d /tmp/pulse-oci-smoke.XXXXXXXX)"
-image="localhost/pulse-oci-smoke:$$"
 container="pulse-oci-smoke-$$"
 token='synthetic-oci-strong-test-token-only-0123456789'
 cleanup() {
   podman rm -f "$container" >/dev/null 2>&1 || true
-  podman image rm "$image" >/dev/null 2>&1 || true
+  if [[ "$owned_image" == "true" ]]; then
+    podman image rm "$image" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${tmp:-}" && "$tmp" == /tmp/pulse-oci-smoke.* ]]; then
     podman unshare chown -R 0:0 "$tmp/data" >/dev/null 2>&1 || true
     rm -rf -- "$tmp"
@@ -41,11 +48,13 @@ url="http://127.0.0.1:$port"
 origin='https://pulse.example.test'
 
 # No live credentials or Cloudflare resources are accessed by the synthetic test.
-podman build --pull=missing -t "$image" -f "$root/Dockerfile" "$root" > "$tmp/build.log" 2>&1 || {
-  echo 'Image build failed (last output):' >&2
-  tail -20 "$tmp/build.log" >&2
-  exit 1
-}
+if [[ "$owned_image" == "true" ]]; then
+  podman build --pull=missing -t "$image" -f "$root/Dockerfile" "$root" > "$tmp/build.log" 2>&1 || {
+    echo 'Image build failed (last output):' >&2
+    tail -20 "$tmp/build.log" >&2
+    exit 1
+  }
+fi
 
 launch() {
   podman run -d --name "$container" \
@@ -100,6 +109,12 @@ curl -s --max-time 5 -D "$tmp/login.headers" -o /dev/null \
   --data-urlencode "token=$token" "$url/login"
 grep -Eiq '^set-cookie: pulse_session=.*; HttpOnly; SameSite=Strict; .*Secure' "$tmp/login.headers"
 podman unshare test -s "$tmp/data/pulse.db"
+# Configuration is reconstructed on startup, so seeing a project alone cannot
+# prove persistence. Write a row that only the running installation contains.
+podman exec "$container" node dist/cli.js annotate \
+  --config /run/pulse/config.json --db /app/.pulse/pulse.db \
+  --resource sample --title 'synthetic-oci-restart-sentinel' --date 2026-01-01 \
+  > "$tmp/annotation-result"
 
 podman stop -t 3 "$container" >/dev/null
 podman rm "$container" >/dev/null
@@ -107,5 +122,13 @@ launch
 ready
 resumed="$(curl -s --max-time 5 -H 'Host: pulse.example.test' -H "Authorization: Bearer $token" "$url/api/v1/projects")"
 grep -q 'Synthetic proof project' <<<"$resumed"
-printf '%s\n' 'OCI_SMOKE_PASSED: image build, loopback port, auth, Host/Origin rejection, Secure session and SQLite restart persistence.'
+podman exec "$container" node --input-type=module -e '
+  import { DatabaseSync } from "node:sqlite";
+  const db = new DatabaseSync("/app/.pulse/pulse.db", { readOnly: true });
+  const count = db.prepare("SELECT count(*) AS n FROM annotations WHERE title = ? AND resource_id = ? AND date = ?")
+    .get("synthetic-oci-restart-sentinel", "sample", "2026-01-01").n;
+  db.close();
+  if (count !== 1) throw new Error("Synthetic annotation did not survive restart.");
+'
+printf '%s\n' 'OCI_SMOKE_PASSED: exact local image, loopback port, auth, Host/Origin rejection, Secure session and SQLite restart persistence.'
 printf '%s\n' 'Not tested: external TLS termination, Docker Compose orchestration, D1 migration or live provider credentials.'
